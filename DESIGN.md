@@ -654,6 +654,19 @@ earliest.
 
 ## Alternatives
 
+### Use a work-stealing scheduler
+
+An alternative approach could use a work-stealing scheduler, allowing
+underutilized worker threads to steal work from overloaded workers. While
+work-stealing is an efficient strategy for balancing load across worker threads,
+required synchronization adds overhead. An earlier article on the Tokio blog
+includes an overview of various scheduling strategies.
+
+The tokio-uring crate targets use-cases that can benefit from taking advantage
+of io-uring at the expense of discarding Tokio's portable API. These use cases
+will also benefit from reduced synchronization overhead and fine-grained control
+over thread load balancing strategies.
+
 ### Read and write methods on TcpStream
 
 Read and write operations on byte stream types, such as `TcpStream`, are
@@ -684,3 +697,11 @@ operation and return it as part of the second read. The process would not lose
 data, but the runtime would need to perform an extra copy or return the caller a
 different buffer than the one it submitted.
 
+### Expose a raw io-uring operation submission API
+
+The proposed tokio-uring API does not include a strategy for the user to submit
+custom io-uring operations. Any raw API would be unsafe or would require the
+runtime to support taking opaque data as a trait object. Given that io-uring has
+a well-defined set of supported options, tokio-uring opts to support each
+operation explicitly. The application also can create its own set of io-uring
+queues using the io-uring crate directly.
