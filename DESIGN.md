@@ -30,7 +30,9 @@ io-uring to mature and a Tokio 2.0 release, we will release a standalone crate
 dedicated to exposing an io-uring optimal API. This new crate will be able to
 iterate rapidly with breaking changes without violating Tokio's stability
 guarantee. Applications deployed exclusively on Linux kernels 5.10 or later may
-choose to use this crate and take advantage of io-uring's benefits.
+choose to use this crate when taking full advantage of io-uring's benefits
+provides measurable benefits. Examples of intended use-cases include TCP
+proxies, HTTP file servers, and databases.
 
 [overhead]: https://www.usenix.org/system/files/conference/nsdi14/nsdi14-paper-jeong.pdf
 [bench]: https://github.com/frevib/io_uring-echo-server/blob/master/benchmarks/benchmarks.md
@@ -682,4 +684,3 @@ operation and return it as part of the second read. The process would not lose
 data, but the runtime would need to perform an extra copy or return the caller a
 different buffer than the one it submitted.
 
-Moving operation and buffer management to the byte stream avoids this problem.
