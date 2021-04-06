@@ -79,11 +79,45 @@ The runtime communicates with the kernel using two single-producer,
 single-consumer queues. It submits operation requests, such as accepting a TCP
 socket, to the kernel using the submission queue. The kernel then performs the
 operation. On completion, the kernel returns the operation results via the
-completion queue and notifies the process. Syscalls are not required to transfer
-operation requests and completion results between the process and the kernel,
-though the runtime will use a syscall to block the thread waiting on completion
+completion queue and notifies the process. The `io_uring_enter` syscall flushes
+the submission queue and acquires any pending completion events. Upon request,
+this syscall may block the thread waiting for a minimum number of completion
 events. Both queues use memory shared between the process and the kernel and
 synchronize with atomic operations.
+
+Operation futures provide an asynchronous cancel function, enabling the caller
+to await on a clean cancellation.
+
+```rust
+let accept = tcp_listener.accept();
+
+tokio::select! {
+    (tcp_stream, addr) = &mut accept => { ... }
+    _ = tokio::time::sleep(Duration::from_millis(100)) => {
+        // Accept timed out, cancel the in-flight accept.
+        match accept.cancel().await {
+            Ok(_) => { ... } // operation canceled gracefully
+            Err(Completed(tcp_stream, addr)) => {
+                // The operation completed between the timeout
+                // and cancellation request.
+            }
+            Err(_) => { ... }
+        }
+    }
+}
+```
+
+In practice, operation timeouts will deserve a dedicated API to handle the
+boilerplate.
+
+```rust
+let (tcp_stream, addr) = tcp_listener
+    .accept()
+    .timeout(Duration::from_millis(100))
+    .await?
+```
+
+The cancel and timeout function are inherent methods on operation future types.
 
 If the operation's future drops before the operation completes, the runtime will
 submit a cancellation request for the operation. However, cancellation is
@@ -115,12 +149,9 @@ becomes challenging. Applications must take care to ensure load remains balanced
 across threads, and strategies tend to vary. For example, a TCP server can
 distribute accepted connections across multiple threads, ideally while
 maintaining equal load across threads. One approach is to submit "accept"
-operations for the same listener concurrently across all the runtime threads.
-Overloaded workers can back-off starting new "accept" operations. Defining
-runtime load is out of scope for this design document, though pseudocode is
-included below.
-
-Pseudocode:
+operations for the same listener concurrently across all the runtime threads
+while ensuring overloaded workers back-off. Defining runtime load is out of this
+crate's scope and left to the application, though pseudocode follows.
 
 ```rust
 let listener = Arc::new(TcpListener::bind(...));
@@ -363,10 +394,12 @@ in-flight operation. Once all existing in-flight operations complete, the
 runtime will submit a close operation.
 
 If the drop handler must process closing a resource in the background, it will
-notify the developer by writing a warning message to `STDERR`. In the future, it
-may be possible for Rust to provide a `#[must_not_drop]` attribute. This
-attribute will result in compilation warnings if the developer drops a resource
-without using the explicit close method.
+notify the developer by emitting a warning message using [`tracing`]. In the
+future, it may be possible for Rust to provide a `#[must_not_drop]` attribute.
+This attribute will result in compilation warnings if the developer drops a
+resource without using the explicit close method.
+
+[`tracing`]: https://github.com/tokio-rs/tracing
 
 ## Byte streams
 
@@ -596,12 +629,15 @@ result, transitions the lifecycle to `Completed`, and notifies the waker. The
 next time the caller's task executes, it polls the operation's future which
 completes and returns the stored result.
 
-If the operation's future drops before the operation completes, it sets the
-lifecycle to `Ignored` and submits a cancellation request to the kernel. The
-cancellation request will attempt to terminate the operation, causing it to
-complete immediately with an error. Cancellation is best-effort; the operation
-may or may not terminate early. If the operation does complete, the runtime
-discards the result.
+If the operation's future drops before the operation completes and the operation
+request is still in the submission queue, the drop function removes the request.
+Otherwise, it sets the lifecycle to `Ignored` and submits a cancellation request
+to the kernel. The cancellation request will attempt to terminate the operation,
+causing it to complete immediately with an error. Cancellation is best-effort;
+the operation may or may not terminate early. If the operation does complete,
+the runtime discards the result. The runtime maintains the internal operation
+state until the completion as this state owns data the kernel may be
+referencing.
 
 ## Read operations
 
@@ -622,9 +658,14 @@ This proposal draws heavily from ideas presented there, tweaking concepts to
 line up with Tokio's idioms. [`@withoutboats`][boats] has explored the space
 with [ringbahn].
 
+The tokio-uring crate is built on the pure-rust [io-uring] crate, authored by
+[@quininer]. This crate provides a low-level interface to the io-uring syscalls.
+
 [Glommio]: https://github.com/DataDog/glommio
 [boats]: https://github.com/withoutboats
 [ringbahn]: https://github.com/ringbahn/ringbahn
+[@quininer]: https://github.com/quininer/
+[io-uring]: https://github.com/tokio-rs/io-uring/
 
 ## Future work
 
