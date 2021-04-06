@@ -431,6 +431,8 @@ between two byte streams.
 my_tcp_stream.fill_buf().await?;
 let buf: IoBuf = my_tcp_stream.take_read_buf();
 
+// Mutate `buf` if needed here.
+
 my_other_stream.place_write_buf(buf);
 my_other_stream.flush().await?;
 ```
@@ -488,8 +490,6 @@ waiting on completion events by blocking the thread on the io-uring completion
 queue, the tokio-uring runtime registers the completion queue with the epoll
 handle. By building tokio-uring on top of Tokio's runtime, existing Tokio
 ecosystem crates can work with the tokio-uring runtime.
-
-**TODO: mind blowing architecture diagram**
 
 When the kernel pushes a completion event onto the completion queue,
 "epoll_wait" unblocks and returns a readiness event. The Tokio current-thread
