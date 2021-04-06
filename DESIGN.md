@@ -403,38 +403,12 @@ resource without using the explicit close method.
 
 ## Byte streams
 
-Read and write operations on byte stream types, such as `TcpStream`, are
-stateful. Each operation operates on the next chunk of the stream, advancing a
-logical cursor. The combination of submit-based operations with drop-to-cancel
-semantics presents a challenge. Consider the following.
-
-```rust
-let buf = IoBuf::with_capacity(4096);
-
-// This read will be canceled.
-select! {
-    _ = my_tcp_stream.read(buf.slice(..)) => unreachable!(),
-    _ = future::ready(()) => {}
-}
-
-let buf = IoBuf::with(capacity(4096))
-let (res, buf) = my_tcp_stream.read(buf.slice(..)).await;
-```
-
-Dropping the first read operation cancels it, and because it never completes,
-the second read operation should read the first packet of data from the TCP
-stream. However, the kernel may have already completed the first read operation
-before seeing the cancellation request. A naive runtime implementation would
-drop the completion result of any canceled operation, which would result in
-losing data. Instead, the runtime could preserve the data from the first read
-operation and return it as part of the second read. The process would not lose
-data, but the runtime would need to perform an extra copy or return the caller a
-different buffer than the one it submitted.
-
-Instead, tokio-uring byte stream types will manage their buffers internally, as
-described in ["Notes on io-uring"][notes], and implement buffered I/O traits,
-such as AsyncBufRead. The caller starts by waiting for the byte stream to fill
-its internal buffer, reads the data, and marks the data as consumed.
+Byte stream types, such as `TcpStream`, will not provide read and write methods
+(see "Alternatives" below for reasoning). Instead, byte streams will manage
+their buffers internally, as described in ["Notes on io-uring"][notes], and
+implement buffered I/O traits, such as AsyncBufRead. The caller starts by
+waiting for the byte stream to fill its internal buffer, reads the data, and
+marks the data as consumed.
 
 [notes]: https://without.boats/blog/io-uring/
 
@@ -675,3 +649,37 @@ thread-pool. The current API would remain, and the implementation would use
 io-uring when supported by the operating system. The tokio-uring APIs may form
 the basis for a Tokio 2.0 release, though this cannot happen until 2024 at the
 earliest.
+
+## Alternatives
+
+### Read and write methods on TcpStream
+
+Read and write operations on byte stream types, such as `TcpStream`, are
+stateful. Each operation operates on the next chunk of the stream, advancing a
+logical cursor. The combination of submit-based operations with drop-to-cancel
+semantics presents a challenge. Consider the following.
+
+```rust
+let buf = IoBuf::with_capacity(4096);
+
+// This read will be canceled.
+select! {
+    _ = my_tcp_stream.read(buf.slice(..)) => unreachable!(),
+    _ = future::ready(()) => {}
+}
+
+let buf = IoBuf::with(capacity(4096))
+let (res, buf) = my_tcp_stream.read(buf.slice(..)).await;
+```
+
+Dropping the first read operation cancels it, and because it never completes,
+the second read operation should read the first packet of data from the TCP
+stream. However, the kernel may have already completed the first read operation
+before seeing the cancellation request. A naive runtime implementation would
+drop the completion result of any canceled operation, which would result in
+losing data. Instead, the runtime could preserve the data from the first read
+operation and return it as part of the second read. The process would not lose
+data, but the runtime would need to perform an extra copy or return the caller a
+different buffer than the one it submitted.
+
+Moving operation and buffer management to the byte stream avoids this problem.
