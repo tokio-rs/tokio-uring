@@ -330,6 +330,24 @@ impl IoBuf {
 my_file.write(my_io_buf.slice(10..20)).await
 ```
 
+A slice end may go past the buffer's length but not past the capacity, enabling
+reads to uninitialized memory.
+
+```rust
+// The buffer's memory is uninitialized
+let mut buf = IoBuf::with_capacity(4096);
+let slice = buf.slice(0..100);
+
+assert_eq!(slice.len(), 0);
+assert_eq!(slice.capacity(), 100);
+
+// Read data from a file into the buffer
+let BufResult(res, slice) = my_file.read_at(slice, 0);
+
+assert_eq!(slice.len(), 100);
+assert_eq!(slice.capacity(), 100);
+```
+
 A trait argument for reading and writing may be possible as a future
 improvement. Consider a read API that takes `T: AsMut<[u8]>` for the buffer
 argument.
