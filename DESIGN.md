@@ -723,3 +723,34 @@ runtime to support taking opaque data as a trait object. Given that io-uring has
 a well-defined set of supported options, tokio-uring opts to support each
 operation explicitly. The application also can create its own set of io-uring
 queues using the io-uring crate directly.
+
+### Load-balancing spawn function
+
+The tokio-uring crate omits a spawn function that balances tasks across tasks,
+leaving this to future work. Instead, the application should manage its load
+balancing. While there are a few common balancing strategies, such as
+round-robin, randomized, and power of two choices, there is no one-size-fits-all
+strategy. Additionally, some load-balancing methods require application-specific
+metrics such as worker load.
+
+Additionally, consider pseudocode representing a typical accept loop pattern.
+
+```rust
+loop {
+    let (socket, _) = listener.accept().await?;
+
+    spawn(async move {
+        let request = read_request(&socket).await;
+        let response = process(request).await;
+        write_response(response, &socket).await;
+    });
+}
+```
+
+Often, the request data is already buffered when the socket is accepted. If the
+spawn call results in the task moving to a different worker thread, it will
+delay reading the request due to cross-thread synchronization. Additionally, it
+may be possible to batch an accept operation with an operation that reads from
+the accepted socket in the future, complicating moving the accepted socket to a
+new thread. The details of such a strategy are still not finalized but may
+impact a load-balancing spawn function.
