@@ -1,7 +1,7 @@
 # Summary
 
 The RFC proposes a new asynchronous Rust runtime backed by [io-uring] as a new
-crate: tokio-iouring. The API aims to be as close to idiomatic Tokio, but will
+crate: tokio-uring. The API aims to be as close to idiomatic Tokio, but will
 deviate when necessary to provide full access to io-uring's capabilities. It
 also will be compatible with existing Tokio libraries. The runtime will use an
 isolated thread-per-core model, and many types will be `!Send`.
