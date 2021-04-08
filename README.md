@@ -4,7 +4,7 @@ A proof-of-concept runtime backed by io-uring while maintaining compatibility
 with the Tokio ecosystem. This is a proof of concept and not intended to be used
 yet. There are probably tons of bugs.
 
-**Design doc:** TODO
+**Design doc:** https://github.com/tokio-rs/tokio-uring/pull/1
 
 ## License
 
