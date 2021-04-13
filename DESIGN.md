@@ -670,6 +670,14 @@ io-uring when supported by the operating system. The tokio-uring APIs may form
 the basis for a Tokio 2.0 release, though this cannot happen until 2024 at the
 earliest.
 
+The current design does not cover registering file descriptors with the kernel,
+which improves file system access performance. After registering a file
+descriptor with io-uring, it must not move to a different thread, implying
+`!Send`. Because many resource types are Send, a likely path for supporting the
+feature is adding new types to represent the registered state. For example,
+`File` could have a `RegisteredFile` analog. Making this change would be
+forwards compatible and not impact the current design.
+
 ## Alternatives
 
 ### Use a work-stealing scheduler
