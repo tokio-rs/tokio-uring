@@ -687,7 +687,7 @@ forwards compatible and not impact the current design.
 An alternative approach could use a work-stealing scheduler, allowing
 underutilized worker threads to steal work from overloaded workers. While
 work-stealing is an efficient strategy for balancing load across worker threads,
-required synchronization adds overhead. An earlier article on the Tokio blog
+required synchronization adds overhead. [An earlier article] on the Tokio blog
 includes an overview of various scheduling strategies.
 
 The tokio-uring crate targets use-cases that can benefit from taking advantage
@@ -695,6 +695,7 @@ of io-uring at the expense of discarding Tokio's portable API. These use cases
 will also benefit from reduced synchronization overhead and fine-grained control
 over thread load balancing strategies.
 
+[An earlier article]: https://tokio.rs/blog/2019-10-scheduler
 ### Read and write methods on TcpStream
 
 Read and write operations on byte stream types, such as `TcpStream`, are
