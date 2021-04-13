@@ -258,7 +258,7 @@ let mut rt = tokio_uring::runtime::Runtime::new()?;
 
 // Provide the buffer pool to the kernel. This passes
 // ownership of the pool to the kernel.
-let pool_token = rt.provide_buffers(Mmy_pool)?;
+let pool_token = rt.provide_buffers(my_pool)?;
     
 rt.block_on(async {
     // ...
