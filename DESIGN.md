@@ -355,11 +355,11 @@ argument.
 ```rust
 async fn read<T: AsMut<[u8]>>(&self, dst: T) { ... }
 
-struct MyUnsableBuf {
+struct MyUnstableBuf {
     mem: [u8; 10],
 }
 
-impl AsMut<[u8]> {
+impl AsMut<[u8]>  for MyUnstableBuf {
     fn as_mut(&mut self) -> &mut [u8] {
         &mut self.mem[..]
     }
