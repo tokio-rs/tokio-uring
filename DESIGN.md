@@ -697,6 +697,7 @@ will also benefit from reduced synchronization overhead and fine-grained control
 over thread load balancing strategies.
 
 [An earlier article]: https://tokio.rs/blog/2019-10-scheduler
+
 ### Read and write methods on TcpStream
 
 Read and write operations on byte stream types, such as `TcpStream`, are
@@ -726,6 +727,10 @@ losing data. Instead, the runtime could preserve the data from the first read
 operation and return it as part of the second read. The process would not lose
 data, but the runtime would need to perform an extra copy or return the caller a
 different buffer than the one it submitted.
+
+
+The proposed API is not vulnerable to this issue as resources track their
+operations, preventing them from being dropped as long as the resource is open.
 
 ### Expose a raw io-uring operation submission API
 
