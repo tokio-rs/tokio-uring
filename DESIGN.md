@@ -734,7 +734,7 @@ queues using the io-uring crate directly.
 
 ### Load-balancing spawn function
 
-The tokio-uring crate omits a spawn function that balances tasks across tasks,
+The tokio-uring crate omits a spawn function that balances tasks across threads,
 leaving this to future work. Instead, the application should manage its load
 balancing. While there are a few common balancing strategies, such as
 round-robin, randomized, and power of two choices, there is no one-size-fits-all
