@@ -668,7 +668,9 @@ The most obvious area is Tokio's file system API, currently implemented using a
 thread-pool. The current API would remain, and the implementation would use
 io-uring when supported by the operating system. The tokio-uring APIs may form
 the basis for a Tokio 2.0 release, though this cannot happen until 2024 at the
-earliest.
+earliest. As an intermittent step, the tokio-uring crate could explore
+supporting alternate backends, such as epoll, kqueue, and iocp. The focus will
+always remain on io-uring.
 
 The current design does not cover registering file descriptors with the kernel,
 which improves file system access performance. After registering a file
