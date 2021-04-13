@@ -212,7 +212,7 @@ let BufResult(res, buf) = file.read_at(0, buf.slice(0..1024)).await;
 res?;
 
 // Write some data back to the file.
-let BufResult(res, _) = file.write_at(1024, buf.slice(0..512).await;
+let BufResult(res, _) = file.write_at(1024, buf.slice(0..512)).await;
 res?;
 ```
 
