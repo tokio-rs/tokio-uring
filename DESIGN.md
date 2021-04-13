@@ -712,7 +712,7 @@ select! {
     _ = future::ready(()) => {}
 }
 
-let buf = IoBuf::with(capacity(4096))
+let buf = IoBuf::with_capacity(4096);
 let (res, buf) = my_tcp_stream.read(buf.slice(..)).await;
 ```
 
