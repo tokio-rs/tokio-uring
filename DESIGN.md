@@ -310,7 +310,8 @@ On drop, if the `IoBuf` is a buffer pool member, it is checked back in. If the
 kernel initially checked out the buffer as part of a read operation, an io-uring
 operation is issued to return it. Submitting the io-uring operation requires the
 buffer to remain on the same thread that checked it out and is enforced by
-making the `IoBuf` type `!Send`. 
+making the `IoBuf` type `!Send`. Buffer pools will also be `!Send` as they
+contain `IoBuf` values.
 
 `IoBuf` provides an owned slice API allowing the caller to read to and write from
 a buffer's sub-ranges. 
@@ -378,15 +379,15 @@ and within an asynchronous context, the drop handler should be non-blocking.
 Closing an io-uring resource requires canceling any in-flight operations, which
 is an asynchronous process. Consider an open TcpStream associated with
 file-descriptor (FD) 10. A task submits a read operation to the kernel, but the
-`TcpStream` is dropped and closed before it sees it. A new `TcpStream` is
-accepted, and the kernel reuses FD 10. At this point, the kernel sees the
+`TcpStream` is dropped and closed before the kernel sees it. A new `TcpStream`
+is accepted, and the kernel reuses FD 10. At this point, the kernel sees the
 original read operation request with FD 10 and completes it on the new
 `TcpStream`, not the intended `TcpStream`. The runtime receives the completion
 of the read operation. It discards the result because the associated operation
-future is gone, resulting in the caller losing data from the second
-TcpStream. This problem occurs even issuing a cancellation request for the read
-operation. There is no guarantee the kernel will see the cancellation request
-before completing the operation.
+future is gone, resulting in the caller losing data from the second TcpStream.
+This problem occurs even issuing a cancellation request for the read operation.
+There is no guarantee the kernel will see the cancellation request before
+completing the operation.
 
 There are two options for respecting both requirements, neither ideal: closing
 the resource in the background or blocking the thread in the drop handler. If
