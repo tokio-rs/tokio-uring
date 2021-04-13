@@ -17,9 +17,9 @@ performing syscalls and copying data between the kernel and userspace. In 2019,
 Linux added a new API, io-uring, which reduces overhead by eliminating most
 syscalls and mapping memory regions used for byte buffers ahead of time. Early
 benchmarks comparing io-uring against epoll are promising; a TCP echo client and
-server show up to [60% improvement][bench]. Though not yet measured, using
-io-uring instead of Tokio's thread-pool strategy will likely provide significant
-gains for file system operations.
+server implemented in C show up to [60% improvement][bench]. Though not yet
+measured, using io-uring instead of Tokio's thread-pool strategy will likely
+provide significant gains for file system operations.
 
 Because io-uring differs significantly from epoll, Tokio must provide a new set
 of APIs to take full advantage of the reduced overhead. However, Tokio's
