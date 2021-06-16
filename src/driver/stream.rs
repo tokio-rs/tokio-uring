@@ -102,9 +102,9 @@ impl Stream {
 
             // TODO: extract
             unsafe {
-                let new = n - dst.len();
                 dst.as_mut_ptr().copy_from_nonoverlapping(src.as_ptr(), src.len());
-                dst.set_len(new);
+                let new_len = n + dst.begin();
+                dst.get_inner_mut().set_len(new_len);
             }
 
             n
@@ -158,7 +158,7 @@ impl State {
 
                     // Place the buffer back
                     assert_eq!(self.read_buf.capacity(), 0);
-                    self.read_buf = slice.into_buf();
+                    self.read_buf = slice.into_inner();
             
                     let n = res?;
             
@@ -221,7 +221,7 @@ impl State {
             match &mut self.write {
                 Write::Idle => {
                     if self.write_buf.begin() == 0 {
-                        self.write_buf.clear();
+                        self.write_buf.get_inner_mut().clear();
                         return Poll::Ready(Ok(()));
                     }
 
@@ -237,7 +237,7 @@ impl State {
 
                     if self.write_buf.is_empty() {
                         self.write_buf.set_begin(0);
-                        self.write_buf.clear();
+                        self.write_buf.get_inner_mut().clear();
                         self.write = Write::Idle;
 
                         return Poll::Ready(Ok(()));
