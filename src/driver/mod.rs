@@ -16,6 +16,9 @@ pub(crate) use pool::{Pool, ProvidedBuf};
 mod read;
 pub(crate) use read::Read;
 
+mod shared_fd;
+pub(crate) use shared_fd::SharedFd;
+
 mod stream;
 pub(crate) use stream::Stream;
 
