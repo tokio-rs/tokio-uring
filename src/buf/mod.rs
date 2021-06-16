@@ -28,6 +28,10 @@ impl IoBuf {
         }
     }
 
+    pub fn from_vec(src: Vec<u8>) -> IoBuf {
+        IoBuf { kind: Kind::Vec(src) }
+    }
+
     pub(crate) fn from_provided(buf: ProvidedBuf) -> IoBuf {
         IoBuf {
             kind: Kind::Pool(buf)
@@ -124,6 +128,7 @@ impl Slice {
         self.end
     }
 
+    /// Set the slice's end point
     pub fn set_end(&mut self, new_end: usize) {
         assert!(new_end >= self.begin);
         assert!(new_end <= self.buf.capacity());
@@ -149,7 +154,7 @@ impl Slice {
         }
     }
 
-    pub fn into_buf(self) -> IoBuf {
+    pub fn into_inner(self) -> IoBuf {
         self.buf
     }
 }
