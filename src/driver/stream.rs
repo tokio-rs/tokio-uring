@@ -158,7 +158,7 @@ impl State {
 
                     // Place the buffer back
                     assert_eq!(self.read_buf.capacity(), 0);
-                    self.read_buf = slice.into_buf();
+                    self.read_buf = slice.into_inner();
             
                     let n = res?;
             
