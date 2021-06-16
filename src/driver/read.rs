@@ -57,7 +57,18 @@ impl Op<Read> {
         use std::pin::Pin;
 
         let complete = ready!(Pin::new(self).poll(cx));
-        Poll::Ready((complete.result.map(|v| v as _), complete.state.buf.unwrap()))
+
+        // Convert the operation result to `usize`
+        let res = complete.result.map(|v| v as usize);
+        // Recover the buffer
+        let mut buf = complete.state.buf.unwrap();
+
+        // If the operation was successful, advance the initialized cursor.
+        if let Ok(n) = res {
+            unsafe { buf.assume_init(n); }
+        }
+
+        Poll::Ready((res, buf))
     }
 
     pub(crate) fn poll_read2(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<IoBuf>> {

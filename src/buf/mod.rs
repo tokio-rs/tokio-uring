@@ -46,6 +46,7 @@ impl IoBuf {
         };
 
         assert!(begin < cap);
+        assert!(begin <= self.len());
 
         let end = match range.end_bound() {
             Bound::Included(&n) => n.checked_add(1).expect("out of range"),
@@ -140,6 +141,12 @@ impl Slice {
 
     pub unsafe fn set_len(&mut self, new_len: usize) {
         self.buf.set_len(self.begin + new_len);
+    }
+
+    pub(crate) unsafe fn assume_init(&mut self, n: usize) {
+        if self.len() < n {
+            self.set_len(n);
+        }
     }
 
     pub fn into_buf(self) -> IoBuf {
