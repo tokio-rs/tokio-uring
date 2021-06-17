@@ -1,6 +1,5 @@
-use crate::BufResult;
 use crate::driver::{Op, SharedFd};
-use crate::buf::{IoBuf, Slice};
+use crate::buf::{IoBufMut, SliceMut};
 
 use std::io;
 use std::path::Path;
@@ -25,14 +24,14 @@ impl File {
     }
 
     // Positional reads FTW
-    pub async fn read_at(&self, buf: impl Into<Slice>, pos: u64) -> BufResult<usize> {
+    pub async fn read_at(&self, buf: impl Into<SliceMut>, pos: u64) -> crate::BufMutResult<usize> {
         // Submit the read operation
         let op = Op::read_at(self.fd.fd(), buf.into(), pos).unwrap();
         op.read().await
     }
 
     /// What is a better name?
-    pub async fn read_at2(&self, pos: u64, len: usize) -> io::Result<IoBuf> {
+    pub async fn read_at2(&self, pos: u64, len: usize) -> io::Result<IoBufMut> {
         let op = Op::read_at2(self.fd.fd(), pos, len).unwrap();
         op.read2().await
     }
