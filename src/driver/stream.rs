@@ -1,4 +1,4 @@
-use crate::buf::{self, IoBuf};
+use crate::buf::{self, IoBuf, IoBufMut};
 use crate::driver::{self, Op};
 
 use futures::ready;
@@ -23,7 +23,7 @@ pub(crate) struct Stream {
 
 struct State {
     /// Buffers data received from read operations
-    read_buf: IoBuf,
+    read_buf: IoBufMut,
 
     /// Position read to
     read_pos: usize,
@@ -32,7 +32,7 @@ struct State {
     read: Read,
 
     /// Buffers data received for write operations
-    write_buf: buf::Slice,
+    write_buf: buf::SliceMut,
 
     /// Tracks write operation state.
     write: Write,
@@ -58,10 +58,10 @@ impl Stream {
         Stream {
             fd,
             state: RefCell::new(State {
-                read_buf: IoBuf::with_capacity(DEFAULT_BUF_SIZE),
+                read_buf: IoBufMut::with_capacity(DEFAULT_BUF_SIZE),
                 read_pos: 0,
                 read: Read::Idle,
-                write_buf: IoBuf::with_capacity(DEFAULT_BUF_SIZE).slice(..),
+                write_buf: IoBufMut::with_capacity(DEFAULT_BUF_SIZE).slice(..),
                 write: Write::Idle,
             })
         }
@@ -142,7 +142,7 @@ impl State {
                     self.read_pos = 0;
 
                     // Take the buffer out of `self` so it can be submitted to the kernel.
-                    let buf = mem::replace(&mut self.read_buf, IoBuf::with_capacity(0));
+                    let buf = mem::replace(&mut self.read_buf, IoBufMut::with_capacity(0));
                     let len = buf.len();
 
                     // Read into the end of the buffer
@@ -183,7 +183,7 @@ impl State {
     }
 
     /// Get a reference to a buffer to write to
-    fn poll_sink_buf(&mut self, cx: &mut Context<'_>, fd: RawFd) -> Poll<io::Result<&mut buf::Slice>> {
+    fn poll_sink_buf(&mut self, cx: &mut Context<'_>, fd: RawFd) -> Poll<io::Result<&mut buf::SliceMut>> {
         loop {
             match &mut self.write {
                 Write::Idle => {

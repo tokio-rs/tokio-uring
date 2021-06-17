@@ -1,4 +1,4 @@
-use tokio_uring::buf::IoBuf;
+use tokio_uring::buf::IoBufMut;
 use tokio_uring::fs::File;
 
 use tempfile::NamedTempFile;
@@ -14,7 +14,7 @@ fn basic_read() {
     
         let file = File::open(tempfile.path()).await.unwrap();
     
-        let buf = IoBuf::with_capacity(1024);
+        let buf = IoBufMut::with_capacity(1024);
         let (res, buf) = file.read_at(buf.slice(..), 0).await;
         let n = res.unwrap();
     

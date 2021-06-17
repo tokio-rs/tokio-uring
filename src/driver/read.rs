@@ -1,5 +1,5 @@
-use crate::BufResult;
-use crate::buf::{self, IoBuf};
+use crate::BufMutResult;
+use crate::buf::{self, IoBufMut};
 use crate::driver::Op;
 
 use futures::ready;
@@ -9,11 +9,11 @@ use std::task::{Context, Poll};
 
 pub(crate) struct Read {
     /// Reference to the in-flight buffer.
-    pub(crate) buf: Option<buf::Slice>,
+    pub(crate) buf: Option<buf::SliceMut>,
 }
 
 impl Op<Read> {
-    pub(crate) fn read_at(fd: RawFd, mut buf: buf::Slice, offset: u64) -> io::Result<Op<Read>> {
+    pub(crate) fn read_at(fd: RawFd, mut buf: buf::SliceMut, offset: u64) -> io::Result<Op<Read>> {
         use io_uring::{opcode, types};
 
         // Get raw buffer info
@@ -44,15 +44,15 @@ impl Op<Read> {
         })
     }
 
-    pub(crate) async fn read(mut self) -> BufResult<usize> {
+    pub(crate) async fn read(mut self) -> BufMutResult<usize> {
         futures::future::poll_fn(move |cx| self.poll_read(cx)).await
     }
 
-    pub(crate) async fn read2(mut self) -> io::Result<IoBuf> {
+    pub(crate) async fn read2(mut self) -> io::Result<IoBufMut> {
         futures::future::poll_fn(|cx| self.poll_read2(cx)).await
     }
 
-    pub(crate) fn poll_read(&mut self, cx: &mut Context<'_>) -> Poll<BufResult<usize>> {
+    pub(crate) fn poll_read(&mut self, cx: &mut Context<'_>) -> Poll<BufMutResult<usize>> {
         use std::future::Future;
         use std::pin::Pin;
 
@@ -72,7 +72,7 @@ impl Op<Read> {
         Poll::Ready((res, buf))
     }
 
-    pub(crate) fn poll_read2(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<IoBuf>> {
+    pub(crate) fn poll_read2(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<IoBufMut>> {
         use io_uring::cqueue::buffer_select;
         use std::future::Future;
         use std::pin::Pin;
@@ -92,6 +92,6 @@ impl Op<Read> {
             buf
         };
 
-        Poll::Ready(Ok(IoBuf::from_provided(buf)))
+        Poll::Ready(Ok(IoBufMut::from_provided(buf)))
     }
 }
