@@ -65,7 +65,8 @@ impl Op<Read> {
 
         // If the operation was successful, advance the initialized cursor.
         if let Ok(n) = res {
-            unsafe { buf.assume_init(n); }
+            let new_len = buf.begin() + n;
+            unsafe { buf.get_inner_mut().set_len(new_len); }
         }
 
         Poll::Ready((res, buf))
