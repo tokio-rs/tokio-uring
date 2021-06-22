@@ -1,8 +1,8 @@
-use crate::driver::{Op, Close};
+use crate::driver::{Close, Op};
 
 use futures::future::poll_fn;
 use std::cell::RefCell;
-use std::os::unix::io::{RawFd, FromRawFd};
+use std::os::unix::io::{FromRawFd, RawFd};
 use std::rc::Rc;
 use std::task::Waker;
 
@@ -53,8 +53,8 @@ impl SharedFd {
     /// An FD cannot be closed until all in-flight operation have completed.
     /// This prevents bugs where in-flight reads could operate on the incorrect
     /// file descriptor.
-    /// 
-    /// TO model this, if there are no in-flight operations, then 
+    ///
+    /// TO model this, if there are no in-flight operations, then
     pub(crate) async fn close(mut self) {
         // Get a mutable reference to Inner, indicating there are no
         // in-flight operations on the FD.
@@ -108,7 +108,7 @@ impl Inner {
                 State::Init => {
                     *state = State::Waiting(Some(cx.waker().clone()));
                     Poll::Pending
-                },
+                }
                 State::Waiting(Some(waker)) => {
                     if !waker.will_wake(cx.waker()) {
                         *waker = cx.waker().clone();
@@ -128,7 +128,8 @@ impl Inner {
                 }
                 State::Closed => Poll::Ready(()),
             }
-        }).await;
+        })
+        .await;
     }
 }
 

@@ -1,105 +1,46 @@
-use crate::driver::{self, Accept, Close, Open, Read, Write};
+use crate::driver;
 
 use io_uring::{cqueue, squeue};
 use std::cell::RefCell;
 use std::future::Future;
 use std::io;
-use std::marker::PhantomData;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::task::{Context, Poll, Waker};
 
 /// In-flight operation
-pub(crate) struct Op<T> {
+pub(crate) struct Op<T: 'static> {
     // Driver running the operation
     pub(super) driver: Rc<RefCell<driver::Inner>>,
 
     // Operation index in the slab
     pub(super) index: usize,
 
-    // Tracks the kind of operation
-    _p: PhantomData<T>,
+    // Per-operation data
+    data: Option<T>,
 }
 
 /// Operation completion. Returns stored state with the result of the operation.
 #[derive(Debug)]
 pub(crate) struct Completion<T> {
-    pub(crate) state: T,
+    pub(crate) data: T,
     pub(crate) result: io::Result<u32>,
     pub(crate) flags: u32,
 }
 
-pub(crate) struct State {
-    /// Kind of operation
-    kind: Kind,
-
-    /// Lifecycle of the operation
-    lifecycle: Lifecycle,
-}
-
-enum Lifecycle {
+pub(crate) enum Lifecycle {
     /// The operation has been submitted to uring and is currently in-flight
     Submitted,
 
     /// The submitter is waiting for the completion of the operation
     Waiting(Waker),
 
-    /// The submitter no longer has interest in the operation result.
-    Ignored,
+    /// The submitter no longer has interest in the operation result. The state
+    /// must be passed to the driver and held until the operation completes.
+    Ignored(Box<dyn std::any::Any>),
 
     /// The operation has completed.
     Completed(cqueue::Entry),
-}
-
-macro_rules! ops {
-    (
-        $(
-            $name:ident,
-        )*
-    ) => {
-        enum Kind {
-            $(
-                $name($name),
-            )*
-        }
-
-        $(
-            impl From<$name> for State {
-                fn from(src: $name) -> State {
-                    State {
-                        kind: Kind::$name(src),
-                        lifecycle: Lifecycle::Submitted,
-                    }
-                }
-            }
-
-            impl From<State> for $name {
-                fn from(src: State) -> $name {
-                    match src.kind {
-                        Kind::$name(val) => val,
-                        _ => panic!(),
-                    }
-                }
-            }
-
-            impl AsMut<$name> for State {
-                fn as_mut(&mut self) -> &mut $name {
-                    match &mut self.kind {
-                        Kind::$name(kind) => kind,
-                        _ => panic!(),
-                    }
-                }
-            }
-        )*
-    }
-}
-
-ops! {
-    Accept,
-    Close,
-    Open,
-    Read,
-    Write,
 }
 
 impl<T> Op<T> {
@@ -107,22 +48,19 @@ impl<T> Op<T> {
     ///
     /// `state` is stored during the operation tracking any state submitted to
     /// the kernel.
-    pub(super) fn submit_with<F>(state: T, f: F) -> io::Result<Op<T>>
+    pub(super) fn submit_with<F>(data: T, f: F) -> io::Result<Op<T>>
     where
-        T: Into<State>,
-        State: AsMut<T>,
-        F: FnOnce(&mut T) -> squeue::Entry,
+        F: FnOnce() -> squeue::Entry,
     {
         driver::CURRENT.with(|inner_rc| {
             let mut inner = inner_rc.borrow_mut();
             let inner = &mut *inner;
 
             // Store the operation state
-            let index = inner.ops.insert(state.into());
+            let index = inner.ops.insert(Lifecycle::Submitted);
 
             // Configure the SQE
-            let sqe = f(inner.ops[index].as_mut())
-                .user_data(index as _);
+            let sqe = f().user_data(index as _);
 
             let (submitter, mut sq, _) = inner.uring.split();
 
@@ -141,7 +79,7 @@ impl<T> Op<T> {
             Ok(Op {
                 driver: inner_rc.clone(),
                 index,
-                _p: PhantomData,
+                data: Some(data),
             })
         })
     }
@@ -149,7 +87,7 @@ impl<T> Op<T> {
 
 impl<T> Future for Op<T>
 where
-    T: From<State> + Unpin,
+    T: Unpin + 'static,
 {
     type Output = Completion<T>;
 
@@ -158,28 +96,28 @@ where
 
         let me = &mut *self;
         let mut inner = me.driver.borrow_mut();
-        let state = &mut inner.ops[me.index];
+        let lifecycle = &mut inner.ops[me.index];
 
-        match mem::replace(&mut state.lifecycle, Lifecycle::Submitted) {
+        match mem::replace(lifecycle, Lifecycle::Submitted) {
             Lifecycle::Submitted => {
-                state.lifecycle = Lifecycle::Waiting(cx.waker().clone());
+                *lifecycle = Lifecycle::Waiting(cx.waker().clone());
                 Poll::Pending
             }
             Lifecycle::Waiting(waker) if !waker.will_wake(cx.waker()) => {
-                state.lifecycle = Lifecycle::Waiting(cx.waker().clone());
+                *lifecycle = Lifecycle::Waiting(cx.waker().clone());
                 Poll::Pending
             }
             Lifecycle::Waiting(waker) => {
-                state.lifecycle = Lifecycle::Waiting(waker);
+                *lifecycle = Lifecycle::Waiting(waker);
                 Poll::Pending
             }
-            Lifecycle::Ignored => unreachable!(),
+            Lifecycle::Ignored(..) => unreachable!(),
             Lifecycle::Completed(cqe) => {
-                let state = inner.ops.remove(me.index);
+                inner.ops.remove(me.index);
                 me.index = usize::MAX;
 
                 Poll::Ready(Completion {
-                    state: state.into(),
+                    data: me.data.take().expect("unexpected operation state"),
                     result: if cqe.result() >= 0 {
                         Ok(cqe.result() as u32)
                     } else {
@@ -195,15 +133,13 @@ where
 impl<T> Drop for Op<T> {
     fn drop(&mut self) {
         let mut inner = self.driver.borrow_mut();
-        let state = match inner.ops.get_mut(self.index) {
-            Some(state) => state,
+        let lifecycle = match inner.ops.get_mut(self.index) {
+            Some(lifecycle) => lifecycle,
             None => return,
         };
 
-
-        match state.lifecycle {
+        match lifecycle {
             Lifecycle::Submitted | Lifecycle::Waiting(_) => {
-                println!("LOCATION = {:?}", std::panic::Location::caller());
                 /*
                 TOTAL hax here! shows how to cancel an operation
 
@@ -226,36 +162,32 @@ impl<T> Drop for Op<T> {
                 }
                 */
 
-                inner.ops[self.index].lifecycle = Lifecycle::Ignored
+                *lifecycle = Lifecycle::Ignored(Box::new(self.data.take()));
             }
             Lifecycle::Completed(_) => {
                 inner.ops.remove(self.index);
             }
-            Lifecycle::Ignored => unreachable!(),
+            Lifecycle::Ignored(..) => unreachable!(),
         }
     }
 }
 
-impl State {
+impl Lifecycle {
     /// Returns true if drop
     pub(super) fn complete(&mut self, cqe: cqueue::Entry) -> bool {
         use std::mem;
 
-        match mem::replace(&mut self.lifecycle, Lifecycle::Submitted) {
+        match mem::replace(self, Lifecycle::Submitted) {
             Lifecycle::Submitted => {
-                self.lifecycle = Lifecycle::Completed(cqe);
+                *self = Lifecycle::Completed(cqe);
                 false
-
             }
             Lifecycle::Waiting(waker) => {
-                self.lifecycle = Lifecycle::Completed(cqe);
+                *self = Lifecycle::Completed(cqe);
                 waker.wake();
                 false
-
             }
-            Lifecycle::Ignored => {
-                true
-            }
+            Lifecycle::Ignored(..) => true,
             Lifecycle::Completed(_) => unreachable!("invalid operation state"),
         }
     }

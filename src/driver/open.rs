@@ -1,4 +1,5 @@
 use crate::driver::{self, Op};
+use crate::fs::OpenOptions;
 
 use std::ffi::CString;
 use std::io;
@@ -6,30 +7,26 @@ use std::path::Path;
 
 /// Open a file
 pub(crate) struct Open {
-    pub(crate) path: CString,
+    pub(crate) _path: CString,
 }
 
 impl Op<Open> {
     /// Submit a request to open a file.
-    pub(crate) fn open(path: &Path) -> io::Result<Op<Open>> {
+    pub(crate) fn open(path: &Path, options: &OpenOptions) -> io::Result<Op<Open>> {
         use io_uring::{opcode, types};
 
         let path = driver::util::cstr(path)?;
+        // Get a reference to the memory. The string will be held by the
+        // operation state and will not be accessed again until the operation
+        // completes.
+        let p_ref = path.as_c_str().as_ptr();
 
-        Op::submit_with(Open {
-            path,
-        }, |state| {
-            // Get a reference to the memory. The string is held by the
-            // operation state and will not be accessed again until the
-            // operation completes.
-            let p_ref = state.path.as_c_str().as_ptr();
+        let flags = libc::O_CLOEXEC | options.access_mode()? | options.creation_mode()?;
 
-            // Set flag & mode
-            let flags = libc::O_CLOEXEC | libc::O_RDONLY;
-
+        Op::submit_with(Open { _path: path }, || {
             opcode::OpenAt::new(types::Fd(libc::AT_FDCWD), p_ref)
                 .flags(flags)
-                .mode(0o666)
+                .mode(options.mode)
                 .build()
         })
     }

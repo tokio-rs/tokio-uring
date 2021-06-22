@@ -15,7 +15,7 @@ pub(super) fn push_sqe(uring: &mut IoUring, &squeue::Entry) -> io::Result<()> {
 
 pub(super) fn cstr(p: &Path) -> io::Result<CString> {
     use std::os::unix::ffi::OsStrExt;
-    Ok(CString::new(p.as_os_str().as_bytes())?)    
+    Ok(CString::new(p.as_os_str().as_bytes())?)
 }
 
 // use std::task::{Context, Waker};
