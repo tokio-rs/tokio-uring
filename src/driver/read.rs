@@ -1,30 +1,39 @@
 use crate::buf::IoBufMut;
-use crate::driver::Op;
+use crate::driver::{Op, SharedFd};
 use crate::BufMutResult;
 
 use futures::ready;
 use std::io;
-use std::os::unix::io::RawFd;
 use std::task::{Context, Poll};
 
 pub(crate) struct Read<T> {
+    /// Holds a strong ref to the FD, preventing the file from being closed
+    /// while the operation is in-flight.
+    _fd: SharedFd,
+
     /// Reference to the in-flight buffer.
     pub(crate) buf: Option<T>,
 }
 
 impl<T: IoBufMut> Op<Read<T>> {
-    pub(crate) fn read_at(fd: RawFd, mut buf: T, offset: u64) -> io::Result<Op<Read<T>>> {
+    pub(crate) fn read_at(fd: &SharedFd, mut buf: T, offset: u64) -> io::Result<Op<Read<T>>> {
         use io_uring::{opcode, types};
 
         // Get raw buffer info
         let ptr = buf.stable_mut_ptr();
         let len = buf.capacity();
 
-        Op::submit_with(Read { buf: Some(buf) }, || {
-            opcode::Read::new(types::Fd(fd), ptr, len as _)
-                .offset(offset as _)
-                .build()
-        })
+        Op::submit_with(
+            Read {
+                _fd: fd.clone(),
+                buf: Some(buf),
+            },
+            || {
+                opcode::Read::new(types::Fd(fd.raw_fd()), ptr, len as _)
+                    .offset(offset as _)
+                    .build()
+            },
+        )
     }
 
     /*

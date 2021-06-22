@@ -46,7 +46,7 @@ impl SharedFd {
     }
 
     /// Returns the RawFd
-    pub(crate) fn fd(&self) -> RawFd {
+    pub(crate) fn raw_fd(&self) -> RawFd {
         self.inner.fd
     }
 
