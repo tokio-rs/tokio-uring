@@ -1,29 +1,38 @@
 use crate::buf::IoBuf;
-use crate::driver::Op;
+use crate::driver::{Op, SharedFd};
 use crate::BufResult;
 
 use futures::ready;
 use std::io;
-use std::os::unix::io::RawFd;
 use std::task::{Context, Poll};
 
 pub(crate) struct Write<T> {
+    /// Holds a strong ref to the FD, preventing the file from being closed
+    /// while the operation is in-flight.
+    _fd: SharedFd,
+
     pub(crate) buf: T,
 }
 
 impl<T: IoBuf> Op<Write<T>> {
-    pub(crate) fn write_at(fd: RawFd, buf: T, offset: u64) -> io::Result<Op<Write<T>>> {
+    pub(crate) fn write_at(fd: &SharedFd, buf: T, offset: u64) -> io::Result<Op<Write<T>>> {
         use io_uring::{opcode, types};
 
         // Get raw buffer info
         let ptr = buf.stable_ptr();
         let len = buf.len();
 
-        Op::submit_with(Write { buf }, || {
-            opcode::Write::new(types::Fd(fd), ptr, len as _)
-                .offset(offset as _)
-                .build()
-        })
+        Op::submit_with(
+            Write {
+                _fd: fd.clone(),
+                buf,
+            },
+            || {
+                opcode::Write::new(types::Fd(fd.raw_fd()), ptr, len as _)
+                    .offset(offset as _)
+                    .build()
+            },
+        )
     }
 
     pub(crate) async fn write(mut self) -> BufResult<usize, T> {
