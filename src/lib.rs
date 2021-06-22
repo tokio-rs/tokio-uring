@@ -1,8 +1,8 @@
 mod driver;
 
 pub mod buf;
-pub mod io;
 pub mod fs;
+pub mod io;
 // pub mod net;
 pub mod runtime;
 
@@ -14,6 +14,6 @@ pub fn start<F: Future>(future: F) -> F::Output {
     rt.block_on(future)
 }
 
-pub type BufResult<T> = (std::io::Result<T>, buf::Slice);
+pub type BufResult<T, B> = (std::io::Result<T>, B);
 
-pub type BufMutResult<T> = (std::io::Result<T>, buf::SliceMut);
+pub type BufMutResult<T, B> = (std::io::Result<T>, B);

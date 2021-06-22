@@ -1,5 +1,4 @@
-mod accept;
-pub(crate) use accept::Accept;
+// mod accept;
 
 mod close;
 pub(crate) use close::Close;
@@ -8,13 +7,11 @@ mod op;
 pub(crate) use op::Op;
 
 mod open;
-pub(crate) use open::Open;
 
 mod pool;
-pub(crate) use pool::{Pool, ProvidedBuf};
+pub(crate) use pool::Pool;
 
 mod read;
-pub(crate) use read::Read;
 
 mod shared_fd;
 pub(crate) use shared_fd::SharedFd;
@@ -27,7 +24,6 @@ pub(crate) use stream::Stream;
 mod util;
 
 mod write;
-pub(crate) use write::Write;
 
 use io_uring::IoUring;
 use scoped_tls::scoped_thread_local;
@@ -45,7 +41,7 @@ type Handle = Rc<RefCell<Inner>>;
 
 struct Inner {
     /// In-flight operations
-    ops: Slab<op::State>,
+    ops: Slab<op::Lifecycle>,
 
     pool: Pool,
 

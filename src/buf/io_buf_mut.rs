@@ -1,3 +1,33 @@
+/// Io-uring compatible mutable buffer
+///
+/// TODO: remove `Unpin` requirement.
+pub unsafe trait IoBufMut: Unpin + 'static {
+    /// Returns a pointer to the memory that does not change if the value is
+    /// moved.
+    fn stable_mut_ptr(&mut self) -> *mut u8;
+
+    fn capacity(&self) -> usize;
+
+    unsafe fn set_init(&mut self, pos: usize);
+}
+
+unsafe impl IoBufMut for Vec<u8> {
+    fn stable_mut_ptr(&mut self) -> *mut u8 {
+        self.as_mut_ptr()
+    }
+
+    fn capacity(&self) -> usize {
+        self.capacity()
+    }
+
+    unsafe fn set_init(&mut self, init_len: usize) {
+        if self.len() < init_len {
+            self.set_len(init_len);
+        }
+    }
+}
+
+/*
 use crate::driver::ProvidedBuf;
 
 use std::{ops, cmp};
@@ -165,3 +195,4 @@ impl From<IoBufMut> for SliceMut {
         src.slice(..)
     }
 }
+*/

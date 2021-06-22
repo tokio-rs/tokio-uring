@@ -1,11 +1,12 @@
 mod io_buf;
-pub use io_buf::{IoBuf, Slice};
+pub use io_buf::IoBuf;
 
 mod io_buf_mut;
-pub use io_buf_mut::{IoBufMut, SliceMut};
+pub use io_buf_mut::IoBufMut;
 
 use std::ops;
 
+/*
 fn range(range: impl ops::RangeBounds<usize>, max: usize) -> (usize, usize) {
     use core::ops::Bound;
 
@@ -23,7 +24,8 @@ fn range(range: impl ops::RangeBounds<usize>, max: usize) -> (usize, usize) {
         Bound::Unbounded => max,
     };
 
-    assert!(end <= max);    
+    assert!(end <= max);
 
     (begin, end)
 }
+*/
