@@ -3,6 +3,8 @@
 mod close;
 pub(crate) use close::Close;
 
+mod fsync;
+
 mod op;
 pub(crate) use op::Op;
 
