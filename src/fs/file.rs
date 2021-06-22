@@ -50,6 +50,22 @@ impl File {
     }
     */
 
+    pub async fn sync_all(&self) -> io::Result<()> {
+        let op = Op::fsync(&self.fd).unwrap();
+        let completion = op.await;
+
+        completion.result?;
+        Ok(())
+    }
+
+    pub async fn sync_data(&self) -> io::Result<()> {
+        let op = Op::datasync(&self.fd).unwrap();
+        let completion = op.await;
+
+        completion.result?;
+        Ok(())
+    }
+
     /// Close the file
     pub async fn close(self) -> io::Result<()> {
         self.fd.close().await;
