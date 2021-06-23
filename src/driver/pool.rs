@@ -54,6 +54,7 @@ impl Pool {
         Ok(())
     }
 
+    /*
     pub(super) unsafe fn checkout(&self, bid: u16, driver: &driver::Handle) -> ProvidedBuf {
         use std::mem;
 
@@ -65,16 +66,10 @@ impl Pool {
             driver: driver.clone(),
         }
     }
+    */
 }
 
 impl ProvidedBuf {
-    pub(crate) fn vec(&self) -> &Vec<u8> {
-        &self.buf
-    }
-
-    pub(crate) fn vec_mut(&mut self) -> &mut Vec<u8> {
-        &mut self.buf
-    }
 }
 
 impl Drop for ProvidedBuf {

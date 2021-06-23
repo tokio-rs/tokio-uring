@@ -42,14 +42,6 @@ impl File {
         op.write().await
     }
 
-    /*
-    /// What is a better name?
-    pub async fn read_at2(&self, pos: u64, len: usize) -> io::Result<IoBufMut> {
-        let op = Op::read_at2(self.fd.fd(), pos, len).unwrap();
-        op.read2().await
-    }
-    */
-
     pub async fn sync_all(&self) -> io::Result<()> {
         let op = Op::fsync(&self.fd).unwrap();
         let completion = op.await;

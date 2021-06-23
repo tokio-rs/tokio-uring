@@ -4,9 +4,10 @@ pub use io_buf::IoBuf;
 mod io_buf_mut;
 pub use io_buf_mut::IoBufMut;
 
+/*
+
 use std::ops;
 
-/*
 fn range(range: impl ops::RangeBounds<usize>, max: usize) -> (usize, usize) {
     use core::ops::Bound;
 

@@ -140,28 +140,6 @@ impl<T> Drop for Op<T> {
 
         match lifecycle {
             Lifecycle::Submitted | Lifecycle::Waiting(_) => {
-                /*
-                TOTAL hax here! shows how to cancel an operation
-
-                // The operation needs to be cancelled
-                // TODO: Is this even sane?
-                let mut sqe = driver::prepare_sqe(&mut inner.uring).unwrap();
-                unsafe {
-                    // Configure the cancellation
-                    sqe.prep_cancel(self.index as _, 0);
-
-                    // cancellation is tracked as u64::MAX
-                    sqe.set_user_data(u64::MAX);
-                }
-
-                // TODO: Don't do this every operation!
-                inner.uring.submit_sqes().unwrap();
-
-                while let Some(cqe) = inner.uring.peek_for_cqe() {
-                    println!("IN CANCEL CQE; data = {}; res = {:?}", cqe.user_data(), cqe.result());
-                }
-                */
-
                 *lifecycle = Lifecycle::Ignored(Box::new(self.data.take()));
             }
             Lifecycle::Completed(_) => {
@@ -173,7 +151,6 @@ impl<T> Drop for Op<T> {
 }
 
 impl Lifecycle {
-    /// Returns true if drop
     pub(super) fn complete(&mut self, cqe: cqueue::Entry) -> bool {
         use std::mem;
 
