@@ -2,8 +2,6 @@ mod driver;
 
 pub mod buf;
 pub mod fs;
-pub mod io;
-// pub mod net;
 pub mod runtime;
 
 use std::future::Future;
