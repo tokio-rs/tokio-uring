@@ -13,14 +13,13 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
-  test:
+  check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
       - name: Install Rust
         run: rustup update stable
-      - run: cargo test --all-features --workspace
-      - run: cargo build --all-features --all-targets --workspace
+      - run: cargo check
 
   fmt:
     runs-on: ubuntu-latest
@@ -28,7 +27,7 @@ jobs:
       - uses: actions/checkout@v2
       - name: Install Rust
         run: rustup update stable
-      - run: cargo fmt --check
+      - run: cargo fmt -- --check
 
   docs:
     runs-on: ubuntu-latest
