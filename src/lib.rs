@@ -13,5 +13,3 @@ pub fn start<F: Future>(future: F) -> F::Output {
 }
 
 pub type BufResult<T, B> = (std::io::Result<T>, B);
-
-pub type BufMutResult<T, B> = (std::io::Result<T>, B);
