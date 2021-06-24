@@ -1,21 +1,67 @@
-/*
-use tokio_uring::buf::IoBuf;
+use tokio_uring::buf::{IoBuf, IoBufMut};
+
+#[test]
+fn test_vec() {
+    let mut v = vec![];
+
+    assert_eq!(v.as_ptr(), v.stable_ptr());
+    assert_eq!(v.as_mut_ptr(), v.stable_mut_ptr());
+    assert_eq!(v.bytes_init(), 0);
+    assert_eq!(v.bytes_total(), 0);
+
+    v.reserve(100);
+
+    assert_eq!(v.as_ptr(), v.stable_ptr());
+    assert_eq!(v.as_mut_ptr(), v.stable_mut_ptr());
+    assert_eq!(v.bytes_init(), 0);
+    assert_eq!(v.bytes_total(), v.capacity());
+
+    v.extend(b"hello");
+
+    assert_eq!(v.as_ptr(), v.stable_ptr());
+    assert_eq!(v.as_mut_ptr(), v.stable_mut_ptr());
+    assert_eq!(v.bytes_init(), 5);
+    assert_eq!(v.bytes_total(), v.capacity());
+
+    // Assume init does not go backwards
+    unsafe {
+        v.set_init(3);
+    }
+    assert_eq!(&v[..], b"hello");
+
+    // Initializing goes forward
+    unsafe {
+        std::ptr::copy(DATA.as_ptr(), v.stable_mut_ptr(), 10);
+        v.set_init(10);
+    }
+
+    assert_eq!(&v[..], &DATA[..10]);
+}
+
+#[test]
+fn test_slice() {
+    let v = &b""[..];
+
+    assert_eq!(v.as_ptr(), v.stable_ptr());
+    assert_eq!(v.bytes_init(), 0);
+    assert_eq!(v.bytes_total(), 0);
+
+    let v = &b"hello"[..];
+
+    assert_eq!(v.as_ptr(), v.stable_ptr());
+    assert_eq!(v.bytes_init(), 5);
+    assert_eq!(v.bytes_total(), 5);
+}
 
 const DATA: &[u8] = b"abcdefghijklmnopqrstuvwxyz0123456789!?";
 
-macro_rules! test_buf {
+macro_rules! test_slice {
     (
         $( $name:ident => $buf:expr; )*
     ) => {
         $(
             mod $name {
                 use super::*;
-
-                #[test]
-                fn test_deref() {
-                    let buf = $buf;
-                    assert_eq!(&buf[..], DATA);
-                }
 
                 #[test]
                 fn test_slice_read() {
@@ -62,24 +108,12 @@ macro_rules! test_buf {
                     assert_eq!(&slice[5..10], &DATA[5..10]);
                     assert_eq!(&slice[..5], &DATA[..5]);
                 }
-
-                #[test]
-                fn test_slice_change() {
-                    let buf = $buf;
-                    let mut slice = buf.slice(..);
-
-                    slice.set_begin(10);
-                    assert_eq!(&slice[..], &DATA[10..]);
-
-                    slice.set_end(20);
-                    assert_eq!(&slice[..], &DATA[10..20]);
-                }
             }
         )*
     };
 }
 
-test_buf! {
-    vec => IoBuf::from_vec(Vec::from(DATA));
+test_slice! {
+    vec => Vec::from(DATA);
+    slice => DATA;
 }
-*/
