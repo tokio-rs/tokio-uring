@@ -1,6 +1,6 @@
 use crate::buf::IoBufMut;
 use crate::driver::{Op, SharedFd};
-use crate::BufMutResult;
+use crate::BufResult;
 
 use futures::ready;
 use std::io;
@@ -36,11 +36,11 @@ impl<T: IoBufMut> Op<Read<T>> {
         )
     }
 
-    pub(crate) async fn read(mut self) -> BufMutResult<usize, T> {
+    pub(crate) async fn read(mut self) -> BufResult<usize, T> {
         futures::future::poll_fn(move |cx| self.poll_read(cx)).await
     }
 
-    pub(crate) fn poll_read(&mut self, cx: &mut Context<'_>) -> Poll<BufMutResult<usize, T>> {
+    pub(crate) fn poll_read(&mut self, cx: &mut Context<'_>) -> Poll<BufResult<usize, T>> {
         use std::future::Future;
         use std::pin::Pin;
 

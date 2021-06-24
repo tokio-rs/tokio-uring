@@ -31,7 +31,7 @@ impl File {
     }
 
     // Positional reads FTW
-    pub async fn read_at<T: IoBufMut>(&self, buf: T, pos: u64) -> crate::BufMutResult<usize, T> {
+    pub async fn read_at<T: IoBufMut>(&self, buf: T, pos: u64) -> crate::BufResult<usize, T> {
         // Submit the read operation
         let op = Op::read_at(&self.fd, buf, pos).unwrap();
         op.read().await
