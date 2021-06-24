@@ -69,8 +69,7 @@ impl Pool {
     */
 }
 
-impl ProvidedBuf {
-}
+impl ProvidedBuf {}
 
 impl Drop for ProvidedBuf {
     fn drop(&mut self) {

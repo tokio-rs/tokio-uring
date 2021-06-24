@@ -20,7 +20,7 @@ impl<T: IoBuf> Op<Write<T>> {
 
         // Get raw buffer info
         let ptr = buf.stable_ptr();
-        let len = buf.len();
+        let len = buf.bytes_init();
 
         Op::submit_with(
             Write {

@@ -21,7 +21,7 @@ impl<T: IoBufMut> Op<Read<T>> {
 
         // Get raw buffer info
         let ptr = buf.stable_mut_ptr();
-        let len = buf.capacity();
+        let len = buf.bytes_total();
 
         Op::submit_with(
             Read {
