@@ -8,9 +8,6 @@ pub(crate) use op::Op;
 
 mod open;
 
-mod pool;
-pub(crate) use pool::Pool;
-
 mod read;
 
 mod shared_fd;
@@ -38,8 +35,6 @@ struct Inner {
     /// In-flight operations
     ops: Slab<op::Lifecycle>,
 
-    pool: Pool,
-
     /// IoUring bindings
     uring: IoUring,
 }
@@ -48,14 +43,10 @@ scoped_thread_local!(static CURRENT: Rc<RefCell<Inner>>);
 
 impl Driver {
     pub(crate) fn new() -> io::Result<Driver> {
-        let mut uring = IoUring::new(256)?;
-        let pool = Pool::new(256, 4096 * 2);
-
-        pool.provide_buffers(&mut uring)?;
+        let uring = IoUring::new(256)?;
 
         let inner = Rc::new(RefCell::new(Inner {
             ops: Slab::with_capacity(64),
-            pool,
             uring,
         }));
 

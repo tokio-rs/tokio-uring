@@ -36,6 +36,22 @@ fn basic_write() {
     });
 }
 
+#[test]
+fn drop_open() {
+    tokio_uring::start(async {
+        let tempfile = tempfile();
+        let _ = File::create(tempfile.path());
+
+        // Do something else
+        let file = File::create(tempfile.path()).await.unwrap();
+
+        file.write_at(HELLO, 0).await.0.unwrap();
+
+        let file = std::fs::read(tempfile.path()).unwrap();
+        assert_eq!(file, HELLO);
+    });
+}
+
 fn tempfile() -> NamedTempFile {
     NamedTempFile::new().unwrap()
 }
