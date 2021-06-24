@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - master
+  push:
+    branches:
+      - master
+
+env:
+  RUSTFLAGS: -Dwarnings
+  RUST_BACKTRACE: 1
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install Rust
+        run: rustup update stable
+      - run: cargo check
+
+  fmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install Rust
+        run: rustup update stable
+      - run: cargo fmt -- --check
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install Rust
+        run: rustup update nightly && rustup default nightly
+      - run: cargo doc --no-deps --all-features
+        env:
+          RUSTDOCFLAGS: -Dwarnings
