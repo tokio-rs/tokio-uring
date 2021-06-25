@@ -53,9 +53,15 @@ impl Driver {
         Ok(Driver { inner })
     }
 
-    // Enter the driver context. This enables using uring types.
+    /// Enter the driver context. This enables using uring types.
     pub(crate) fn with<R>(&self, f: impl FnOnce() -> R) -> R {
         CURRENT.set(&self.inner, || f())
+    }
+
+    /// Current number of in-flight operation5s
+    fn num_operations(&self) -> usize {
+        let inner = self.inner.borrow();
+        inner.ops.len()
     }
 
     pub(crate) fn tick(&self) {
@@ -83,10 +89,28 @@ impl Driver {
             }
         }
     }
+
+    fn wait(&self) -> io::Result<usize> {
+        let mut inner = self.inner.borrow_mut();
+        let inner = &mut *inner;
+
+        inner.uring.submit_and_wait(1)
+    }
 }
 
 impl AsRawFd for Driver {
     fn as_raw_fd(&self) -> RawFd {
         self.inner.borrow().uring.as_raw_fd()
+    }
+}
+
+impl Drop for Driver {
+    fn drop(&mut self) {
+        while self.num_operations() > 0 {
+            // If waiting fails, ignore the error. The wait will be attempted
+            // again on the next loop.
+            let _ = self.wait().unwrap();
+            self.tick();
+        }
     }
 }
