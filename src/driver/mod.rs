@@ -62,12 +62,6 @@ impl Driver {
         CURRENT.set(&self.inner, || f())
     }
 
-    /// Current number of in-flight operation5s
-    fn num_operations(&self) -> usize {
-        let inner = self.inner.borrow();
-        inner.ops.len()
-    }
-
     pub(crate) fn tick(&self) {
         let mut inner = self.inner.borrow_mut();
         inner.tick();
@@ -103,13 +97,6 @@ impl Inner {
 
             self.ops.complete(index, cqe);
         }
-    }
-
-    fn wait(&self) -> io::Result<usize> {
-        let mut inner = self.inner.borrow_mut();
-        let inner = &mut *inner;
-
-        inner.uring.submit_and_wait(1)
     }
 }
 
