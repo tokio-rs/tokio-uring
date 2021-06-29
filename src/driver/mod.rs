@@ -17,7 +17,7 @@ mod util;
 
 mod write;
 
-use io_uring::IoUring;
+use io_uring::{cqueue, IoUring};
 use scoped_tls::scoped_thread_local;
 use slab::Slab;
 use std::cell::RefCell;
@@ -33,11 +33,15 @@ type Handle = Rc<RefCell<Inner>>;
 
 struct Inner {
     /// In-flight operations
-    ops: Slab<op::Lifecycle>,
+    ops: Ops,
 
     /// IoUring bindings
     uring: IoUring,
 }
+
+// When dropping the driver, all in-flight operations must have completed. This
+// type wraps the slab and ensures that, on drop, the slab is empty.
+struct Ops(Slab<op::Lifecycle>);
 
 scoped_thread_local!(static CURRENT: Rc<RefCell<Inner>>);
 
@@ -46,7 +50,7 @@ impl Driver {
         let uring = IoUring::new(256)?;
 
         let inner = Rc::new(RefCell::new(Inner {
-            ops: Slab::with_capacity(64),
+            ops: Ops::new(),
             uring,
         }));
 
@@ -58,20 +62,27 @@ impl Driver {
         CURRENT.set(&self.inner, || f())
     }
 
-    /// Current number of in-flight operation5s
-    fn num_operations(&self) -> usize {
-        let inner = self.inner.borrow();
-        inner.ops.len()
+    pub(crate) fn tick(&self) {
+        let mut inner = self.inner.borrow_mut();
+        inner.tick();
     }
 
-    pub(crate) fn tick(&self) {
+    fn wait(&self) -> io::Result<usize> {
         let mut inner = self.inner.borrow_mut();
         let inner = &mut *inner;
 
-        // TODO: Error?
-        // inner.uring.submit_and_wait(1).unwrap();
+        inner.uring.submit_and_wait(1)
+    }
 
-        let mut cq = inner.uring.completion();
+    fn num_operations(&self) -> usize {
+        let inner = self.inner.borrow();
+        inner.ops.0.len()
+    }
+}
+
+impl Inner {
+    fn tick(&mut self) {
+        let mut cq = self.uring.completion();
         cq.sync();
 
         for cqe in cq {
@@ -84,17 +95,8 @@ impl Driver {
 
             let index = cqe.user_data() as _;
 
-            if inner.ops[index].complete(cqe) {
-                inner.ops.remove(index);
-            }
+            self.ops.complete(index, cqe);
         }
-    }
-
-    fn wait(&self) -> io::Result<usize> {
-        let mut inner = self.inner.borrow_mut();
-        let inner = &mut *inner;
-
-        inner.uring.submit_and_wait(1)
     }
 }
 
@@ -112,5 +114,37 @@ impl Drop for Driver {
             let _ = self.wait().unwrap();
             self.tick();
         }
+    }
+}
+
+impl Ops {
+    fn new() -> Ops {
+        Ops(Slab::with_capacity(64))
+    }
+
+    fn get_mut(&mut self, index: usize) -> Option<&mut op::Lifecycle> {
+        self.0.get_mut(index)
+    }
+
+    // Insert a new operation
+    fn insert(&mut self) -> usize {
+        self.0.insert(op::Lifecycle::Submitted)
+    }
+
+    // Remove an operation
+    fn remove(&mut self, index: usize) {
+        self.0.remove(index);
+    }
+
+    fn complete(&mut self, index: usize, cqe: cqueue::Entry) {
+        if self.0[index].complete(cqe) {
+            self.0.remove(index);
+        }
+    }
+}
+
+impl Drop for Ops {
+    fn drop(&mut self) {
+        assert!(self.0.is_empty());
     }
 }

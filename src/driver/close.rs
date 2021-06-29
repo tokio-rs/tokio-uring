@@ -9,6 +9,6 @@ impl Op<Close> {
     pub(crate) fn close(fd: RawFd) -> io::Result<Op<Close>> {
         use io_uring::{opcode, types};
 
-        Op::submit_with(Close, || opcode::Close::new(types::Fd(fd)).build())
+        Op::try_submit_with(Close, || opcode::Close::new(types::Fd(fd)).build())
     }
 }

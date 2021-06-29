@@ -53,20 +53,6 @@ impl Pool {
 
         Ok(())
     }
-
-    /*
-    pub(super) unsafe fn checkout(&self, bid: u16, driver: &driver::Handle) -> ProvidedBuf {
-        use std::mem;
-
-        let ptr = self.mem.add(self.size * bid as usize);
-        let buf = mem::ManuallyDrop::new(Vec::from_raw_parts(ptr, 0, self.size));
-
-        ProvidedBuf {
-            buf,
-            driver: driver.clone(),
-        }
-    }
-    */
 }
 
 impl ProvidedBuf {}

@@ -1,6 +1,6 @@
 use crate::driver::{Close, Op};
+use crate::future::poll_fn;
 
-use futures::future::poll_fn;
 use std::cell::RefCell;
 use std::os::unix::io::{FromRawFd, RawFd};
 use std::rc::Rc;
@@ -96,7 +96,6 @@ impl Inner {
 
     /// Completes when the FD has been closed.
     async fn closed(&self) {
-        use futures::ready;
         use std::future::Future;
         use std::pin::Pin;
         use std::task::Poll;

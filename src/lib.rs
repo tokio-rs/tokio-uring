@@ -1,3 +1,5 @@
+#[macro_use]
+mod future;
 mod driver;
 
 pub mod buf;
