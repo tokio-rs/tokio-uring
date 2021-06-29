@@ -46,12 +46,14 @@ impl Runtime {
                 }
             };
 
-            self.rt.block_on(self.local.run_until(async {
-                tokio::select! {
-                    _ = drive => unreachable!(),
-                    ret = future => ret,
-                }
-            }))
+            tokio::pin!(drive);
+            tokio::pin!(future);
+
+            self.rt
+                .block_on(self.local.run_until(crate::future::poll_fn(|cx| {
+                    assert!(drive.as_mut().poll(cx).is_pending());
+                    future.as_mut().poll(cx)
+                })))
         })
     }
 }

@@ -57,7 +57,7 @@ impl<T> Op<T> {
             let inner = &mut *inner;
 
             // Store the operation state
-            let index = inner.ops.insert(Lifecycle::Submitted);
+            let index = inner.ops.insert();
 
             // Configure the SQE
             let sqe = f().user_data(index as _);
@@ -65,6 +65,7 @@ impl<T> Op<T> {
             let (submitter, mut sq, _) = inner.uring.split();
 
             if sq.is_full() {
+                // TODO: we probably want to do a busy loop here as well.
                 submitter.submit()?;
                 sq.sync();
             }
@@ -74,7 +75,19 @@ impl<T> Op<T> {
             }
 
             drop(sq);
-            submitter.submit()?;
+            loop {
+                match inner.uring.submit() {
+                    Ok(_) => break,
+                    // TODO: currently, the BUSY error is represented as
+                    // `Other`. This should be broken out and disambiguated.
+                    Err(ref e) if e.kind() == io::ErrorKind::Other => {
+                        inner.tick();
+                    }
+                    Err(e) => {
+                        return Err(e);
+                    }
+                }
+            }
 
             Ok(Op {
                 driver: inner_rc.clone(),
@@ -82,6 +95,18 @@ impl<T> Op<T> {
                 data: Some(data),
             })
         })
+    }
+
+    /// Try submitting an operation to uring
+    pub(super) fn try_submit_with<F>(data: T, f: F) -> io::Result<Op<T>>
+    where
+        F: FnOnce() -> squeue::Entry,
+    {
+        if driver::CURRENT.is_set() {
+            Op::submit_with(data, f)
+        } else {
+            Err(io::ErrorKind::Other.into())
+        }
     }
 }
 
@@ -96,7 +121,7 @@ where
 
         let me = &mut *self;
         let mut inner = me.driver.borrow_mut();
-        let lifecycle = &mut inner.ops[me.index];
+        let lifecycle = inner.ops.get_mut(me.index).expect("invalid internal state");
 
         match mem::replace(lifecycle, Lifecycle::Submitted) {
             Lifecycle::Submitted => {

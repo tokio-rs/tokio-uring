@@ -2,7 +2,6 @@ use crate::buf::IoBuf;
 use crate::driver::{Op, SharedFd};
 use crate::BufResult;
 
-use futures::ready;
 use std::io;
 use std::task::{Context, Poll};
 
@@ -36,7 +35,7 @@ impl<T: IoBuf> Op<Write<T>> {
     }
 
     pub(crate) async fn write(mut self) -> BufResult<usize, T> {
-        use futures::future::poll_fn;
+        use crate::future::poll_fn;
 
         poll_fn(move |cx| self.poll_write(cx)).await
     }
