@@ -5,6 +5,7 @@ mod future;
 use tokio_uring::fs::File;
 
 use std::io::prelude::*;
+use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use tempfile::NamedTempFile;
 
 const HELLO: &[u8] = b"hello world...";
@@ -59,9 +60,18 @@ fn cancel_read() {
 }
 
 #[test]
-#[ignore]
 fn explicit_close() {
-    unimplemented!()
+    let mut tempfile = tempfile();
+    tempfile.write_all(HELLO).unwrap();
+
+    tokio_uring::start(async {
+        let file = File::open(tempfile.path()).await.unwrap();
+        let fd = file.as_raw_fd();
+
+        file.close().await.unwrap();
+
+        assert_invalid_fd(fd);
+    })
 }
 
 #[test]
@@ -78,6 +88,19 @@ fn drop_open() {
         let file = std::fs::read(tempfile.path()).unwrap();
         assert_eq!(file, HELLO);
     });
+}
+
+#[test]
+fn drop_off_runtime() {
+    let file = tokio_uring::start(async {
+        let tempfile = tempfile();
+        File::open(tempfile.path()).await.unwrap()
+    });
+
+    let fd = file.as_raw_fd();
+    drop(file);
+
+    assert_invalid_fd(fd);
 }
 
 fn tempfile() -> NamedTempFile {
@@ -97,4 +120,17 @@ async fn poll_once(future: impl std::future::Future) {
         Poll::Ready(())
     })
     .await;
+}
+
+fn assert_invalid_fd(fd: RawFd) {
+    use std::fs::File;
+    use std::io;
+
+    let mut f = unsafe { File::from_raw_fd(fd) };
+    let mut buf = vec![];
+
+    match f.read_to_end(&mut buf) {
+        Err(ref e) if e.kind() == io::ErrorKind::Other => {}
+        res => panic!("{:?}", res),
+    }
 }
