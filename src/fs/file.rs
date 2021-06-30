@@ -3,6 +3,7 @@ use crate::driver::{Op, SharedFd};
 use crate::fs::OpenOptions;
 
 use std::io;
+use std::os::unix::io::{AsRawFd, RawFd};
 use std::path::Path;
 
 pub struct File {
@@ -62,5 +63,11 @@ impl File {
     pub async fn close(self) -> io::Result<()> {
         self.fd.close().await;
         Ok(())
+    }
+}
+
+impl AsRawFd for File {
+    fn as_raw_fd(&self) -> RawFd {
+        self.fd.raw_fd()
     }
 }
