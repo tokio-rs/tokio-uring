@@ -65,38 +65,28 @@ impl<T> Op<T> {
             let mut inner = inner_rc.borrow_mut();
             let inner = &mut *inner;
 
+            // If the submission queue is full, flush it to the kernel
+            if inner.uring.submission().is_full() {
+                inner.submit()?;
+            }
+
             // Create the operation
             let op = Op::new(data, inner, inner_rc);
 
             // Configure the SQE
             let sqe = f().user_data(op.index as _);
 
-            let (submitter, mut sq, _) = inner.uring.split();
+            {
+                let mut sq = inner.uring.submission();
 
-            if sq.is_full() {
-                // TODO: we probably want to do a busy loop here as well.
-                submitter.submit()?;
-                sq.sync();
-            }
-
-            if unsafe { sq.push(&sqe).is_err() } {
-                unimplemented!("when is this hit?");
-            }
-
-            drop(sq);
-            loop {
-                match inner.uring.submit() {
-                    Ok(_) => break,
-                    // TODO: currently, the BUSY error is represented as
-                    // `Other`. This should be broken out and disambiguated.
-                    Err(ref e) if e.kind() == io::ErrorKind::Other => {
-                        inner.tick();
-                    }
-                    Err(e) => {
-                        return Err(e);
-                    }
+                // Push the new operation
+                if unsafe { sq.push(&sqe).is_err() } {
+                    unimplemented!("when is this hit?");
                 }
             }
+
+            // Submit the new operation
+            inner.submit()?;
 
             Ok(op)
         })
