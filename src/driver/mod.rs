@@ -95,7 +95,7 @@ impl Inner {
 
             let index = cqe.user_data() as _;
 
-            self.ops.complete(index, cqe);
+            self.ops.complete(index, resultify(&cqe), cqe.flags());
         }
     }
 }
@@ -136,8 +136,8 @@ impl Ops {
         self.0.remove(index);
     }
 
-    fn complete(&mut self, index: usize, cqe: cqueue::Entry) {
-        if self.0[index].complete(cqe) {
+    fn complete(&mut self, index: usize, result: io::Result<u32>, flags: u32) {
+        if self.0[index].complete(result, flags) {
             self.0.remove(index);
         }
     }
@@ -146,5 +146,15 @@ impl Ops {
 impl Drop for Ops {
     fn drop(&mut self) {
         assert!(self.0.is_empty());
+    }
+}
+
+fn resultify(cqe: &cqueue::Entry) -> io::Result<u32> {
+    let res = cqe.result();
+
+    if res >= 0 {
+        Ok(res as u32)
+    } else {
+        Err(io::Error::from_raw_os_error(-res))
     }
 }

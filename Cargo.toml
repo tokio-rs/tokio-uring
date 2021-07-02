@@ -16,3 +16,5 @@ io-uring = { version = "0.5.0", features = [ "unstable" ] }
 [dev-dependencies]
 bencher = "0.1.5"
 tempfile = "3.2.0"
+tokio = { version = "1.2", features = ["macros"] }
+tokio-test = "0.4.2"
