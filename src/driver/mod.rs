@@ -98,6 +98,23 @@ impl Inner {
             self.ops.complete(index, resultify(&cqe), cqe.flags());
         }
     }
+
+    fn submit(&mut self) -> io::Result<()> {
+        loop {
+            match self.uring.submit() {
+                Ok(_) => {
+                    self.uring.submission().sync();
+                    return Ok(());
+                }
+                Err(ref e) if e.kind() == io::ErrorKind::Other => {
+                    self.tick();
+                }
+                Err(e) => {
+                    return Err(e);
+                }
+            }
+        }
+    }
 }
 
 impl AsRawFd for Driver {
