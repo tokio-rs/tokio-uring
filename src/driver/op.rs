@@ -1,6 +1,6 @@
 use crate::driver;
 
-use io_uring::{cqueue, squeue};
+use io_uring::squeue;
 use std::cell::RefCell;
 use std::future::Future;
 use std::io;
@@ -40,10 +40,19 @@ pub(crate) enum Lifecycle {
     Ignored(Box<dyn std::any::Any>),
 
     /// The operation has completed.
-    Completed(cqueue::Entry),
+    Completed(io::Result<u32>, u32),
 }
 
 impl<T> Op<T> {
+    /// Create a new operation
+    fn new(data: T, inner: &mut driver::Inner, inner_rc: &Rc<RefCell<driver::Inner>>) -> Op<T> {
+        Op {
+            driver: inner_rc.clone(),
+            index: inner.ops.insert(),
+            data: Some(data),
+        }
+    }
+
     /// Submit an operation to uring.
     ///
     /// `state` is stored during the operation tracking any state submitted to
@@ -56,11 +65,11 @@ impl<T> Op<T> {
             let mut inner = inner_rc.borrow_mut();
             let inner = &mut *inner;
 
-            // Store the operation state
-            let index = inner.ops.insert();
+            // Create the operation
+            let op = Op::new(data, inner, inner_rc);
 
             // Configure the SQE
-            let sqe = f().user_data(index as _);
+            let sqe = f().user_data(op.index as _);
 
             let (submitter, mut sq, _) = inner.uring.split();
 
@@ -89,11 +98,7 @@ impl<T> Op<T> {
                 }
             }
 
-            Ok(Op {
-                driver: inner_rc.clone(),
-                index,
-                data: Some(data),
-            })
+            Ok(op)
         })
     }
 
@@ -137,18 +142,14 @@ where
                 Poll::Pending
             }
             Lifecycle::Ignored(..) => unreachable!(),
-            Lifecycle::Completed(cqe) => {
+            Lifecycle::Completed(result, flags) => {
                 inner.ops.remove(me.index);
                 me.index = usize::MAX;
 
                 Poll::Ready(Completion {
                     data: me.data.take().expect("unexpected operation state"),
-                    result: if cqe.result() >= 0 {
-                        Ok(cqe.result() as u32)
-                    } else {
-                        Err(io::Error::from_raw_os_error(-cqe.result()))
-                    },
-                    flags: cqe.flags(),
+                    result,
+                    flags,
                 })
             }
         }
@@ -167,7 +168,7 @@ impl<T> Drop for Op<T> {
             Lifecycle::Submitted | Lifecycle::Waiting(_) => {
                 *lifecycle = Lifecycle::Ignored(Box::new(self.data.take()));
             }
-            Lifecycle::Completed(_) => {
+            Lifecycle::Completed(..) => {
                 inner.ops.remove(self.index);
             }
             Lifecycle::Ignored(..) => unreachable!(),
@@ -176,21 +177,163 @@ impl<T> Drop for Op<T> {
 }
 
 impl Lifecycle {
-    pub(super) fn complete(&mut self, cqe: cqueue::Entry) -> bool {
+    pub(super) fn complete(&mut self, result: io::Result<u32>, flags: u32) -> bool {
         use std::mem;
 
         match mem::replace(self, Lifecycle::Submitted) {
             Lifecycle::Submitted => {
-                *self = Lifecycle::Completed(cqe);
+                *self = Lifecycle::Completed(result, flags);
                 false
             }
             Lifecycle::Waiting(waker) => {
-                *self = Lifecycle::Completed(cqe);
+                *self = Lifecycle::Completed(result, flags);
                 waker.wake();
                 false
             }
             Lifecycle::Ignored(..) => true,
-            Lifecycle::Completed(_) => unreachable!("invalid operation state"),
+            Lifecycle::Completed(..) => unreachable!("invalid operation state"),
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use std::rc::Rc;
+    use tokio_test::{assert_pending, assert_ready, task};
+
+    #[test]
+    fn op_stays_in_slab_on_drop() {
+        let (op, driver, data) = init();
+        drop(op);
+
+        assert_eq!(2, Rc::strong_count(&data));
+
+        assert_eq!(1, driver.num_operations());
+        release(driver);
+    }
+
+    #[test]
+    fn poll_op_once() {
+        let (op, driver, data) = init();
+        let mut op = task::spawn(op);
+        assert_pending!(op.poll());
+        assert_eq!(2, Rc::strong_count(&data));
+
+        complete(&op, Ok(1));
+        assert_eq!(1, driver.num_operations());
+        assert_eq!(2, Rc::strong_count(&data));
+
+        assert!(op.is_woken());
+        let Completion {
+            result,
+            flags,
+            data: d,
+        } = assert_ready!(op.poll());
+        assert_eq!(2, Rc::strong_count(&data));
+        assert_eq!(1, result.unwrap());
+        assert_eq!(0, flags);
+
+        drop(d);
+        assert_eq!(1, Rc::strong_count(&data));
+
+        drop(op);
+        assert_eq!(0, driver.num_operations());
+
+        release(driver);
+    }
+
+    #[test]
+    fn poll_op_twice() {
+        let (op, driver, ..) = init();
+        let mut op = task::spawn(op);
+        assert_pending!(op.poll());
+        assert_pending!(op.poll());
+
+        complete(&op, Ok(1));
+
+        assert!(op.is_woken());
+        let Completion { result, flags, .. } = assert_ready!(op.poll());
+        assert_eq!(1, result.unwrap());
+        assert_eq!(0, flags);
+
+        release(driver);
+    }
+
+    #[test]
+    fn poll_change_task() {
+        let (op, driver, ..) = init();
+        let mut op = task::spawn(op);
+        assert_pending!(op.poll());
+
+        let op = op.into_inner();
+        let mut op = task::spawn(op);
+        assert_pending!(op.poll());
+
+        complete(&op, Ok(1));
+
+        assert!(op.is_woken());
+        let Completion { result, flags, .. } = assert_ready!(op.poll());
+        assert_eq!(1, result.unwrap());
+        assert_eq!(0, flags);
+
+        release(driver);
+    }
+
+    #[test]
+    fn complete_before_poll() {
+        let (op, driver, data) = init();
+        let mut op = task::spawn(op);
+        complete(&op, Ok(1));
+        assert_eq!(1, driver.num_operations());
+        assert_eq!(2, Rc::strong_count(&data));
+
+        let Completion { result, flags, .. } = assert_ready!(op.poll());
+        assert_eq!(1, result.unwrap());
+        assert_eq!(0, flags);
+
+        drop(op);
+        assert_eq!(0, driver.num_operations());
+
+        release(driver);
+    }
+
+    #[test]
+    fn complete_after_drop() {
+        let (op, driver, data) = init();
+        let index = op.index;
+        drop(op);
+
+        assert_eq!(2, Rc::strong_count(&data));
+
+        assert_eq!(1, driver.num_operations());
+        driver.inner.borrow_mut().ops.complete(index, Ok(1), 0);
+        assert_eq!(1, Rc::strong_count(&data));
+        assert_eq!(0, driver.num_operations());
+        release(driver);
+    }
+
+    fn init() -> (Op<Rc<()>>, crate::driver::Driver, Rc<()>) {
+        use crate::driver::Driver;
+
+        let driver = Driver::new().unwrap();
+        let handle = driver.inner.clone();
+        let data = Rc::new(());
+
+        let op = {
+            let mut inner = handle.borrow_mut();
+            Op::new(data.clone(), &mut inner, &handle)
+        };
+
+        (op, driver, data)
+    }
+
+    fn complete(op: &Op<Rc<()>>, result: io::Result<u32>) {
+        op.driver.borrow_mut().ops.complete(op.index, result, 0);
+    }
+
+    fn release(driver: crate::driver::Driver) {
+        // Clear ops, we aren't really doing any I/O
+        driver.inner.borrow_mut().ops.0.clear();
     }
 }
