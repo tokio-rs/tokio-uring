@@ -103,6 +103,21 @@ fn drop_off_runtime() {
     assert_invalid_fd(fd);
 }
 
+
+#[test]
+fn sync_doesnt_kill_anything() {
+    let tempfile = tempfile();
+
+    tokio_uring::start(async {
+        let file = File::create(tempfile.path()).await.unwrap();
+        file.sync_all().await.unwrap();
+        file.sync_data().await.unwrap();
+        file.write_at(&b"foo"[..], 0).await.0.unwrap();
+        file.sync_all().await.unwrap();
+        file.sync_data().await.unwrap();
+    });
+}
+
 fn tempfile() -> NamedTempFile {
     NamedTempFile::new().unwrap()
 }
