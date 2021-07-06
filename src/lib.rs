@@ -1,3 +1,62 @@
+//! Tokio-uring provides a safe [io-uring] interface for the Tokio runtime. The
+//! library requires Linux kernel 5.10 or later.
+//!
+//! [io-uring]: https://kernel.dk/io_uring.pdf
+//!
+//! # Getting started
+//!
+//! Using `tokio-uring` requires starting a [`tokio-uring`] runtime. This
+//! runtime internally manages the main Tokio runtime and a `io-uring` driver.
+//!
+//! ```no_run
+//! use tokio_uring::fs::File;
+//!
+//! fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     tokio_uring::start(async {
+//!         // Open a file
+//!         let file = File::open("hello.txt").await?;
+//!
+//!         let buf = vec![0; 4096];
+//!         // Read some data, the buffer is passed by ownership and
+//!         // submitted to the kernel. When the operation completes,
+//!         // we get the buffer back.
+//!         let (res, buf) = file.read_at(buf, 0).await;
+//!         let n = res?;
+//!
+//!         // Display the contents
+//!         println!("{:?}", &buf[..n]);
+//!
+//!         Ok(())
+//!     })
+//! }
+//! ```
+//!
+//! Under the hood, `tokio_uring::start` starts a [`current-thread`] Runtime.
+//! For concurrency, spawn multiple threads, each with a `tokio-uring` runtime.
+//! The `tokio-uring` resource types are optimized for single-threaded usage and
+//! most are `!Sync`.
+//!
+//! # Submit-based operations
+//!
+//! Unlike Tokio proper, `io-uring` is based on submission based operations.
+//! Ownership of resources are passed to the kernel, which then performs the
+//! operation. When the operation completes, ownership is passed back to the
+//! caller. Because of this difference, the `tokio-uring` APIs diverge.
+//!
+//! For example, in the above example, reading from a `File` requires passing
+//! ownership of the buffer.
+//!
+//! # Closing resources
+//!
+//! With `io-uring`, closing a resource (e.g. a file) is an asynchronous
+//! operation. Because Rust does not support asynchronous drop yet, resource
+//! types provide an explicit `close()` function. If the `close()` function is
+//! not called, the resource will still be closed on drop, but the operation
+//! will happen in the background. There is no guarantee as to **when** the
+//! implicit close-on-drop operation happens, so it is recommended to explicitly
+//! call `close()`.
+//!
+
 #[macro_use]
 mod future;
 mod driver;
