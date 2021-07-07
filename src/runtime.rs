@@ -5,7 +5,7 @@ use std::io;
 use tokio::io::unix::AsyncFd;
 use tokio::task::LocalSet;
 
-pub struct Runtime {
+pub(crate) struct Runtime {
     /// io-uring driver
     driver: AsyncFd<Driver>,
 
@@ -17,7 +17,7 @@ pub struct Runtime {
 }
 
 impl Runtime {
-    pub fn new() -> io::Result<Runtime> {
+    pub(crate) fn new() -> io::Result<Runtime> {
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()?;
@@ -32,7 +32,7 @@ impl Runtime {
         Ok(Runtime { driver, local, rt })
     }
 
-    pub fn block_on<F>(&mut self, future: F) -> F::Output
+    pub(crate) fn block_on<F>(&mut self, future: F) -> F::Output
     where
         F: Future,
     {
