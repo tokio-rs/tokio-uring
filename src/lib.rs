@@ -67,7 +67,63 @@ pub mod runtime;
 
 use std::future::Future;
 
-/// Start an `io_uring` enabled Tokio runtime
+/// Start an `io_uring` enabled Tokio runtime.
+///
+/// All `tokio-uring` resource types must be used from within the context of a
+/// runtime. The `start` method initializes the runtime and runs it for the
+/// duration of `future`.
+///
+/// The `tokio-uring` runtime is compatible with all Tokio, so it is possible to
+/// run Tokio based libraries (e.g. hyper) from within the tokio-uring runtime.
+/// A `tokio-uring` runtime consists of a Tokio `current_thread` runtime and an
+/// `io-uring` driver. All tasks spawned on the `tokio-uring` runtime are
+/// executed on the current thread. To add concurrency, spawn multiple threads,
+/// each with a `tokio-uring` runtime.
+///
+/// # Examples
+///
+/// Basic usage
+///
+/// ```no_run
+/// use tokio_uring::fs::File;
+///
+/// fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     tokio_uring::start(async {
+///         // Open a file
+///         let file = File::open("hello.txt").await?;
+///
+///         let buf = vec![0; 4096];
+///         // Read some data, the buffer is passed by ownership and
+///         // submitted to the kernel. When the operation completes,
+///         // we get the buffer back.
+///         let (res, buf) = file.read_at(buf, 0).await;
+///         let n = res?;
+///
+///         // Display the contents
+///         println!("{:?}", &buf[..n]);
+///
+///         Ok(())
+///     })
+/// }
+/// ```
+///
+/// Using Tokio types from the `tokio-uring` runtime
+///
+///
+/// ```no_run
+/// use tokio::net::TcpListener;
+///
+/// fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     tokio_uring::start(async {
+///         let listener = TcpListener::bind("127.0.0.1:8080").await?;
+///
+///         loop {
+///             let (socket, _) = listener.accept().await?;
+///             // process socket
+///         }
+///     })
+/// }
+/// ```
 pub fn start<F: Future>(future: F) -> F::Output {
     let mut rt = runtime::Runtime::new().unwrap();
     rt.block_on(future)
