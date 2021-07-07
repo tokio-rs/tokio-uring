@@ -55,15 +55,16 @@
 //! will happen in the background. There is no guarantee as to **when** the
 //! implicit close-on-drop operation happens, so it is recommended to explicitly
 //! call `close()`.
-//!
+
+#![warn(unreachable_pub)]
 
 #[macro_use]
 mod future;
 mod driver;
+mod runtime;
 
 pub mod buf;
 pub mod fs;
-pub mod runtime;
 
 use std::future::Future;
 
