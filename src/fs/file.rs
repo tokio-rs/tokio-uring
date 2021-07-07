@@ -20,6 +20,8 @@ use std::path::Path;
 /// have persisted to disk. Use [`sync_all`] to ensure all writes have reached
 /// the filesystem.
 ///
+/// [`sync_all`]: File::sync_all
+///
 /// # Examples
 ///
 /// Creates a new file and write data to it:
