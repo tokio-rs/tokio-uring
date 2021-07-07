@@ -129,4 +129,35 @@ pub fn start<F: Future>(future: F) -> F::Output {
     rt.block_on(future)
 }
 
+/// A specialized `Result` type for `io-uring` operations with buffers.
+///
+/// This type is used as a return value for asynchronous `io-uring` methods that
+/// require passing ownership of a buffer to the runtime. When the operation
+/// completes, the buffer is returned whether or not the operation completed
+/// successfully.
+///
+/// # Examples
+///
+/// ```no_run
+/// use tokio_uring::fs::File;
+///
+/// fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     tokio_uring::start(async {
+///         // Open a file
+///         let file = File::open("hello.txt").await?;
+///
+///         let buf = vec![0; 4096];
+///         // Read some data, the buffer is passed by ownership and
+///         // submitted to the kernel. When the operation completes,
+///         // we get the buffer back.
+///         let (res, buf) = file.read_at(buf, 0).await;
+///         let n = res?;
+///
+///         // Display the contents
+///         println!("{:?}", &buf[..n]);
+///
+///         Ok(())
+///     })
+/// }
+/// ```
 pub type BufResult<T, B> = (std::io::Result<T>, B);
