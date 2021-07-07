@@ -20,6 +20,8 @@ use std::ops;
 /// Buffers passed to `io-uring` operations must reference a stable memory
 /// region. While the runtime holds ownership to a buffer, the pointer returned
 /// by `stable_ptr` must remain valid even if the `IoBuf` value is moved.
+///
+/// [`slice()`]: IoBuf::slice
 pub unsafe trait IoBuf: Unpin + 'static {
     /// Returns a raw pointer to the vector’s buffer.
     ///
