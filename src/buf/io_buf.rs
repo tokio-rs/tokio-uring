@@ -25,6 +25,9 @@ use std::ops;
 pub unsafe trait IoBuf: Unpin + 'static {
     /// Returns a raw pointer to the vector’s buffer.
     ///
+    /// This method is to be used by the `tokio-uring` runtime and it is not
+    /// expected for users to call it directly.
+    ///
     /// The implementation must ensure that, while the `tokio-uring` runtime
     /// owns the value, the pointer returned by `stable_ptr` **does not**
     /// change.
@@ -32,10 +35,16 @@ pub unsafe trait IoBuf: Unpin + 'static {
 
     /// Number of initialized bytes.
     ///
+    /// This method is to be used by the `tokio-uring` runtime and it is not
+    /// expected for users to call it directly.
+    ///
     /// For `Vec`, this is identical to `len()`.
     fn bytes_init(&self) -> usize;
 
     /// Total size of the buffer, including uninitialized memory, if any.
+    ///
+    /// This method is to be used by the `tokio-uring` runtime and it is not
+    /// expected for users to call it directly.
     ///
     /// For `Vec`, this is identical to `capacity()`.
     fn bytes_total(&self) -> usize;
