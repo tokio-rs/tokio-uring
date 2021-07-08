@@ -1,3 +1,4 @@
+/// Filesystem manipulation operations.
 mod file;
 pub use file::File;
 
