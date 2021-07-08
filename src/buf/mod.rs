@@ -1,3 +1,9 @@
+//! Utilities for working with buffers.
+//!
+//! `io-uring` APIs require passing ownership of buffers to the runtime. The
+//! crate defines [`IoBuf`] and [`IoBufMut`] traits which are implemented by buffer
+//! types that respect the `io-uring` contract.
+
 mod io_buf;
 pub use io_buf::IoBuf;
 

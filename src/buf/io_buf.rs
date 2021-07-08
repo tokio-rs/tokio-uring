@@ -2,18 +2,57 @@ use crate::buf::Slice;
 
 use std::ops;
 
-/// Io-uring compatible buffer
+/// An `io-uring` compatible buffer.
 ///
-/// TODO: remove `Unpin` requirement.
+/// The `IoBuf` trait is implemented by buffer types that can be passed to
+/// io-uring operations. Users will not need to use this trait directly, except
+/// for the [`slice`] method.
+///
+/// # Slicing
+///
+/// Because buffers are passed by ownership to the runtime, Rust's slice API
+/// (`&buf[..]`) cannot be used. Instead, `tokio-uring` provides an owned slice
+/// API: [`slice()`]. The method takes ownership fo the buffer and returns a
+/// `Slice<Self>` type that tracks the requested offset.
+///
+/// # Implementation notes
+///
+/// Buffers passed to `io-uring` operations must reference a stable memory
+/// region. While the runtime holds ownership to a buffer, the pointer returned
+/// by `stable_ptr` must remain valid even if the `IoBuf` value is moved.
+///
+/// [`slice()`]: IoBuf::slice
 pub unsafe trait IoBuf: Unpin + 'static {
+    /// Returns a raw pointer to the vector’s buffer.
+    ///
+    /// The implementation must ensure that, while the `tokio-uring` runtime
+    /// owns the value, the pointer returned by `stable_ptr` **does not**
+    /// change.
     fn stable_ptr(&self) -> *const u8;
 
-    /// Number of initialized bytes
+    /// Number of initialized bytes.
+    ///
+    /// For `Vec`, this is identical to `len()`.
     fn bytes_init(&self) -> usize;
 
-    // Number of bytes available for writing
+    /// Total size of the buffer, including uninitialized memory, if any.
+    ///
+    /// For `Vec`, this is identical to `capacity()`.
     fn bytes_total(&self) -> usize;
 
+    /// Returns a view of the buffer with the specified range.
+    ///
+    /// This method is similar to Rust's slicing (`&buf[..]`), but takes
+    /// ownership of the buffer.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use tokio_uring::buf::IoBuf;
+    ///
+    /// let buf = b"hello world".to_vec();
+    /// buf.slice(5..10);
+    /// ```
     fn slice(self, range: impl ops::RangeBounds<usize>) -> Slice<Self>
     where
         Self: Sized,
