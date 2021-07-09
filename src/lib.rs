@@ -56,7 +56,7 @@
 //! implicit close-on-drop operation happens, so it is recommended to explicitly
 //! call `close()`.
 
-#![warn(unreachable_pub)]
+#![warn(missing_docs, unreachable_pub)]
 
 #[macro_use]
 mod future;
