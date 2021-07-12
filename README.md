@@ -1,10 +1,50 @@
 # tokio-uring
 
-A proof-of-concept runtime backed by io-uring while maintaining compatibility
-with the Tokio ecosystem. This is a proof of concept and not intended to be used
-yet. There are probably tons of bugs.
+This crate provides [`io-uring`] for [Tokio] by exposing a new Runtime that is
+compatible with Tokio but also can drive [`io-uring`]-backed resources. Any
+library that works with [Tokio] also works with `tokio-uring`. The crate
+provides new resource types ([`fs::File`]) that work with [`io-uring`].
 
-**Design doc:** https://github.com/tokio-rs/tokio-uring/pull/1
+[`io-uring`]: https://unixism.net/loti/
+[Tokio]: https://github.com/tokio-rs/tokio
+[`fs::File`]: https://docs.rs/tokio-uring/latest/tokio_uring/fs/struct.File.html
+
+[API Docs](https://docs.rs/tokio-uring/latest/tokio-uring) |
+[Chat](https://discord.gg/tokio)
+
+# Getting started
+
+Using `tokio-uring` requires starting a [`tokio-uring`] runtime. This
+runtime internally manages the main Tokio runtime and a `io-uring` driver.
+
+```rust
+use tokio_uring::fs::File;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    tokio_uring::start(async {
+        // Open a file
+        let file = File::open("hello.txt").await?;
+
+        let buf = vec![0; 4096];
+        // Read some data, the buffer is passed by ownership and
+        // submitted to the kernel. When the operation completes,
+        // we get the buffer back.
+        let (res, buf) = file.read_at(buf, 0).await;
+        let n = res?;
+
+        // Display the contents
+        println!("{:?}", &buf[..n]);
+
+        Ok(())
+    })
+}
+```
+
+## Project status
+
+The `tokio-uring` project is still very young. Currently, we are focusing on
+supporting filesystem operations. Eventually, we will add safe APIs for all
+io-uring compatible operations.
 
 ## License
 
