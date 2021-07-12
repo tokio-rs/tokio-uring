@@ -1,7 +1,7 @@
 use tokio_uring::fs::File;
 
-use std::{env, io};
 use std::io::Write;
+use std::{env, io};
 
 fn main() {
     // The file to `cat` is passed as a CLI argument
