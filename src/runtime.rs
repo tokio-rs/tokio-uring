@@ -16,6 +16,38 @@ pub(crate) struct Runtime {
     rt: tokio::runtime::Runtime,
 }
 
+/// Spawns a new asynchronous task, returning a [`JoinHandle`] for it.
+///
+/// Spawning a task enables the task to execute concurrently to other tasks.
+/// There is no guarantee that a spawned task will execute to completion. When a
+/// runtime is shutdown, all outstanding tasks are dropped, regardless of the
+/// lifecycle of that task.
+///
+/// This function must be called from the context of a `tokio-uring` runtime.
+///
+/// [`JoinHandle`]: tokio::task::JoinHandle
+///
+/// # Examples
+///
+/// In this example, a server is started and `spawn` is used to start a new task
+/// that processes each received connection.
+///
+/// ```no_run
+/// fn main() {
+///     tokio_uring::start(async {
+///         let handle = tokio_uring::spawn(async {
+///             println!("hello from a background task");
+///         });
+///
+///         // Let the task complete
+///         handle.await.unwrap();
+///     });
+/// }
+/// ```
+pub fn spawn<T: std::future::Future + 'static>(task: T) -> tokio::task::JoinHandle<T::Output> {
+    tokio::task::spawn_local(task)
+}
+
 impl Runtime {
     pub(crate) fn new() -> io::Result<Runtime> {
         let rt = tokio::runtime::Builder::new_current_thread()

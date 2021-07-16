@@ -17,3 +17,20 @@ fn use_tokio_types_from_runtime() {
         task.await.unwrap();
     });
 }
+
+#[test]
+fn spawn_a_task() {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    tokio_uring::start(async {
+        let cell = Rc::new(RefCell::new(1));
+        let c = cell.clone();
+        let handle = tokio_uring::spawn(async move {
+            *c.borrow_mut() = 2;
+        });
+
+        handle.await.unwrap();
+        assert_eq!(2, *cell.borrow());
+    });
+}
