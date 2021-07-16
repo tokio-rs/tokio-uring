@@ -66,6 +66,8 @@ mod runtime;
 pub mod buf;
 pub mod fs;
 
+pub use runtime::spawn;
+
 use std::future::Future;
 
 /// Start an `io_uring` enabled Tokio runtime.
