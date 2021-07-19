@@ -3,6 +3,15 @@ name = "tokio-uring"
 version = "0.1.0"
 authors = ["Carl Lerche <me@carllerche.com>"]
 edition = "2018"
+readme = "README.md"
+documentation = "https://docs.rs/tokio-uring/0.1.0/tokio-uring"
+repository = "https://github.com/tokio-rs/tokio-uring"
+homepage = "https://tokio.rs"
+description = """
+io-uring support for the Tokio asynchronous runtime.
+"""
+categories = ["asynchronous", "network-programming"]
+keywords = ["async", "fs", "io-uring"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
