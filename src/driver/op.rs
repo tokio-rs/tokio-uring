@@ -62,8 +62,8 @@ impl<T> Op<T> {
         F: FnOnce() -> squeue::Entry,
     {
         driver::CURRENT.with(|inner_rc| {
-            let mut inner = inner_rc.borrow_mut();
-            let inner = &mut *inner;
+            let mut inner_ref = inner_rc.borrow_mut();
+            let inner = &mut *inner_ref;
 
             // If the submission queue is full, flush it to the kernel
             if inner.uring.submission().is_full() {
@@ -86,9 +86,17 @@ impl<T> Op<T> {
             }
 
             // Submit the new operation
-            inner.submit()?;
-
-            Ok(op)
+            match inner.submit() {
+                Ok(_) => Ok(op),
+                Err(err) => {
+                    // The `RefMut` borrow guard must be dropped before `op` as
+                    // `op` will attempt to borrow the state in order to
+                    // perform cleanup.
+                    drop(inner_ref);
+                    drop(op);
+                    Err(err)
+                }
+            }
         })
     }
 
