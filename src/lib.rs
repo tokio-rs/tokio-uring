@@ -56,7 +56,18 @@
 //! implicit close-on-drop operation happens, so it is recommended to explicitly
 //! call `close()`.
 
-#![warn(missing_docs, unreachable_pub)]
+#![warn(missing_docs)]
+
+macro_rules! syscall {
+    ($fn: ident ( $($arg: expr),* $(,)* ) ) => {{
+        let res = unsafe { libc::$fn($($arg, )*) };
+        if res == -1 {
+            Err(std::io::Error::last_os_error())
+        } else {
+            Ok(res)
+        }
+    }};
+}
 
 #[macro_use]
 mod future;
@@ -65,6 +76,8 @@ mod runtime;
 
 pub mod buf;
 pub mod fs;
+pub mod io;
+pub mod net;
 
 pub use runtime::spawn;
 

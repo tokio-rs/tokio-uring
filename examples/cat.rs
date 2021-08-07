@@ -1,7 +1,8 @@
-use tokio_uring::fs::File;
-
-use std::io::Write;
-use std::{env, io};
+use std::{
+    io::Write,
+    {env, io},
+};
+use tokio_uring::{fs::File, io::AsyncReadAt};
 
 fn main() {
     // The file to `cat` is passed as a CLI argument

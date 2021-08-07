@@ -2,9 +2,11 @@
 //!
 //! Serve a single file over TCP
 
-use tokio::io::AsyncWriteExt;
-use tokio::net::TcpListener;
-use tokio_uring::fs::File;
+use tokio_uring::{
+    fs::File,
+    io::{AsyncReadAt, AsyncWrite},
+    net::TcpListener,
+};
 
 use std::env;
 
@@ -18,11 +20,11 @@ fn main() {
 
     tokio_uring::start(async {
         // Start a TCP listener
-        let listener = TcpListener::bind("0.0.0.0:8080").await.unwrap();
+        let listener = TcpListener::bind("0.0.0.0:8080".parse().unwrap()).unwrap();
 
         // Accept new sockets
         loop {
-            let (mut socket, _) = listener.accept().await.unwrap();
+            let (socket, _) = listener.accept().await.unwrap();
             let path = args[1].clone();
 
             // Spawn a task to send the file back to the socket
@@ -43,8 +45,8 @@ fn main() {
                         break;
                     }
 
-                    socket.write_all(&b[..n]).await.unwrap();
-                    pos += n as u64;
+                    let (res, b) = socket.write(b).await;
+                    pos += res.unwrap() as u64;
 
                     buf = b;
                 }

@@ -21,6 +21,7 @@ pub(crate) struct Op<T: 'static> {
 }
 
 /// Operation completion. Returns stored state with the result of the operation.
+#[allow(dead_code)]
 #[derive(Debug)]
 pub(crate) struct Completion<T> {
     pub(crate) data: T,
@@ -59,7 +60,7 @@ impl<T> Op<T> {
     /// the kernel.
     pub(super) fn submit_with<F>(data: T, f: F) -> io::Result<Op<T>>
     where
-        F: FnOnce() -> squeue::Entry,
+        F: FnOnce(&mut T) -> squeue::Entry,
     {
         driver::CURRENT.with(|inner_rc| {
             let mut inner_ref = inner_rc.borrow_mut();
@@ -71,10 +72,10 @@ impl<T> Op<T> {
             }
 
             // Create the operation
-            let op = Op::new(data, inner, inner_rc);
+            let mut op = Op::new(data, inner, inner_rc);
 
             // Configure the SQE
-            let sqe = f().user_data(op.index as _);
+            let sqe = f(op.data.as_mut().unwrap()).user_data(op.index as _);
 
             {
                 let mut sq = inner.uring.submission();
@@ -98,7 +99,7 @@ impl<T> Op<T> {
     /// Try submitting an operation to uring
     pub(super) fn try_submit_with<F>(data: T, f: F) -> io::Result<Op<T>>
     where
-        F: FnOnce() -> squeue::Entry,
+        F: FnOnce(&mut T) -> squeue::Entry,
     {
         if driver::CURRENT.is_set() {
             Op::submit_with(data, f)

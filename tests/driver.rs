@@ -2,8 +2,11 @@
 #[allow(warnings)]
 mod future;
 
-use tokio_uring::buf::IoBuf;
-use tokio_uring::fs::File;
+use tokio_uring::{
+    buf::IoBuf,
+    fs::File,
+    io::{AsyncReadAt, AsyncWriteAt},
+};
 
 use tempfile::NamedTempFile;
 

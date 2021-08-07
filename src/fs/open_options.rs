@@ -330,7 +330,7 @@ impl OpenOptions {
     /// [`Other`]: io::ErrorKind::Other
     /// [`PermissionDenied`]: io::ErrorKind::PermissionDenied
     pub async fn open(&self, path: impl AsRef<Path>) -> io::Result<File> {
-        let op = Op::open(path.as_ref(), self)?;
+        let op = Op::open(path, self)?;
 
         // Await the completion of the event
         let completion = op.await;

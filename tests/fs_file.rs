@@ -2,11 +2,15 @@
 #[allow(warnings)]
 mod future;
 
-use tokio_uring::fs::File;
-
-use std::io::prelude::*;
-use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
+use std::{
+    io::prelude::*,
+    os::unix::io::{AsRawFd, FromRawFd, RawFd},
+};
 use tempfile::NamedTempFile;
+use tokio_uring::{
+    fs::File,
+    io::{AsyncReadAt, AsyncWriteAt},
+};
 
 const HELLO: &[u8] = b"hello world...";
 
