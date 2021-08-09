@@ -44,3 +44,16 @@ unsafe impl IoBufMut for Vec<u8> {
         }
     }
 }
+
+#[cfg(feature = "bytes")]
+unsafe impl IoBufMut for bytes::BytesMut {
+    fn stable_mut_ptr(&mut self) -> *mut u8 {
+        self.as_mut_ptr()
+    }
+
+    unsafe fn set_init(&mut self, init_len: usize) {
+        if self.len() < init_len {
+            self.set_len(init_len);
+        }
+    }
+}
