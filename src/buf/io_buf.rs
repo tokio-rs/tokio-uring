@@ -130,3 +130,33 @@ unsafe impl IoBuf for &'static str {
         self.bytes_init()
     }
 }
+
+#[cfg(feature = "bytes")]
+unsafe impl IoBuf for bytes::Bytes {
+    fn stable_ptr(&self) -> *const u8 {
+        self.as_ptr()
+    }
+
+    fn bytes_init(&self) -> usize {
+        self.len()
+    }
+
+    fn bytes_total(&self) -> usize {
+        self.len()
+    }
+}
+
+#[cfg(feature = "bytes")]
+unsafe impl IoBuf for bytes::BytesMut {
+    fn stable_ptr(&self) -> *const u8 {
+        self.as_ptr()
+    }
+
+    fn bytes_init(&self) -> usize {
+        self.len()
+    }
+
+    fn bytes_total(&self) -> usize {
+        self.capacity()
+    }
+}
