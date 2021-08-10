@@ -62,8 +62,8 @@ impl<T> Op<T> {
         F: FnOnce() -> squeue::Entry,
     {
         driver::CURRENT.with(|inner_rc| {
-            let mut inner = inner_rc.borrow_mut();
-            let inner = &mut *inner;
+            let mut inner_ref = inner_rc.borrow_mut();
+            let inner = &mut *inner_ref;
 
             // If the submission queue is full, flush it to the kernel
             if inner.uring.submission().is_full() {
@@ -85,9 +85,12 @@ impl<T> Op<T> {
                 }
             }
 
-            // Submit the new operation
-            inner.submit()?;
-
+            // Submit the new operation. At this point, the operation has been
+            // pushed onto the queue and the tail pointer has been updated, so
+            // the submission entry is visible to the kernel. If there is an
+            // error here (probably EAGAIN), we still return the operation. A
+            // future `io_uring_enter` will fully submit the event.
+            let _ = inner.submit();
             Ok(op)
         })
     }
