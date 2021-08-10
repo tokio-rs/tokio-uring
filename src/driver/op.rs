@@ -85,18 +85,13 @@ impl<T> Op<T> {
                 }
             }
 
-            // Submit the new operation
-            match inner.submit() {
-                Ok(_) => Ok(op),
-                Err(err) => {
-                    // The `RefMut` borrow guard must be dropped before `op` as
-                    // `op` will attempt to borrow the state in order to
-                    // perform cleanup.
-                    drop(inner_ref);
-                    drop(op);
-                    Err(err)
-                }
-            }
+            // Submit the new operation. At this point, the operation has been
+            // pushed onto the queue and the tail pointer has been updated, so
+            // the submission entry is visible to the kernel. If there is an
+            // error here (probably EAGAIN), we still return the operation. A
+            // future `io_uring_enter` will fully submit the event.
+            let _ = inner.submit();
+            Ok(op)
         })
     }
 
