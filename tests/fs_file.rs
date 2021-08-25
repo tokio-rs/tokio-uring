@@ -136,6 +136,8 @@ async fn poll_once(future: impl std::future::Future) {
     .await;
 }
 
+/// Test if this file descriptor is invalid
+/// Will panic if the descriptor is valid
 fn assert_invalid_fd(fd: RawFd) {
     use std::fs::File;
     use std::io;
@@ -144,7 +146,15 @@ fn assert_invalid_fd(fd: RawFd) {
     let mut buf = vec![];
 
     match f.read_to_end(&mut buf) {
-        Err(ref e) if e.kind() == io::ErrorKind::Other => {}
-        res => panic!("{:?}", res),
+        Err(ref err) => {
+            match err.kind() {
+                io::ErrorKind::Other => { /* expected */ },
+                // returns io::Error::Uncategorized in some cases
+                _ => println!("Got unexpected error {:?}", err),
+            }
+        }
+        Ok(_) => {
+            panic!("Expected file descriptor to be invalid but was valid");
+        }
     }
 }
