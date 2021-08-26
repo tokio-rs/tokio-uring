@@ -23,6 +23,9 @@ mod recv_from;
 
 mod rename_at;
 
+mod register;
+pub(crate) use register::{register_buffers, Buffers};
+
 mod send_to;
 
 mod shared_fd;
@@ -41,8 +44,10 @@ mod writev;
 
 use io_uring::IoUring;
 use slab::Slab;
+use std::cell::RefCell;
 use std::io;
 use std::os::unix::io::{AsRawFd, RawFd};
+use std::rc::Rc;
 
 pub(crate) struct Driver {
     /// In-flight operations
@@ -50,6 +55,9 @@ pub(crate) struct Driver {
 
     /// IoUring bindings
     pub(crate) uring: IoUring,
+
+    /// Reference to the currently registered buffers
+    buffers: Option<Rc<RefCell<Buffers>>>,
 }
 
 struct Ops {
@@ -68,6 +76,7 @@ impl Driver {
         Ok(Driver {
             ops: Ops::new(),
             uring,
+            buffers: None,
         })
     }
 
