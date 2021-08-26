@@ -106,7 +106,11 @@ impl Inner {
                     self.uring.submission().sync();
                     return Ok(());
                 }
-                Err(ref e) if e.kind() == io::ErrorKind::Other => {
+                Err(ref e)
+                    if e.kind() == io::ErrorKind::Other
+                    // Use raw_os_error() to avoid enabling feature io_error_more which is not stable.
+                        || e.raw_os_error() == Some(libc::EBUSY) =>
+                {
                     self.tick();
                 }
                 Err(e) => {
