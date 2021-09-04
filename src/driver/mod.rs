@@ -42,6 +42,8 @@ mod util;
 
 mod write;
 
+mod write_fixed;
+
 mod writev;
 
 use io_uring::IoUring;

@@ -354,6 +354,17 @@ impl File {
         op.await
     }
 
+    /// Like [write_at](Self::write_at), but using a pre-mapped buffer
+    /// registered with [BufRegistry](crate::buf::fixed::BufRegistry).
+    pub async fn write_fixed_at(
+        &self,
+        buf: Slice<FixedBuf>,
+        pos: u64,
+    ) -> crate::BufResult<usize, Slice<FixedBuf>> {
+        let op = Op::write_fixed_at(&self.fd, buf, pos).unwrap();
+        op.await
+    }
+
     /// Attempts to sync all OS-internal metadata to disk.
     ///
     /// This function will attempt to ensure that all in-memory data reaches the

@@ -12,7 +12,7 @@ pub(crate) struct Write<T> {
     #[allow(dead_code)]
     fd: SharedFd,
 
-    pub(crate) buf: T,
+    buf: T,
 }
 
 impl<T: IoBuf> Op<Write<T>> {
