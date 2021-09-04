@@ -50,6 +50,12 @@ impl Drop for FixedBuf {
     }
 }
 
+impl FixedBuf {
+    pub(crate) fn buf_index(&self) -> u16 {
+        self.index
+    }
+}
+
 unsafe impl IoBuf for FixedBuf {
     fn stable_ptr(&self) -> *const u8 {
         self.buf.as_ptr()

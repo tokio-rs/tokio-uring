@@ -19,6 +19,8 @@ mod read;
 
 mod readv;
 
+mod read_fixed;
+
 mod recv_from;
 
 mod rename_at;
