@@ -26,7 +26,7 @@ mod recv_from;
 mod rename_at;
 
 mod register;
-pub(crate) use register::{register_buffers, Buffers};
+pub(crate) use register::{register_buffers, unregister_buffers, Buffers};
 
 mod send_to;
 

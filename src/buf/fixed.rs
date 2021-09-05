@@ -26,7 +26,11 @@ impl BufRegistry {
     }
 
     pub fn register(&self) -> io::Result<()> {
-        driver::register_buffers(Rc::clone(&self.inner))
+        driver::register_buffers(&self.inner)
+    }
+
+    pub fn unregister(&self) -> io::Result<()> {
+        driver::unregister_buffers(&self.inner)
     }
 
     pub fn check_out(&mut self, index: usize) -> Option<FixedBuf> {
