@@ -1,12 +1,13 @@
 use std::{
     io::prelude::*,
     os::unix::io::{AsRawFd, FromRawFd, RawFd},
+    ptr,
 };
 
 use tempfile::NamedTempFile;
 
 use tokio_uring::buf::fixed::BufRegistry;
-use tokio_uring::buf::IoBuf;
+use tokio_uring::buf::{IoBuf, IoBufMut};
 use tokio_uring::fs::File;
 
 #[path = "../src/future.rs"]
@@ -218,6 +219,37 @@ fn read_fixed() {
     });
 }
 
+#[test]
+fn write_fixed() {
+    tokio_uring::start(async {
+        let tempfile = tempfile();
+
+        let file = File::create(tempfile.path()).await.unwrap();
+
+        let mut buffers = BufRegistry::new([Vec::with_capacity(6), Vec::with_capacity(1024)]);
+        buffers.register().unwrap();
+
+        let fixed_buf = buffers.check_out(0).unwrap();
+        let mut buf = fixed_buf.slice(..);
+        push_slice_to_buf(&HELLO[..6], &mut buf);
+
+        let (res, _) = file.write_fixed_at(buf, 0).await;
+        let n = res.unwrap();
+        assert_eq!(n, 6);
+
+        let fixed_buf = buffers.check_out(1).unwrap();
+        let mut buf = fixed_buf.slice(..);
+        push_slice_to_buf(&HELLO[6..], &mut buf);
+
+        let (res, _) = file.write_fixed_at(buf, 6).await;
+        let n = res.unwrap();
+        assert_eq!(n, HELLO.len() - 6);
+
+        let file = std::fs::read(tempfile.path()).unwrap();
+        assert_eq!(file, HELLO);
+    });
+}
+
 fn tempfile() -> NamedTempFile {
     NamedTempFile::new().unwrap()
 }
@@ -246,5 +278,14 @@ fn assert_invalid_fd(fd: RawFd) {
     match f.read_to_end(&mut buf) {
         Err(ref e) if e.raw_os_error() == Some(libc::EBADF) => {}
         res => panic!("{:?}", res),
+    }
+}
+
+fn push_slice_to_buf(src: &[u8], buf: &mut impl IoBufMut) {
+    assert!(buf.bytes_total() >= src.len());
+    let dst = buf.stable_mut_ptr();
+    unsafe {
+        ptr::copy_nonoverlapping(src.as_ptr(), dst, src.len());
+        buf.set_init(src.len());
     }
 }
