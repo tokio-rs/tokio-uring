@@ -5,6 +5,8 @@ use std::{
 
 use tempfile::NamedTempFile;
 
+use tokio_uring::buf::fixed::BufRegistry;
+use tokio_uring::buf::IoBuf;
 use tokio_uring::fs::File;
 
 #[path = "../src/future.rs"]
@@ -185,6 +187,35 @@ fn rename() {
         // in the TempPath destructor. We have to manually delete it.
         std::fs::remove_file(&new_path).unwrap();
     })
+}
+
+#[test]
+fn read_fixed() {
+    tokio_uring::start(async {
+        let mut tempfile = tempfile();
+        tempfile.write_all(HELLO).unwrap();
+
+        let mut buffers = BufRegistry::new([Vec::with_capacity(6), Vec::with_capacity(1024)]);
+        buffers.register().unwrap();
+
+        let file = File::open(tempfile.path()).await.unwrap();
+
+        let fixed_buf = buffers.check_out(0).unwrap();
+        assert_eq!(fixed_buf.bytes_total(), 6);
+        let (res, buf) = file.read_fixed_at(fixed_buf.slice(..), 0).await;
+        let n = res.unwrap();
+
+        assert_eq!(n, 6);
+        assert_eq!(&buf[..], &HELLO[..6]);
+
+        let fixed_buf = buffers.check_out(1).unwrap();
+        assert_eq!(fixed_buf.bytes_total(), 1024);
+        let (res, buf) = file.read_fixed_at(fixed_buf.slice(..), 6).await;
+        let n = res.unwrap();
+
+        assert_eq!(n, HELLO.len() - 6);
+        assert_eq!(&buf[..], &HELLO[6..]);
+    });
 }
 
 fn tempfile() -> NamedTempFile {
