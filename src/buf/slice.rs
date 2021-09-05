@@ -1,5 +1,6 @@
 use crate::buf::{IoBuf, IoBufMut};
 
+use std::cmp;
 use std::ops;
 
 /// An owned view into a contiguous sequence of bytes.
@@ -127,13 +128,17 @@ impl<T: IoBuf> ops::Deref for Slice<T> {
     type Target = [u8];
 
     fn deref(&self) -> &[u8] {
-        &super::deref(&self.buf)[self.begin..self.end]
+        let buf_bytes = super::deref(&self.buf);
+        let end = cmp::min(self.end, buf_bytes.len());
+        &buf_bytes[self.begin..end]
     }
 }
 
 impl<T: IoBufMut> ops::DerefMut for Slice<T> {
     fn deref_mut(&mut self) -> &mut [u8] {
-        &mut super::deref_mut(&mut self.buf)[self.begin..self.end]
+        let buf_bytes = super::deref_mut(&mut self.buf);
+        let end = cmp::min(self.end, buf_bytes.len());
+        &mut buf_bytes[self.begin..end]
     }
 }
 
@@ -158,5 +163,28 @@ unsafe impl<T: IoBufMut> IoBufMut for Slice<T> {
 
     unsafe fn set_init(&mut self, pos: usize) {
         self.buf.set_init(self.begin + pos);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::buf::{IoBuf, IoBufMut};
+    use std::mem;
+
+    #[test]
+    fn can_deref_slice_into_uninit_buf() {
+        let buf = Vec::with_capacity(10).slice(..);
+        assert!(buf[..].is_empty());
+        let _ = buf.stable_ptr();
+        assert_eq!(buf.bytes_init(), 0);
+        assert_eq!(buf.bytes_total(), 10);
+
+        let mut v = Vec::with_capacity(10);
+        v.push(42);
+        let mut buf = v.slice(..);
+        assert_eq!(mem::replace(&mut buf[0], 0u8), 42u8);
+        let _ = buf.stable_mut_ptr();
+        assert_eq!(buf.bytes_init(), 1);
+        assert_eq!(buf.bytes_total(), 10);
     }
 }
