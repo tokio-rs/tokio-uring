@@ -10,6 +10,12 @@ mod open;
 
 mod read;
 
+mod recv;
+
+mod send;
+
+mod connect;
+
 mod shared_fd;
 pub(crate) use shared_fd::SharedFd;
 
