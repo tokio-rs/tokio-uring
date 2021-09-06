@@ -17,7 +17,7 @@ fn fixed_buf_turnaround() {
 
         let file = File::open(tempfile.path()).await.unwrap();
 
-        let mut buffers = BufRegistry::new([30, 20, 10].iter().map(|&n| Vec::with_capacity(n)));
+        let buffers = BufRegistry::new([30, 20, 10].iter().map(|&n| Vec::with_capacity(n)));
         buffers.register().unwrap();
 
         let fixed_buf = buffers.check_out(0).unwrap();
@@ -65,7 +65,7 @@ fn unregister_invalidates_checked_out_buffers() {
 
         let file = File::open(tempfile.path()).await.unwrap();
 
-        let mut buffers = BufRegistry::new([Vec::with_capacity(1024)]);
+        let buffers = BufRegistry::new([Vec::with_capacity(1024)]);
         buffers.register().unwrap();
 
         let fixed_buf = buffers.check_out(0).unwrap();
@@ -73,7 +73,7 @@ fn unregister_invalidates_checked_out_buffers() {
         // The checked out handle keeps the buffer allocation alive.
         // Meanwhile, we replace buffer registration in the kernel:
         buffers.unregister().unwrap(); // hmm, what's up with the 1s blocking time?
-        let mut buffers = BufRegistry::new([Vec::with_capacity(1024)]);
+        let buffers = BufRegistry::new([Vec::with_capacity(1024)]);
         buffers.register().unwrap();
 
         // The old buffer's index no longer matches the memory area of the

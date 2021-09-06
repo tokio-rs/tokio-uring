@@ -33,7 +33,7 @@ impl BufRegistry {
         driver::unregister_buffers(&self.inner)
     }
 
-    pub fn check_out(&mut self, index: usize) -> Option<FixedBuf> {
+    pub fn check_out(&self, index: usize) -> Option<FixedBuf> {
         let mut inner = self.inner.borrow_mut();
         inner.check_out(index).map(|(iovec, init_len)| {
             debug_assert!(index <= u16::MAX as usize);
