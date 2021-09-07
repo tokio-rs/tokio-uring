@@ -165,26 +165,3 @@ unsafe impl<T: IoBufMut> IoBufMut for Slice<T> {
         self.buf.set_init(self.begin + pos);
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use crate::buf::{IoBuf, IoBufMut};
-    use std::mem;
-
-    #[test]
-    fn can_deref_slice_into_uninit_buf() {
-        let buf = Vec::with_capacity(10).slice(..);
-        assert!(buf[..].is_empty());
-        let _ = buf.stable_ptr();
-        assert_eq!(buf.bytes_init(), 0);
-        assert_eq!(buf.bytes_total(), 10);
-
-        let mut v = Vec::with_capacity(10);
-        v.push(42);
-        let mut buf = v.slice(..);
-        assert_eq!(mem::replace(&mut buf[0], 0u8), 42u8);
-        let _ = buf.stable_mut_ptr();
-        assert_eq!(buf.bytes_init(), 1);
-        assert_eq!(buf.bytes_total(), 10);
-    }
-}
