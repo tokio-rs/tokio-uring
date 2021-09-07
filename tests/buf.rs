@@ -1,4 +1,4 @@
-use tokio_uring::buf::{IoBuf, IoBufMut};
+use tokio_uring::buf::{IntoSlice, IoBuf, IoBufMut};
 
 use std::mem;
 

@@ -11,7 +11,7 @@ mod io_buf_mut;
 pub use io_buf_mut::IoBufMut;
 
 mod slice;
-pub use slice::Slice;
+pub use slice::{IntoSlice, Slice};
 
 pub(crate) fn deref(buf: &impl IoBuf) -> &[u8] {
     // Safety: the `IoBuf` trait is marked as unsafe and is expected to be

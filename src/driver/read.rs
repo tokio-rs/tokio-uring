@@ -1,4 +1,4 @@
-use crate::buf::IoBufMut;
+use crate::buf::{IoBufMut, Slice};
 use crate::driver::{Op, SharedFd};
 use crate::BufResult;
 
@@ -11,12 +11,16 @@ pub(crate) struct Read<T> {
     #[allow(dead_code)]
     fd: SharedFd,
 
-    /// Reference to the in-flight buffer.
-    pub(crate) buf: T,
+    /// Owns the in-flight buffer.
+    buf: Slice<T>,
 }
 
 impl<T: IoBufMut> Op<Read<T>> {
-    pub(crate) fn read_at(fd: &SharedFd, buf: T, offset: u64) -> io::Result<Op<Read<T>>> {
+    pub(crate) fn read_at(
+        fd: &SharedFd,
+        buf: Slice<T>,
+        offset: u64,
+    ) -> io::Result<Op<Read<T>>> {
         use io_uring::{opcode, types};
 
         Op::submit_with(
@@ -35,11 +39,11 @@ impl<T: IoBufMut> Op<Read<T>> {
         )
     }
 
-    pub(crate) async fn read(mut self) -> BufResult<usize, T> {
+    pub(crate) async fn read(mut self) -> BufResult<usize, Slice<T>> {
         crate::future::poll_fn(move |cx| self.poll_read(cx)).await
     }
 
-    pub(crate) fn poll_read(&mut self, cx: &mut Context<'_>) -> Poll<BufResult<usize, T>> {
+    pub(crate) fn poll_read(&mut self, cx: &mut Context<'_>) -> Poll<BufResult<usize, Slice<T>>> {
         use std::future::Future;
         use std::pin::Pin;
 

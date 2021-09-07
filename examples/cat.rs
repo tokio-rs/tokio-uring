@@ -39,7 +39,7 @@ fn main() {
             out.write_all(&b[..n]).unwrap();
             pos += n as u64;
 
-            buf = b;
+            buf = b.into_inner();
         }
 
         // Include a new line

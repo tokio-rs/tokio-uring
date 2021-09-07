@@ -44,7 +44,7 @@ fn main() {
                     let (res, b) = socket.write(b).await;
                     pos += res.unwrap() as u64;
 
-                    buf = b;
+                    buf = b.into_inner();
                 }
             });
         }
