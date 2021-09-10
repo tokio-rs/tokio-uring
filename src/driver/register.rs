@@ -86,11 +86,11 @@ impl Drop for Buffers {
         let iovecs = unsafe {
             Vec::from_raw_parts(self.raw_vecs.as_ptr(), self.buf_states.len(), self.orig_cap)
         };
-        for (i, iovec) in iovecs.iter().enumerate() {
+        for i in 0..iovecs.len() {
             match self.buf_states[i] {
                 BufState::Free { init_len } => {
-                    let ptr = iovec.iov_base as *mut u8;
-                    let cap = iovec.iov_len;
+                    let ptr = iovecs[i].iov_base as *mut u8;
+                    let cap = iovecs[i].iov_len;
                     let v = unsafe { Vec::from_raw_parts(ptr, init_len, cap) };
                     mem::drop(v);
                 }
