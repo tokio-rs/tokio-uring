@@ -306,30 +306,30 @@ impl File {
     /// # Examples
     ///
     /// ```no_run
+    ///# fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// use tokio_uring::fs::File;
     /// use tokio_uring::buf::fixed::BufRegistry;
     /// use tokio_uring::buf::IoBuf;
     /// use std::iter;
     ///
-    /// fn main() -> Result<(), Box<dyn std::error::Error>> {
-    ///     tokio_uring::start(async {
-    ///         let registry = BufRegistry::new(iter::repeat(vec![0; 10]).take(10));
-    ///         registry.register()?;
+    /// tokio_uring::start(async {
+    ///     let registry = BufRegistry::new(iter::repeat(vec![0; 10]).take(10));
+    ///     registry.register()?;
     ///
-    ///         let f = File::open("foo.txt").await?;
-    ///         let buffer = registry.check_out(2).unwrap();
+    ///     let f = File::open("foo.txt").await?;
+    ///     let buffer = registry.check_out(2).unwrap();
     ///
-    ///         // Read up to 10 bytes
-    ///         let (res, buffer) = f.read_fixed_at(buffer.slice(..), 0).await;
-    ///         let n = res?;
+    ///     // Read up to 10 bytes
+    ///     let (res, buffer) = f.read_fixed_at(buffer.slice(..), 0).await;
+    ///     let n = res?;
     ///
-    ///         println!("The bytes: {:?}", &buffer[..n]);
+    ///     println!("The bytes: {:?}", &buffer[..n]);
     ///
-    ///         // Close the file
-    ///         f.close().await?;
-    ///         Ok(())
-    ///     })
-    /// }
+    ///     // Close the file
+    ///     f.close().await?;
+    ///     Ok(())
+    /// })
+    ///# }
     /// ```
     pub async fn read_fixed_at(
         &self,
@@ -407,31 +407,31 @@ impl File {
     /// # Examples
     ///
     /// ```no_run
+    ///# fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// use tokio_uring::fs::File;
     /// use tokio_uring::buf::fixed::BufRegistry;
     /// use tokio_uring::buf::IoBuf;
     ///
-    /// fn main() -> Result<(), Box<dyn std::error::Error>> {
-    ///     tokio_uring::start(async {
-    ///         let registry = BufRegistry::new([b"some bytes".to_vec()]);
-    ///         registry.register()?;
+    /// tokio_uring::start(async {
+    ///     let registry = BufRegistry::new([b"some bytes".to_vec()]);
+    ///     registry.register()?;
     ///
-    ///         let file = File::create("foo.txt").await?;
+    ///     let file = File::create("foo.txt").await?;
     ///
-    ///         let buffer = registry.check_out(0).unwrap();
+    ///     let buffer = registry.check_out(0).unwrap();
     ///
-    ///         // Writes some prefix of the buffer content,
-    ///         // not necessarily all of it.
-    ///         let (res, _) = file.write_fixed_at(buffer.slice(..), 0).await;
-    ///         let n = res?;
+    ///     // Writes some prefix of the buffer content,
+    ///     // not necessarily all of it.
+    ///     let (res, _) = file.write_fixed_at(buffer.slice(..), 0).await;
+    ///     let n = res?;
     ///
-    ///         println!("wrote {} bytes", n);
+    ///     println!("wrote {} bytes", n);
     ///
-    ///         // Close the file
-    ///         file.close().await?;
-    ///         Ok(())
-    ///     })
-    /// }
+    ///     // Close the file
+    ///     file.close().await?;
+    ///     Ok(())
+    /// })
+    ///# }
     /// ```
     pub async fn write_fixed_at(
         &self,
