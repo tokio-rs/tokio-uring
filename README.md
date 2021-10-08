@@ -9,7 +9,7 @@ provides new resource types ([`fs::File`]) that work with [`io-uring`].
 [Tokio]: https://github.com/tokio-rs/tokio
 [`fs::File`]: https://docs.rs/tokio-uring/latest/tokio_uring/fs/struct.File.html
 
-[API Docs](https://docs.rs/tokio-uring/latest/tokio-uring) |
+[API Docs](https://docs.rs/tokio-uring/latest/tokio_uring) |
 [Chat](https://discord.gg/tokio)
 
 # Getting started
