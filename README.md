@@ -39,7 +39,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     })
 }
 ```
-
+## Requirements
+`tokio-uring` requires a very recent linux kernel. (Not even all kernels with io_uring support will work)
+In particular `5.4.0` does not work (This is standard on Ubuntu 20.4). However `5.11.0` (the ubuntu hwe image) does work.
+ 
 ## Project status
 
 The `tokio-uring` project is still very young. Currently, we are focusing on
