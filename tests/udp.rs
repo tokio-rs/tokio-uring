@@ -25,7 +25,10 @@ fn smoke_test_udp() {
 
         let bytes_received = recv_res.unwrap();
 
-        assert_eq!(bytes_sent, bytes_received, "Error, num bytes sent and received differ!");
+        assert_eq!(
+            bytes_sent, bytes_received,
+            "Error, num bytes sent and received differ!"
+        );
 
         assert!(bytes_sent > 0, "Error, no bytes sent!");
 

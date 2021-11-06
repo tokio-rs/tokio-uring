@@ -26,10 +26,7 @@ impl<T: IoBufMut> Op<Recv<T>> {
                 _fd: fd.clone(),
                 buf: Some(buf),
             },
-            || {
-                opcode::Recv::new(types::Fd(fd.raw_fd()), ptr, len as _)
-                    .build()
-            },
+            || opcode::Recv::new(types::Fd(fd.raw_fd()), ptr, len as _).build(),
         )
     }
 

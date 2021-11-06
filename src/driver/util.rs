@@ -9,7 +9,6 @@ pub(super) fn cstr(p: &Path) -> io::Result<CString> {
     Ok(CString::new(p.as_os_str().as_bytes())?)
 }
 
-
 /// A type with the same memory layout as `libc::sockaddr`. Used in converting Rust level
 /// SocketAddr* types into their system representation. The benefit of this specific
 /// type over using `libc::sockaddr_storage` is that this type is exactly as large as it
@@ -42,12 +41,12 @@ pub(crate) fn socket_addr(addr: &SocketAddr) -> (SocketAddrCRepr, libc::socklen_
                 sin_addr,
                 sin_zero: [0; 8],
                 #[cfg(any(
-                target_os = "dragonfly",
-                target_os = "freebsd",
-                target_os = "ios",
-                target_os = "macos",
-                target_os = "netbsd",
-                target_os = "openbsd"
+                    target_os = "dragonfly",
+                    target_os = "freebsd",
+                    target_os = "ios",
+                    target_os = "macos",
+                    target_os = "netbsd",
+                    target_os = "openbsd"
                 ))]
                 sin_len: 0,
             };
@@ -66,12 +65,12 @@ pub(crate) fn socket_addr(addr: &SocketAddr) -> (SocketAddrCRepr, libc::socklen_
                 sin6_flowinfo: addr.flowinfo(),
                 sin6_scope_id: addr.scope_id(),
                 #[cfg(any(
-                target_os = "dragonfly",
-                target_os = "freebsd",
-                target_os = "ios",
-                target_os = "macos",
-                target_os = "netbsd",
-                target_os = "openbsd"
+                    target_os = "dragonfly",
+                    target_os = "freebsd",
+                    target_os = "ios",
+                    target_os = "macos",
+                    target_os = "netbsd",
+                    target_os = "openbsd"
                 ))]
                 sin6_len: 0,
                 #[cfg(any(target_os = "solaris", target_os = "illumos"))]

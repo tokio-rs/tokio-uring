@@ -2,8 +2,8 @@ use std::io;
 use std::task::{Context, Poll};
 
 use crate::buf::IoBuf;
-use crate::BufResult;
 use crate::driver::{Op, SharedFd};
+use crate::BufResult;
 
 pub(crate) struct Send<T> {
     /// Holds a strong ref to the FD, preventing the file from being closed
@@ -26,10 +26,7 @@ impl<T: IoBuf> Op<Send<T>> {
                 _fd: fd.clone(),
                 buf,
             },
-            || {
-                opcode::Send::new(types::Fd(fd.raw_fd()), ptr, len as _)
-                    .build()
-            },
+            || opcode::Send::new(types::Fd(fd.raw_fd()), ptr, len as _).build(),
         )
     }
 

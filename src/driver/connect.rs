@@ -2,8 +2,8 @@ use std::io;
 use std::net::SocketAddr;
 use std::pin::Pin;
 
-use crate::driver::{Op, SharedFd};
 use crate::driver::util::{socket_addr, SocketAddrCRepr};
+use crate::driver::{Op, SharedFd};
 
 pub(crate) struct Connect {
     _fd: SharedFd,
@@ -24,7 +24,7 @@ impl Op<Connect> {
             _fd: fd.clone(),
             _addr: boxed,
         };
-        
+
         let state_fn = || opcode::Connect::new(types::Fd(fd.raw_fd()), sock_ptr, len).build();
 
         Op::submit_with(connect, state_fn)
