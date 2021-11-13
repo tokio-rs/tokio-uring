@@ -5,6 +5,8 @@ use std::path::Path;
 
 /// Removes an empty directory.
 ///
+/// # Examples
+///
 /// ```no_run
 /// use tokio_uring::fs::remove_dir;
 ///
