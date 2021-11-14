@@ -1,5 +1,8 @@
 //! Filesystem manipulation operations.
 
+mod directory;
+pub use directory::remove_dir;
+
 mod file;
 pub use file::File;
 
