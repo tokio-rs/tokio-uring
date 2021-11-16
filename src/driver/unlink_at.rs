@@ -15,6 +15,11 @@ impl Op<Unlink> {
         Self::unlink(path, libc::AT_REMOVEDIR)
     }
 
+    /// Submit a request to unlink a file with provided flags.
+    pub(crate) fn unlink_file(path: &Path) -> io::Result<Op<Unlink>> {
+        Self::unlink(path, 0)
+    }
+
     /// Submit a request to unlink a specifed path with provided flags.
     pub(crate) fn unlink(path: &Path, flags: i32) -> io::Result<Op<Unlink>> {
         use io_uring::{opcode, types};
