@@ -338,6 +338,8 @@ impl AsRawFd for File {
 
 impl fmt::Debug for File {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "File {{ fd: {fd} }}", fd = self.fd.raw_fd())
+        f.debug_struct("File")
+            .field("fd", &self.fd.raw_fd())
+            .finish()
     }
 }
