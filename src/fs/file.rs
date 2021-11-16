@@ -343,3 +343,7 @@ impl fmt::Debug for File {
             .finish()
     }
 }
+
+pub async fn remove_file<P: AsRef<Path>>(path: P) -> io::Result<()> {
+    Op::unlink_file(path.as_ref())?.await.result.map(|_| ())
+}
