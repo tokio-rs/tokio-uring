@@ -2,6 +2,7 @@ use crate::buf::{IoBuf, IoBufMut};
 use crate::driver::{Op, SharedFd};
 use crate::fs::OpenOptions;
 
+use std::fmt;
 use std::io;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::path::Path;
@@ -332,5 +333,11 @@ impl File {
 impl AsRawFd for File {
     fn as_raw_fd(&self) -> RawFd {
         self.fd.raw_fd()
+    }
+}
+
+impl fmt::Debug for File {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "File {{ fd: {fd} }}", fd = self.fd.raw_fd())
     }
 }
