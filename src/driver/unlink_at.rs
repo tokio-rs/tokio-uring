@@ -10,7 +10,7 @@ pub(crate) struct Unlink {
 }
 
 impl Op<Unlink> {
-    /// Submit a request to unlink a file with provided flags.
+    /// Submit a request to unlink a directory with provided flags.
     pub(crate) fn unlink_dir(path: &Path) -> io::Result<Op<Unlink>> {
         Self::unlink(path, libc::AT_REMOVEDIR)
     }
