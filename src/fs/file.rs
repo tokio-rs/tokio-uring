@@ -344,6 +344,19 @@ impl fmt::Debug for File {
     }
 }
 
+/// Removes a File
+///
+/// # Examples
+///
+/// ```no_run
+/// use tokio_uring::fs::remove_dir;
+///
+/// fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     tokio_uring::start(async {
+///         remove_file("/some/file.txt")?;
+///     });
+/// }
+/// ```
 pub async fn remove_file<P: AsRef<Path>>(path: P) -> io::Result<()> {
     Op::unlink_file(path.as_ref())?.await.result.map(|_| ())
 }
