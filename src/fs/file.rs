@@ -2,6 +2,7 @@ use crate::buf::{IoBuf, IoBufMut};
 use crate::driver::{Op, SharedFd};
 use crate::fs::OpenOptions;
 
+use std::fmt;
 use std::io;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::path::Path;
@@ -333,4 +334,29 @@ impl AsRawFd for File {
     fn as_raw_fd(&self) -> RawFd {
         self.fd.raw_fd()
     }
+}
+
+impl fmt::Debug for File {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("File")
+            .field("fd", &self.fd.raw_fd())
+            .finish()
+    }
+}
+
+/// Removes a File
+///
+/// # Examples
+///
+/// ```no_run
+/// use tokio_uring::fs::remove_dir;
+///
+/// fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     tokio_uring::start(async {
+///         remove_file("/some/file.txt")?;
+///     });
+/// }
+/// ```
+pub async fn remove_file<P: AsRef<Path>>(path: P) -> io::Result<()> {
+    Op::unlink_file(path.as_ref())?.await.result.map(|_| ())
 }
