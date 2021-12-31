@@ -1,6 +1,7 @@
 //! Filesystem manipulation operations.
 
 mod directory;
+pub use directory::create_dir;
 pub use directory::remove_dir;
 
 mod file;

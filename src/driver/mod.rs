@@ -13,6 +13,8 @@ mod read;
 mod shared_fd;
 pub(crate) use shared_fd::SharedFd;
 
+mod mkdir_at;
+
 mod unlink_at;
 
 mod util;
