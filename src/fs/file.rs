@@ -349,12 +349,14 @@ impl fmt::Debug for File {
 /// # Examples
 ///
 /// ```no_run
-/// use tokio_uring::fs::remove_dir;
+/// use tokio_uring::fs::remove_file;
 ///
 /// fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///     tokio_uring::start(async {
-///         remove_file("/some/file.txt")?;
-///     });
+///         remove_file("/some/file.txt").await?;
+///         Ok::<(), std::io::Error>(())
+///     })?;
+///     Ok(())
 /// }
 /// ```
 pub async fn remove_file<P: AsRef<Path>>(path: P) -> io::Result<()> {

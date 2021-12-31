@@ -12,8 +12,10 @@ use std::path::Path;
 ///
 /// fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///     tokio_uring::start(async {
-///         remove_dir("/some/dir")?;
-///     });
+///         remove_dir("/some/dir").await?;
+///         Ok::<(), std::io::Error>(())
+///     })?;
+///     Ok(())
 /// }
 /// ```
 pub async fn remove_dir<P: AsRef<Path>>(path: P) -> io::Result<()> {

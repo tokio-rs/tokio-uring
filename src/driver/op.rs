@@ -25,6 +25,10 @@ pub(crate) struct Op<T: 'static> {
 pub(crate) struct Completion<T> {
     pub(crate) data: T,
     pub(crate) result: io::Result<u32>,
+    #[cfg_attr(
+        not(test),  // the field is currently only read in tests
+        allow(dead_code)
+    )]
     pub(crate) flags: u32,
 }
 
