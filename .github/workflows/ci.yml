@@ -21,6 +21,14 @@ jobs:
         run: rustup update stable
       - run: cargo check
 
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install Rust
+        run: rustup update stable
+      - run: cargo test
+
   fmt:
     runs-on: ubuntu-latest
     steps:
