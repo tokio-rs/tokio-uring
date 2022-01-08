@@ -4,8 +4,6 @@
 fs: fix error handling related to changes in rustc ([#69])
 op: fix 'already borrowed' panic ([#39])
 
-### Changed
-
 ### Added
 fs: add fs::remove_file ([#66])
 fs: implement Debug for File ([#65])
