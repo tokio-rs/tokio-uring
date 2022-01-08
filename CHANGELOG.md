@@ -1,4 +1,4 @@
-# 0.2.0 (January 8th, 2021)
+# 0.2.0 (January 9th, 2021)
 
 ### Fixed
 fs: fix error handling related to changes in rustc ([#69])
