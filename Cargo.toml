@@ -1,11 +1,11 @@
 [package]
 name = "tokio-uring"
-version = "0.1.0"
-authors = ["Carl Lerche <me@carllerche.com>"]
+version = "0.2.0"
+authors = ["Tokio Contributors <team@tokio.rs>"]
 edition = "2018"
 readme = "README.md"
 license = "MIT"
-documentation = "https://docs.rs/tokio-uring/0.1.0/tokio-uring"
+documentation = "https://docs.rs/tokio-uring/0.2.0/tokio-uring"
 repository = "https://github.com/tokio-rs/tokio-uring"
 homepage = "https://tokio.rs"
 description = """
