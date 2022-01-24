@@ -1,8 +1,9 @@
+use std::{io, net::SocketAddr};
+
 use crate::{
     buf::{IoBuf, IoBufMut},
     driver::Socket,
 };
-use std::{io, net::SocketAddr};
 
 /// A TCP stream between a local and a remote socket.
 ///
@@ -14,11 +15,14 @@ use std::{io, net::SocketAddr};
 ///
 /// ```no_run
 /// use tokio_uring::net::TcpStream;
+/// use std::net::ToSocketAddrs;
 ///
 /// fn main() {
 ///     tokio_uring::start(async {
 ///         // Connect to a peer
-///         let mut stream = TcpStream::connect("127.0.0.1:8080").await?;
+///         let mut stream = TcpStream::connect(
+///             "127.0.0.1:8080".to_socket_addrs().unwrap().next().unwrap()
+///         ).await?;
 ///
 ///         // Write some data.
 ///         let (result, _) = stream.write(b"hello world!").await;
@@ -48,11 +52,13 @@ impl TcpStream {
     ///
     /// ```no_run
     /// use tokio_uring::net::TcpStream;
-    ///
+    /// use std::net::ToSocketAddrs;
     /// fn main() {
     ///     tokio_uring::start(async {
     ///         // Connect to a peer
-    ///         let mut stream = TcpStream::connect("127.0.0.1:8080").await?;
+    ///         let mut stream = TcpStream::connect(
+    ///             "127.0.0.1:8080".to_socket_addrs().unwrap().next().unwrap()
+    ///         ).await?;
     ///
     ///         // Write some data.
     ///         let (result, _) = stream.write(b"hello world!").await;
