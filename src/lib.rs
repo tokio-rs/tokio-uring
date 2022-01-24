@@ -76,7 +76,6 @@ mod runtime;
 
 pub mod buf;
 pub mod fs;
-pub mod io;
 pub mod net;
 
 pub use runtime::spawn;

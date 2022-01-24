@@ -1,7 +1,6 @@
 use crate::{
     buf::{IoBuf, IoBufMut},
     driver::Socket,
-    io::{AsyncRead, AsyncWrite},
 };
 use std::{io, net::SocketAddr};
 
@@ -157,18 +156,12 @@ impl UdpSocket {
     pub async fn recv_from<T: IoBufMut>(&self, buf: T) -> crate::BufResult<(usize, SocketAddr), T> {
         self.inner.recv_from(buf).await
     }
-}
 
-#[async_trait::async_trait(?Send)]
-impl AsyncRead for UdpSocket {
-    async fn read<T: IoBufMut>(&self, buf: T) -> crate::BufResult<usize, T> {
+    pub async fn read<T: IoBufMut>(&self, buf: T) -> crate::BufResult<usize, T> {
         self.inner.read(buf).await
     }
-}
 
-#[async_trait::async_trait(?Send)]
-impl AsyncWrite for UdpSocket {
-    async fn write<T: IoBuf>(&self, buf: T) -> crate::BufResult<usize, T> {
+    pub async fn write<T: IoBuf>(&self, buf: T) -> crate::BufResult<usize, T> {
         self.inner.write(buf).await
     }
 }

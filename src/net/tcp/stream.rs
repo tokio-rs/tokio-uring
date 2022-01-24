@@ -1,7 +1,6 @@
 use crate::{
     buf::{IoBuf, IoBufMut},
     driver::Socket,
-    io::{AsyncRead, AsyncWrite},
 };
 use std::{io, net::SocketAddr};
 
@@ -71,18 +70,12 @@ impl TcpStream {
         let tcp_stream = TcpStream { inner: socket };
         Ok(tcp_stream)
     }
-}
 
-#[async_trait::async_trait(?Send)]
-impl AsyncRead for TcpStream {
-    async fn read<T: IoBufMut>(&self, buf: T) -> crate::BufResult<usize, T> {
+    pub async fn read<T: IoBufMut>(&self, buf: T) -> crate::BufResult<usize, T> {
         self.inner.read(buf).await
     }
-}
 
-#[async_trait::async_trait(?Send)]
-impl AsyncWrite for TcpStream {
-    async fn write<T: IoBuf>(&self, buf: T) -> crate::BufResult<usize, T> {
+    pub async fn write<T: IoBuf>(&self, buf: T) -> crate::BufResult<usize, T> {
         self.inner.write(buf).await
     }
 }
