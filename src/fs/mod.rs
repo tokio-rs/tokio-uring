@@ -9,3 +9,6 @@ pub use file::File;
 
 mod open_options;
 pub use open_options::OpenOptions;
+
+mod dma_file;
+pub use dma_file::{DmaBuffer, DmaFile};

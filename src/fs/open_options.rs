@@ -1,8 +1,11 @@
+use crate::driver::util::asyncify;
 use crate::driver::{Op, SharedFd};
 use crate::fs::File;
 
 use std::io;
 use std::path::Path;
+
+use super::DmaFile;
 
 /// Options and flags which can be used to configure how a file is opened.
 ///
@@ -330,13 +333,32 @@ impl OpenOptions {
     /// [`Other`]: io::ErrorKind::Other
     /// [`PermissionDenied`]: io::ErrorKind::PermissionDenied
     pub async fn open(&self, path: impl AsRef<Path>) -> io::Result<File> {
-        let op = Op::open(path.as_ref(), self)?;
+        let op = Op::open(path.as_ref(), self, false)?;
 
         // Await the completion of the event
         let completion = op.await;
 
         // The file is open
         Ok(File::from_shared_fd(SharedFd::new(completion.result? as _)))
+    }
+
+    /// Similar to `Open`, but opens the file with the `O_DIRECT` flag, and return a `DmaFile`
+    /// instead of a regular `File`.
+    pub async fn open_dma(&self, path: impl AsRef<Path>) -> io::Result<DmaFile> {
+        let op = Op::open(path.as_ref(), self, true)?;
+
+        // Await the completion of the event
+        let completion = op.await;
+
+        let fd = SharedFd::new(completion.result? as _);
+        assert!(path.as_ref().canonicalize().unwrap().exists());
+        // Get the alignment requirements for this file.
+
+        let statfs = fstatfs(&fd).await?;
+        // TODO: the actual aligment may differ from the optimal io size? we should probably get
+        // this information from the the device the file lives on.
+        let alignment = statfs.f_bsize.max(512) as usize;
+        Ok(DmaFile { fd, alignment })
     }
 
     pub(crate) fn access_mode(&self) -> io::Result<libc::c_int> {
@@ -346,7 +368,7 @@ impl OpenOptions {
             (true, true, false) => Ok(libc::O_RDWR),
             (false, _, true) => Ok(libc::O_WRONLY | libc::O_APPEND),
             (true, _, true) => Ok(libc::O_RDWR | libc::O_APPEND),
-            (false, false, false) => Err(io::Error::from_raw_os_error(libc::EINVAL)),
+            (false, false, false) => return Err(io::Error::from_raw_os_error(libc::EINVAL)),
         }
     }
 
@@ -373,4 +395,19 @@ impl OpenOptions {
             (_, _, true) => libc::O_CREAT | libc::O_EXCL,
         })
     }
+}
+
+pub(crate) async fn fstatfs(fd: &SharedFd) -> io::Result<libc::statfs> {
+    let fd = fd.raw_fd();
+    asyncify(move || {
+        let mut statfs = std::mem::MaybeUninit::<libc::statfs>::uninit();
+
+        let ret = unsafe { libc::fstatfs(fd, statfs.as_mut_ptr()) };
+        if ret == -1 {
+            return Err(io::Error::last_os_error());
+        }
+
+        Ok(unsafe { statfs.assume_init() })
+    })
+    .await
 }

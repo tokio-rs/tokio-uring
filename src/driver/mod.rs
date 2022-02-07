@@ -15,7 +15,7 @@ pub(crate) use shared_fd::SharedFd;
 
 mod unlink_at;
 
-mod util;
+pub(crate) mod util;
 
 mod write;
 

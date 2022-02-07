@@ -12,7 +12,7 @@ pub(crate) struct Open {
 
 impl Op<Open> {
     /// Submit a request to open a file.
-    pub(crate) fn open(path: &Path, options: &OpenOptions) -> io::Result<Op<Open>> {
+    pub(crate) fn open(path: &Path, options: &OpenOptions, direct: bool) -> io::Result<Op<Open>> {
         use io_uring::{opcode, types};
 
         let path = driver::util::cstr(path)?;
@@ -21,7 +21,11 @@ impl Op<Open> {
         // completes.
         let p_ref = path.as_c_str().as_ptr();
 
-        let flags = libc::O_CLOEXEC | options.access_mode()? | options.creation_mode()?;
+        let mut flags = libc::O_CLOEXEC | options.access_mode()? | options.creation_mode()?;
+
+        if direct {
+            flags |= libc::O_DIRECT;
+        }
 
         Op::submit_with(Open { _path: path }, || {
             opcode::OpenAt::new(types::Fd(libc::AT_FDCWD), p_ref)
