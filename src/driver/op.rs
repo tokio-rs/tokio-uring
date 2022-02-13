@@ -61,8 +61,8 @@ impl<T> Op<T> {
     /// `state` is stored during the operation tracking any state submitted to
     /// the kernel.
     pub(super) fn submit_with<F>(data: T, f: F) -> io::Result<Op<T>>
-        where
-            F: FnOnce(&mut T) -> squeue::Entry,
+    where
+        F: FnOnce(&mut T) -> squeue::Entry,
     {
         driver::CURRENT.with(|inner_rc| {
             let mut inner_ref = inner_rc.borrow_mut();
@@ -100,8 +100,8 @@ impl<T> Op<T> {
 
     /// Try submitting an operation to uring
     pub(super) fn try_submit_with<F>(data: T, f: F) -> io::Result<Op<T>>
-        where
-            F: FnOnce(&mut T) -> squeue::Entry,
+    where
+        F: FnOnce(&mut T) -> squeue::Entry,
     {
         if driver::CURRENT.is_set() {
             Op::submit_with(data, f)
@@ -112,8 +112,8 @@ impl<T> Op<T> {
 }
 
 impl<T> Future for Op<T>
-    where
-        T: Unpin + 'static,
+where
+    T: Unpin + 'static,
 {
     type Output = Completion<T>;
 
@@ -251,7 +251,11 @@ mod test {
         complete(&op, Ok(1));
 
         assert!(op.is_woken());
-        let Completion { result, flags: flags, .. } = assert_ready!(op.poll());
+        let Completion {
+            result,
+            flags: flags,
+            ..
+        } = assert_ready!(op.poll());
         assert_eq!(1, result.unwrap());
         assert_eq!(0, flags);
 
@@ -271,7 +275,11 @@ mod test {
         complete(&op, Ok(1));
 
         assert!(op.is_woken());
-        let Completion { result, flags: flags, .. } = assert_ready!(op.poll());
+        let Completion {
+            result,
+            flags: flags,
+            ..
+        } = assert_ready!(op.poll());
         assert_eq!(1, result.unwrap());
         assert_eq!(0, flags);
 
@@ -286,7 +294,11 @@ mod test {
         assert_eq!(1, driver.num_operations());
         assert_eq!(2, Rc::strong_count(&data));
 
-        let Completion { result, flags: flags, .. } = assert_ready!(op.poll());
+        let Completion {
+            result,
+            flags: flags,
+            ..
+        } = assert_ready!(op.poll());
         assert_eq!(1, result.unwrap());
         assert_eq!(0, flags);
 
