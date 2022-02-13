@@ -142,13 +142,12 @@ async fn poll_once(future: impl std::future::Future) {
 
 fn assert_invalid_fd(fd: RawFd) {
     use std::fs::File;
-    use std::io;
 
     let mut f = unsafe { File::from_raw_fd(fd) };
     let mut buf = vec![];
 
     match f.read_to_end(&mut buf) {
-        Err(ref e) if e.kind() == io::ErrorKind::Other => {}
+        Err(ref e) if e.raw_os_error() == Some(libc::EBADF) => {}
         res => panic!("{:?}", res),
     }
 }
