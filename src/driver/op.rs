@@ -21,7 +21,6 @@ pub(crate) struct Op<T: 'static> {
 }
 
 /// Operation completion. Returns stored state with the result of the operation.
-#[allow(dead_code)]
 #[derive(Debug)]
 pub(crate) struct Completion<T> {
     pub(crate) data: T,
