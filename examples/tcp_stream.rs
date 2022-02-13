@@ -1,5 +1,5 @@
 use std::{env, net::SocketAddr};
-use tokio_uring::io::{AsyncRead, AsyncWrite};
+
 use tokio_uring::net::TcpStream;
 
 fn main() {

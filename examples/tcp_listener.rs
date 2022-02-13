@@ -1,8 +1,6 @@
 use std::{env, net::SocketAddr};
-use tokio_uring::{
-    io::{AsyncRead, AsyncWrite},
-    net::TcpListener,
-};
+
+use tokio_uring::net::TcpListener;
 
 fn main() {
     let args: Vec<_> = env::args().collect();

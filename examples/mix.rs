@@ -2,13 +2,9 @@
 //!
 //! Serve a single file over TCP
 
-use tokio_uring::{
-    fs::File,
-    io::{AsyncReadAt, AsyncWrite},
-    net::TcpListener,
-};
-
 use std::env;
+
+use tokio_uring::{fs::File, net::TcpListener};
 
 fn main() {
     // The file to serve over TCP is passed as a CLI argument
