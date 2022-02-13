@@ -10,12 +10,9 @@ use std::{io, net::SocketAddr};
 /// # Examples
 ///
 /// ```no_run
-/// use tokio_uring::{
-///     io::{AsyncRead, AsyncWrite},
-///     net::TcpListener,
-/// };
+/// use tokio_uring::net::TcpListener;
 ///
-/// async fn process_socket<T>(socket: T) {
+/// async fn process_stream<T>(stream: T) {
 ///     // do work with socket here
 /// }
 ///
@@ -24,7 +21,7 @@ use std::{io, net::SocketAddr};
 ///
 ///     tokio_uring::start(async move {
 ///         let (stream, _) = listener.accept().await.unwrap();
-///         process_socket(socket).await;
+///         process_stream(stream).await;
 ///     });
 /// }
 /// ```
@@ -44,12 +41,9 @@ impl TcpListener {
     /// # Examples
     ///
     /// ```no_run
-    /// use tokio_uring::{
-    ///     io::{AsyncRead, AsyncWrite},
-    ///     net::TcpListener,
-    /// };
+    /// use tokio_uring::net::TcpListener;
     ///
-    /// async fn process_socket<T>(socket: T) {
+    /// async fn process_stream<T>(stream: T) {
     ///     // do work with socket here
     /// }
     ///
@@ -58,7 +52,7 @@ impl TcpListener {
     ///
     ///     tokio_uring::start(async move {
     ///         let (stream, _) = listener.accept().await.unwrap();
-    ///         process_socket(socket).await;
+    ///         process_stream(stream).await;
     ///     });
     /// }
     /// ```
@@ -79,10 +73,7 @@ impl TcpListener {
     /// # Examples
     ///
     /// ```no_run
-    /// use tokio_uring::{
-    ///     io::{AsyncRead, AsyncWrite},
-    ///     net::TcpListener,
-    /// };
+    /// use tokio_uring::net::TcpListener;
     ///
     /// async fn process_socket<T>(socket: T) {
     ///     // do work with socket here

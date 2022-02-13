@@ -1,8 +1,9 @@
+use std::{io, net::SocketAddr};
+
 use crate::{
     buf::{IoBuf, IoBufMut},
     driver::Socket,
 };
-use std::{io, net::SocketAddr};
 
 /// A UDP socket.
 ///
@@ -18,18 +19,20 @@ use std::{io, net::SocketAddr};
 ///
 /// ```no_run
 /// use tokio_uring::net::UdpSocket;
+/// use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 ///
-/// fn main() {
+/// fn main() -> std::io::Result<()> {
 ///     tokio_uring::start(async {
 ///         // Connect to a peer
-///         let mut stream = UdpSocket::connect("127.0.0.1:8080").await?;
+///         let socket = UdpSocket::bind(
+///             SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0))).await?;
 ///
 ///         // Write some data.
-///         let (result, _) = stream.write(b"hello world!").await;
+///         let (result, _) = socket.write(b"hello world!".as_slice()).await;
 ///         result.unwrap();
 ///
 ///         Ok(())
-///     });
+///     })
 /// }
 /// ```
 pub struct UdpSocket {
@@ -43,20 +46,23 @@ impl UdpSocket {
     ///
     /// ```no_run
     /// use tokio_uring::net::UdpSocket;
+    /// use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
     ///
-    /// fn main() {
+    /// fn main() -> std::io::Result<()> {
     ///     tokio_uring::start(async {
     ///         // Connect to a peer
-    ///         let socket = UdpSocket::bind("127.0.0.1:0").await?;
+    ///         let socket = UdpSocket::bind(
+    ///             SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0))).await?;
     ///
     ///         // Write some data.
-    ///         let (result, _) = stream.send_to(b"hello world!").await;
+    ///         let (result, _) = socket.send_to(b"hello world!".as_slice(),
+    ///              SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 53))).await;
     ///         let written = result.unwrap();
     ///
     ///         println!("written: {}", written);
     ///
     ///         Ok(())
-    ///     });
+    ///     })
     /// }
     /// ```
     pub async fn bind(socket_addr: SocketAddr) -> io::Result<UdpSocket> {
@@ -77,7 +83,7 @@ impl UdpSocket {
     /// ```no_run
     /// use tokio_uring::net::UdpSocket;
     ///
-    /// fn main() {
+    /// fn main() -> std::io::Result<()> {
     ///     tokio_uring::start(async {
     ///         // Connect to a peer
     ///         let socket = UdpSocket::bind("127.0.0.1:0".parse().unwrap()).await?;
@@ -85,13 +91,13 @@ impl UdpSocket {
     ///         socket.connect("127.0.0.1:8080".parse().unwrap()).await.unwrap();
     ///
     ///         // Send some data to 127.0.0.1:8080.
-    ///         let (result, _) = stream.write(b"hello world!").await;
+    ///         let (result, _) = socket.write(b"hello world!".as_slice()).await;
     ///         let written = result.unwrap();
     ///
     ///         println!("sent: {}", written);
     ///
     ///         Ok(())
-    ///     });
+    ///     })
     /// }
     /// ```
     pub async fn connect(&self, socket_addr: SocketAddr) -> io::Result<()> {
@@ -106,20 +112,20 @@ impl UdpSocket {
     /// ```no_run
     /// use tokio_uring::net::UdpSocket;
     ///
-    /// fn main() {
+    /// fn main() -> std::io::Result<()> {
     ///     tokio_uring::start(async {
     ///         // Connect to a peer
     ///         let socket = UdpSocket::bind("127.0.0.1:0".parse().unwrap()).await?;
     ///
     ///         // Send some data to 127.0.0.1:8080.
-    ///         let (result, _) = stream.send(b"hello world!",
+    ///         let (result, _) = socket.send_to(b"hello world!".as_slice(),
     ///                                       "127.0.0.1:8080".parse().unwrap()).await;
     ///         let sent = result.unwrap();
     ///
     ///         println!("sent: {}", sent);
     ///
     ///         Ok(())
-    ///     });
+    ///     })
     /// }
     /// ```
     pub async fn send_to<T: IoBuf>(
@@ -138,19 +144,19 @@ impl UdpSocket {
     /// ```no_run
     /// use tokio_uring::net::UdpSocket;
     ///
-    /// fn main() {
+    /// fn main() -> std::io::Result<()> {
     ///     tokio_uring::start(async {
     ///         // Connect to a peer
     ///         let socket = UdpSocket::bind("127.0.0.1:0".parse().unwrap()).await?;
     ///
     ///         // Send some data to 127.0.0.1:8080.
-    ///         let (result, _) = stream.recv_from(b"hello world!").await;
+    ///         let (result, _) = socket.recv_from(vec![0; 64]).await;
     ///         let (received, addr) = result.unwrap();
     ///
     ///         println!("received from {}: {}", addr, received);
     ///
     ///         Ok(())
-    ///     });
+    ///     })
     /// }
     /// ```
     pub async fn recv_from<T: IoBufMut>(&self, buf: T) -> crate::BufResult<(usize, SocketAddr), T> {
