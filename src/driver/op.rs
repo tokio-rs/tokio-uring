@@ -1,12 +1,13 @@
-use crate::driver;
-
-use io_uring::squeue;
 use std::cell::RefCell;
 use std::future::Future;
 use std::io;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::task::{Context, Poll, Waker};
+
+use io_uring::squeue;
+
+use crate::driver;
 
 /// In-flight operation
 pub(crate) struct Op<T: 'static> {
@@ -25,7 +26,9 @@ pub(crate) struct Op<T: 'static> {
 pub(crate) struct Completion<T> {
     pub(crate) data: T,
     pub(crate) result: io::Result<u32>,
-    pub(crate) _flags: u32,
+    // the field is currently only read in tests
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) flags: u32,
 }
 
 pub(crate) enum Lifecycle {
@@ -58,8 +61,8 @@ impl<T> Op<T> {
     /// `state` is stored during the operation tracking any state submitted to
     /// the kernel.
     pub(super) fn submit_with<F>(data: T, f: F) -> io::Result<Op<T>>
-    where
-        F: FnOnce(&mut T) -> squeue::Entry,
+        where
+            F: FnOnce(&mut T) -> squeue::Entry,
     {
         driver::CURRENT.with(|inner_rc| {
             let mut inner_ref = inner_rc.borrow_mut();
@@ -97,8 +100,8 @@ impl<T> Op<T> {
 
     /// Try submitting an operation to uring
     pub(super) fn try_submit_with<F>(data: T, f: F) -> io::Result<Op<T>>
-    where
-        F: FnOnce(&mut T) -> squeue::Entry,
+        where
+            F: FnOnce(&mut T) -> squeue::Entry,
     {
         if driver::CURRENT.is_set() {
             Op::submit_with(data, f)
@@ -109,8 +112,8 @@ impl<T> Op<T> {
 }
 
 impl<T> Future for Op<T>
-where
-    T: Unpin + 'static,
+    where
+        T: Unpin + 'static,
 {
     type Output = Completion<T>;
 
@@ -142,7 +145,7 @@ where
                 Poll::Ready(Completion {
                     data: me.data.take().expect("unexpected operation state"),
                     result,
-                    _flags: flags,
+                    flags: flags,
                 })
             }
         }
@@ -191,9 +194,11 @@ impl Lifecycle {
 
 #[cfg(test)]
 mod test {
-    use super::*;
     use std::rc::Rc;
+
     use tokio_test::{assert_pending, assert_ready, task};
+
+    use super::*;
 
     #[test]
     fn op_stays_in_slab_on_drop() {
@@ -220,7 +225,7 @@ mod test {
         assert!(op.is_woken());
         let Completion {
             result,
-            _flags: flags,
+            flags: flags,
             data: d,
         } = assert_ready!(op.poll());
         assert_eq!(2, Rc::strong_count(&data));
@@ -246,7 +251,7 @@ mod test {
         complete(&op, Ok(1));
 
         assert!(op.is_woken());
-        let Completion { result, _flags: flags, .. } = assert_ready!(op.poll());
+        let Completion { result, flags: flags, .. } = assert_ready!(op.poll());
         assert_eq!(1, result.unwrap());
         assert_eq!(0, flags);
 
@@ -266,7 +271,7 @@ mod test {
         complete(&op, Ok(1));
 
         assert!(op.is_woken());
-        let Completion { result, _flags: flags, .. } = assert_ready!(op.poll());
+        let Completion { result, flags: flags, .. } = assert_ready!(op.poll());
         assert_eq!(1, result.unwrap());
         assert_eq!(0, flags);
 
@@ -281,7 +286,7 @@ mod test {
         assert_eq!(1, driver.num_operations());
         assert_eq!(2, Rc::strong_count(&data));
 
-        let Completion { result, _flags: flags, .. } = assert_ready!(op.poll());
+        let Completion { result, flags: flags, .. } = assert_ready!(op.poll());
         assert_eq!(1, result.unwrap());
         assert_eq!(0, flags);
 
