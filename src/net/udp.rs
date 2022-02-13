@@ -157,10 +157,14 @@ impl UdpSocket {
         self.inner.recv_from(buf).await
     }
 
+    /// Read a packet of data from the socket into the buffer, returning the original buffer and
+    /// quantity of data read.
     pub async fn read<T: IoBufMut>(&self, buf: T) -> crate::BufResult<usize, T> {
         self.inner.read(buf).await
     }
 
+    /// Write some data to the socket from the buffer, returning the original buffer and
+    /// quantity of data written.
     pub async fn write<T: IoBuf>(&self, buf: T) -> crate::BufResult<usize, T> {
         self.inner.write(buf).await
     }

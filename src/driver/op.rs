@@ -25,7 +25,7 @@ pub(crate) struct Op<T: 'static> {
 pub(crate) struct Completion<T> {
     pub(crate) data: T,
     pub(crate) result: io::Result<u32>,
-    pub(crate) flags: u32,
+    pub(crate) _flags: u32,
 }
 
 pub(crate) enum Lifecycle {
@@ -142,7 +142,7 @@ where
                 Poll::Ready(Completion {
                     data: me.data.take().expect("unexpected operation state"),
                     result,
-                    flags,
+                    _flags: flags,
                 })
             }
         }
@@ -220,7 +220,7 @@ mod test {
         assert!(op.is_woken());
         let Completion {
             result,
-            flags,
+            _flags: flags,
             data: d,
         } = assert_ready!(op.poll());
         assert_eq!(2, Rc::strong_count(&data));
@@ -246,7 +246,7 @@ mod test {
         complete(&op, Ok(1));
 
         assert!(op.is_woken());
-        let Completion { result, flags, .. } = assert_ready!(op.poll());
+        let Completion { result, _flags: flags, .. } = assert_ready!(op.poll());
         assert_eq!(1, result.unwrap());
         assert_eq!(0, flags);
 
@@ -266,7 +266,7 @@ mod test {
         complete(&op, Ok(1));
 
         assert!(op.is_woken());
-        let Completion { result, flags, .. } = assert_ready!(op.poll());
+        let Completion { result, _flags: flags, .. } = assert_ready!(op.poll());
         assert_eq!(1, result.unwrap());
         assert_eq!(0, flags);
 
@@ -281,7 +281,7 @@ mod test {
         assert_eq!(1, driver.num_operations());
         assert_eq!(2, Rc::strong_count(&data));
 
-        let Completion { result, flags, .. } = assert_ready!(op.poll());
+        let Completion { result, _flags: flags, .. } = assert_ready!(op.poll());
         assert_eq!(1, result.unwrap());
         assert_eq!(0, flags);
 
