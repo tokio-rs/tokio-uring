@@ -14,9 +14,9 @@ pub(crate) struct Open {
 
 impl Op<Open> {
     /// Submit a request to open a file.
-    pub(crate) fn open(path: impl AsRef<Path>, options: &OpenOptions) -> io::Result<Op<Open>> {
+    pub(crate) fn open(path: &Path, options: &OpenOptions) -> io::Result<Op<Open>> {
         use io_uring::{opcode, types};
-        let path = driver::util::cstr(path.as_ref())?;
+        let path = driver::util::cstr(path)?;
         let flags = libc::O_CLOEXEC | options.access_mode()? | options.creation_mode()?;
 
         Op::submit_with(Open { path, flags }, |open| {
