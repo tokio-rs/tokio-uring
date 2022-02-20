@@ -50,29 +50,6 @@ impl TcpStream {
     /// connection attempt (the last address) is returned.
     ///
     /// [`ToSocketAddrs`]: trait@tokio::net::ToSocketAddrs
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use tokio_uring::net::TcpStream;
-    /// use std::net::ToSocketAddrs;
-    /// fn main() -> std::io::Result<()> {
-    ///     tokio_uring::start(async {
-    ///         // Connect to a peer
-    ///         let mut stream = TcpStream::connect(
-    ///             "127.0.0.1:8080".to_socket_addrs().unwrap().next().unwrap()
-    ///         ).await?;
-    ///
-    ///         // Write some data.
-    ///         let (result, _) = stream.write(b"hello world!".as_slice()).await;
-    ///         let written = result.unwrap();
-    ///
-    ///         println!("written: {}", written);
-    ///
-    ///         Ok(())
-    ///     })
-    /// }
-    /// ```
     pub async fn connect(socket_addr: SocketAddr) -> io::Result<TcpStream> {
         let socket = Socket::new(socket_addr, libc::SOCK_STREAM)?;
         socket.connect(socket_addr).await?;
