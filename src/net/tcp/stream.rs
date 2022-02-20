@@ -8,8 +8,7 @@ use crate::{
 /// A TCP stream between a local and a remote socket.
 ///
 /// A TCP stream can either be created by connecting to an endpoint, via the
-/// [`connect`] method, or by [accepting] a connection from a [listener]. A
-/// TCP stream can also be created via the [`TcpSocket`] type.
+/// [`connect`] method, or by [`accepting`] a connection from a [`listener`].
 ///
 /// # Examples
 ///
@@ -32,6 +31,10 @@ use crate::{
 ///     })
 /// }
 /// ```
+///
+/// [`connect`]: TcpStream::connect
+/// [`accepting`]: crate::net::TcpListener::accept
+/// [`listener`]: crate::net::TcpListener
 pub struct TcpStream {
     pub(super) inner: Socket,
 }
