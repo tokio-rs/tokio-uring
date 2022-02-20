@@ -9,19 +9,25 @@ use std::{io, net::SocketAddr};
 ///
 /// # Examples
 ///
-/// ```no_run
+/// ```
 /// use tokio_uring::net::TcpListener;
-///
-/// async fn process_stream<T>(stream: T) {
-///     // do work with socket here
-/// }
+/// use tokio_uring::net::TcpStream;
 ///
 /// fn main() {
 ///     let listener = TcpListener::bind("127.0.0.1:2345".parse().unwrap()).unwrap();
 ///
 ///     tokio_uring::start(async move {
-///         let (stream, _) = listener.accept().await.unwrap();
-///         process_stream(stream).await;
+///         let tx_fut = TcpStream::connect("127.0.0.1:2345".parse().unwrap());
+///
+///         let rx_fut = listener.accept();
+///
+///         let (tx, (rx, _)) = tokio::try_join!(tx_fut, rx_fut).unwrap();
+///
+///         tx.write(b"test" as &'static [u8]).await.0.unwrap();
+///
+///         let (_, buf) = rx.read(vec![0; 4]).await;
+///
+///         assert_eq!(buf, b"test");
 ///     });
 /// }
 /// ```
@@ -37,25 +43,6 @@ impl TcpListener {
     /// Binding with a port number of 0 will request that the OS assigns a port
     /// to this listener. The port allocated can be queried via the `local_addr`
     /// method.
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use tokio_uring::net::TcpListener;
-    ///
-    /// async fn process_stream<T>(stream: T) {
-    ///     // do work with socket here
-    /// }
-    ///
-    /// fn main() {
-    ///     let listener = TcpListener::bind("127.0.0.1:2345".parse().unwrap()).unwrap();
-    ///
-    ///     tokio_uring::start(async move {
-    ///         let (stream, _) = listener.accept().await.unwrap();
-    ///         process_stream(stream).await;
-    ///     });
-    /// }
-    /// ```
     pub fn bind(socket_addr: SocketAddr) -> io::Result<TcpListener> {
         let socket = Socket::bind(socket_addr, libc::SOCK_STREAM)?;
         socket.listen(1024)?;
@@ -69,27 +56,6 @@ impl TcpListener {
     /// address will be returned.
     ///
     /// [`TcpStream`]: struct@crate::net::TcpStream
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use tokio_uring::net::TcpListener;
-    ///
-    /// async fn process_socket<T>(socket: T) {
-    ///     // do work with socket here
-    /// }
-    ///
-    /// fn main() {
-    ///     let listener = TcpListener::bind("127.0.0.1:2345".parse().unwrap()).unwrap();
-    ///
-    ///     tokio_uring::start(async move {
-    ///         match listener.accept().await {
-    ///             Ok((_socket, addr)) => println!("new client: {:?}", addr),
-    ///             Err(e) => println!("couldn't get client: {:?}", e),
-    ///         }
-    ///     });
-    /// }
-    /// ```
     pub async fn accept(&self) -> io::Result<(TcpStream, SocketAddr)> {
         let (socket, socket_addr) = self.inner.accept().await?;
         let stream = TcpStream { inner: socket };
