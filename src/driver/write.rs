@@ -1,14 +1,18 @@
-use crate::buf::IoBuf;
-use crate::driver::{Op, SharedFd};
-use crate::BufResult;
-
-use std::io;
-use std::task::{Context, Poll};
+use crate::{
+    buf::IoBuf,
+    driver::{Op, SharedFd},
+    BufResult,
+};
+use std::{
+    io,
+    task::{Context, Poll},
+};
 
 pub(crate) struct Write<T> {
     /// Holds a strong ref to the FD, preventing the file from being closed
     /// while the operation is in-flight.
-    _fd: SharedFd,
+    #[allow(dead_code)]
+    fd: SharedFd,
 
     pub(crate) buf: T,
 }
@@ -17,16 +21,16 @@ impl<T: IoBuf> Op<Write<T>> {
     pub(crate) fn write_at(fd: &SharedFd, buf: T, offset: u64) -> io::Result<Op<Write<T>>> {
         use io_uring::{opcode, types};
 
-        // Get raw buffer info
-        let ptr = buf.stable_ptr();
-        let len = buf.bytes_init();
-
         Op::submit_with(
             Write {
-                _fd: fd.clone(),
+                fd: fd.clone(),
                 buf,
             },
-            || {
+            |write| {
+                // Get raw buffer info
+                let ptr = write.buf.stable_ptr();
+                let len = write.buf.bytes_init();
+
                 opcode::Write::new(types::Fd(fd.raw_fd()), ptr, len as _)
                     .offset(offset as _)
                     .build()
