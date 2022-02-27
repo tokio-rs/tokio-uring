@@ -92,10 +92,21 @@ impl Socket {
     }
 
     pub(crate) fn bind(socket_addr: SocketAddr, socket_type: libc::c_int) -> io::Result<Socket> {
-        let socket = Socket::new(socket_addr, socket_type)?;
-        let addr = SockAddr::from(socket_addr);
-        syscall!(bind(socket.as_raw_fd(), addr.as_ptr(), addr.len()))?;
-        Ok(socket)
+        let sys_listener =
+            socket2::Socket::new(get_domain(socket_addr).into(), socket_type.into(), None)?;
+        let addr = socket2::SockAddr::from(socket_addr);
+
+        sys_listener.set_reuse_port(true)?;
+        sys_listener.set_reuse_address(true)?;
+
+        // sys_listener.set_send_buffer_size(send_buf_size)?;
+        // sys_listener.set_recv_buffer_size(recv_buf_size)?;
+
+        sys_listener.bind(&addr)?;
+
+        let fd = SharedFd::new(sys_listener.as_raw_fd());
+
+        Ok(Self { fd })
     }
 
     pub(crate) fn bind_unix<P: AsRef<Path>>(
