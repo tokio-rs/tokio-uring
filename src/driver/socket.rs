@@ -6,7 +6,7 @@ use socket2::SockAddr;
 use std::{
     io,
     net::SocketAddr,
-    os::unix::io::{AsRawFd, RawFd},
+    os::unix::io::{AsRawFd, IntoRawFd, RawFd},
     path::Path,
 };
 
@@ -104,7 +104,7 @@ impl Socket {
 
         sys_listener.bind(&addr)?;
 
-        let fd = SharedFd::new(sys_listener.as_raw_fd());
+        let fd = SharedFd::new(sys_listener.into_raw_fd());
 
         Ok(Self { fd })
     }
