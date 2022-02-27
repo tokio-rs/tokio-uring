@@ -40,13 +40,8 @@ pub struct UnixListener {
 }
 
 impl UnixListener {
-    /// Creates a new UnixListener, which will be bound to the specified address.
-    ///
-    /// The returned listener is ready for accepting connections.
-    ///
-    /// Binding with a port number of 0 will request that the OS assigns a port
-    /// to this listener. The port allocated can be queried via the `local_addr`
-    /// method.
+    /// Creates a new UnixListener, which will be bound to the specified file path.
+    /// The file path cannnot yet exist, and will be cleaned up upon dropping `UnixListener`
     pub fn bind<P: AsRef<Path>>(path: P) -> io::Result<UnixListener> {
         let pathbuf = path.as_ref().to_path_buf();
         let socket = Socket::bind_unix(path, libc::SOCK_STREAM)?;
@@ -59,9 +54,9 @@ impl UnixListener {
 
     /// Accepts a new incoming connection from this listener.
     ///
-    /// This function will yield once a new TCP connection is established. When
-    /// established, the corresponding [`UnixStream`] and the remote peer's
-    /// address will be returned.
+    /// This function will yield once a new Unix domain socket connection
+    /// is established. When established, the corresponding [`UnixStream`] and
+    /// will be returned.
     ///
     /// [`UnixStream`]: struct@crate::net::UnixStream
     pub async fn accept(&self) -> io::Result<UnixStream> {
@@ -74,6 +69,9 @@ impl UnixListener {
 impl std::ops::Drop for UnixListener {
     fn drop(&mut self) {
         // If the file could not be deleted, we tried our best
+        //
+        // TODO: Perhaps a stronger requirement is to try to clean up the
+        // file on exit?
         let _ = std::fs::remove_file(&self.path);
         std::mem::drop(self)
     }

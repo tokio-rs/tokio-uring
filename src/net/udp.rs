@@ -1,9 +1,9 @@
-use std::{io, net::SocketAddr};
-use socket2::SockAddr;
 use crate::{
     buf::{IoBuf, IoBufMut},
     driver::Socket,
 };
+use socket2::SockAddr;
+use std::{io, net::SocketAddr};
 
 /// A UDP socket.
 ///

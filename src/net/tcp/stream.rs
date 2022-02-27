@@ -47,7 +47,7 @@ impl TcpStream {
     /// result in a successful connection, the error returned from the last
     /// connection attempt (the last address) is returned.
     ///
-    /// [`ToSocketAddrs`]: trait@tokio::net::ToSocketAddrs
+    /// [`ToSocketAddrs`]: trait@std::net::ToSocketAddrs
     pub async fn connect<A: ToSocketAddrs>(addr: A) -> io::Result<TcpStream> {
         let mut sockets = addr.to_socket_addrs()?;
         while let Some(socket_addr) = sockets.next() {

@@ -1,9 +1,9 @@
-use std::{io, path::Path};
-use socket2::SockAddr;
 use crate::{
     buf::{IoBuf, IoBufMut},
     driver::Socket,
 };
+use socket2::SockAddr;
+use std::{io, path::Path};
 
 /// A Unix stream between two local sockets on a Unix OS.
 ///
@@ -31,23 +31,16 @@ use crate::{
 /// ```
 ///
 /// [`connect`]: UnixStream::connect
-/// [`accepting`]: crate::net::TcpListener::accept
-/// [`listener`]: crate::net::TcpListener
+/// [`accepting`]: crate::net::UnixListener::accept
+/// [`listener`]: crate::net::UnixListener
 pub struct UnixStream {
     pub(super) inner: Socket,
 }
 
 impl UnixStream {
-    /// Opens a TCP connection to a remote host.
-    ///
-    /// `addr` is an address of the remote host. Anything which implements the
-    /// [`ToSocketAddrs`] trait can be supplied as the address.  If `addr`
-    /// yields multiple addresses, connect will be attempted with each of the
-    /// addresses until a connection is successful. If none of the addresses
-    /// result in a successful connection, the error returned from the last
-    /// connection attempt (the last address) is returned.
-    ///
-    /// [`ToSocketAddrs`]: trait@tokio::net::ToSocketAddrs
+    /// Opens a Unix connection to the specified file path. There must be a
+    /// `UnixListener` or equivalent listening on the corresponding Unix domain socket
+    /// to successfully connect and return a `UnixStream`.
     pub async fn connect<P: AsRef<Path>>(path: P) -> io::Result<UnixStream> {
         let socket = Socket::new_unix(libc::SOCK_STREAM)?;
         socket.connect(SockAddr::unix(path)?).await?;

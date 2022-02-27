@@ -46,6 +46,8 @@ impl TcpListener {
     /// Binding with a port number of 0 will request that the OS assigns a port
     /// to this listener. The port allocated can be queried via the `local_addr`
     /// method.
+    ///
+    /// [`ToSocketAddrs`]: trait@std::net::ToSocketAddrs
     pub fn bind<A: ToSocketAddrs>(addr: A) -> io::Result<Self> {
         let mut sockets = addr.to_socket_addrs()?;
         while let Some(socket_addr) = sockets.next() {
@@ -70,10 +72,7 @@ impl TcpListener {
         let (socket, socket_addr) = self.inner.accept().await?;
         let stream = TcpStream { inner: socket };
         let socket_addr = socket_addr.ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::Other,
-                "Could not get socket IP address",
-            )
+            io::Error::new(io::ErrorKind::Other, "Could not get socket IP address")
         })?;
         Ok((stream, socket_addr))
     }
