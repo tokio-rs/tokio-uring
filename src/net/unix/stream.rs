@@ -1,25 +1,25 @@
-use std::{io, net::ToSocketAddrs};
+use std::{io, path::Path};
 
 use crate::{
     buf::{IoBuf, IoBufMut},
     driver::Socket,
 };
 
-/// A TCP stream between a local and a remote socket.
+/// A Unix stream between two local sockets on a Unix OS.
 ///
-/// A TCP stream can either be created by connecting to an endpoint, via the
+/// A Unix stream can either be created by connecting to an endpoint, via the
 /// [`connect`] method, or by [`accepting`] a connection from a [`listener`].
 ///
 /// # Examples
 ///
 /// ```no_run
-/// use tokio_uring::net::TcpStream;
+/// use tokio_uring::net::UnixStream;
 /// use std::net::ToSocketAddrs;
 ///
 /// fn main() -> std::io::Result<()> {
 ///     tokio_uring::start(async {
 ///         // Connect to a peer
-///         let mut stream = TcpStream::connect(
+///         let mut stream = UnixStream::connect(
 ///             "127.0.0.1:8080".to_socket_addrs().unwrap().next().unwrap()
 ///         ).await?;
 ///
@@ -32,14 +32,14 @@ use crate::{
 /// }
 /// ```
 ///
-/// [`connect`]: TcpStream::connect
+/// [`connect`]: UnixStream::connect
 /// [`accepting`]: crate::net::TcpListener::accept
 /// [`listener`]: crate::net::TcpListener
-pub struct TcpStream {
+pub struct UnixStream {
     pub(super) inner: Socket,
 }
 
-impl TcpStream {
+impl UnixStream {
     /// Opens a TCP connection to a remote host.
     ///
     /// `addr` is an address of the remote host. Anything which implements the
@@ -50,18 +50,11 @@ impl TcpStream {
     /// connection attempt (the last address) is returned.
     ///
     /// [`ToSocketAddrs`]: trait@tokio::net::ToSocketAddrs
-    pub async fn connect<A: ToSocketAddrs>(addr: A) -> io::Result<TcpStream> {
-        let mut sockets = addr.to_socket_addrs()?;
-        while let Some(socket_addr) = sockets.next() {
-            let socket = Socket::new(socket_addr, libc::SOCK_STREAM)?;
-            socket.connect(socket_addr).await?;
-            let tcp_stream = TcpStream { inner: socket };
-            return Ok(tcp_stream);
-        }
-        Err(io::Error::new(
-            io::ErrorKind::Other,
-            "Could not connect to supplied sockets",
-        ))
+    pub async fn connect<P: AsRef<Path>>(path: P) -> io::Result<UnixStream> {
+        let socket = Socket::new_unix(libc::SOCK_STREAM)?;
+        socket.connect_unix(path).await?;
+        let unix_stream = UnixStream { inner: socket };
+        Ok(unix_stream)
     }
 
     /// Read some data from the stream into the buffer, returning the original buffer and

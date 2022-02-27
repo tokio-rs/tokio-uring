@@ -15,6 +15,8 @@
 
 mod tcp;
 mod udp;
+mod unix;
 
 pub use tcp::{TcpListener, TcpStream};
 pub use udp::UdpSocket;
+pub use unix::{UnixListener, UnixStream};
