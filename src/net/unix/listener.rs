@@ -65,7 +65,7 @@ impl UnixListener {
     ///
     /// [`UnixStream`]: struct@crate::net::UnixStream
     pub async fn accept(&self) -> io::Result<UnixStream> {
-        let socket = self.inner.accept_unix().await?;
+        let (socket, _) = self.inner.accept().await?;
         let stream = UnixStream { inner: socket };
         Ok(stream)
     }

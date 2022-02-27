@@ -1,5 +1,5 @@
 use std::{io, path::Path};
-
+use socket2::SockAddr;
 use crate::{
     buf::{IoBuf, IoBufMut},
     driver::Socket,
@@ -50,7 +50,7 @@ impl UnixStream {
     /// [`ToSocketAddrs`]: trait@tokio::net::ToSocketAddrs
     pub async fn connect<P: AsRef<Path>>(path: P) -> io::Result<UnixStream> {
         let socket = Socket::new_unix(libc::SOCK_STREAM)?;
-        socket.connect_unix(path).await?;
+        socket.connect(SockAddr::unix(path)?).await?;
         let unix_stream = UnixStream { inner: socket };
         Ok(unix_stream)
     }

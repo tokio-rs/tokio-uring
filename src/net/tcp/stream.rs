@@ -52,7 +52,7 @@ impl TcpStream {
         let mut sockets = addr.to_socket_addrs()?;
         while let Some(socket_addr) = sockets.next() {
             let socket = Socket::new(socket_addr, libc::SOCK_STREAM)?;
-            socket.connect(socket_addr).await?;
+            socket.connect(socket2::SockAddr::from(socket_addr)).await?;
             let tcp_stream = TcpStream { inner: socket };
             return Ok(tcp_stream);
         }
