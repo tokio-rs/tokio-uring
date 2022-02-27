@@ -1,6 +1,9 @@
 use super::UnixStream;
 use crate::driver::Socket;
-use std::{io, path::Path};
+use std::{
+    io,
+    path::{Path, PathBuf},
+};
 
 /// A Unix socket server, listening for connections.
 ///
@@ -14,14 +17,14 @@ use std::{io, path::Path};
 /// use tokio_uring::net::UnixStream;
 ///
 /// fn main() {
-///     let listener = UnixListener::bind("127.0.0.1:2345".parse().unwrap()).unwrap();
+///     let listener = UnixListener::bind("/tmp/tokio-uring-unix-test.sock").unwrap();
 ///
 ///     tokio_uring::start(async move {
-///         let tx_fut = UnixStream::connect("127.0.0.1:2345".parse().unwrap());
+///         let tx_fut = UnixStream::connect("/tmp/tokio-uring-unix-test.sock");
 ///
 ///         let rx_fut = listener.accept();
 ///
-///         let (tx, (rx, _)) = tokio::try_join!(tx_fut, rx_fut).unwrap();
+///         let (tx, rx) = tokio::try_join!(tx_fut, rx_fut).unwrap();
 ///
 ///         tx.write(b"test" as &'static [u8]).await.0.unwrap();
 ///
@@ -33,6 +36,7 @@ use std::{io, path::Path};
 /// ```
 pub struct UnixListener {
     inner: Socket,
+    path: PathBuf,
 }
 
 impl UnixListener {
@@ -44,9 +48,13 @@ impl UnixListener {
     /// to this listener. The port allocated can be queried via the `local_addr`
     /// method.
     pub fn bind<P: AsRef<Path>>(path: P) -> io::Result<UnixListener> {
+        let pathbuf = path.as_ref().to_path_buf();
         let socket = Socket::bind_unix(path, libc::SOCK_STREAM)?;
         socket.listen(1024)?;
-        Ok(UnixListener { inner: socket })
+        Ok(UnixListener {
+            inner: socket,
+            path: pathbuf,
+        })
     }
 
     /// Accepts a new incoming connection from this listener.
@@ -60,5 +68,13 @@ impl UnixListener {
         let socket = self.inner.accept_unix().await?;
         let stream = UnixStream { inner: socket };
         Ok(stream)
+    }
+}
+
+impl std::ops::Drop for UnixListener {
+    fn drop(&mut self) {
+        // If the file could not be deleted, we tried our best
+        let _ = std::fs::remove_file(&self.path);
+        std::mem::drop(self)
     }
 }

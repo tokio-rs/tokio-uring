@@ -1,4 +1,4 @@
-use std::{env};
+use std::env;
 
 use tokio_uring::net::UnixListener;
 

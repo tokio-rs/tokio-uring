@@ -2,7 +2,6 @@ use crate::{
     buf::{IoBuf, IoBufMut},
     driver::{Op, SharedFd},
 };
-use os_socketaddr::OsSocketAddr;
 use std::{
     io,
     net::SocketAddr,
@@ -95,7 +94,7 @@ impl Socket {
     }
 
     pub(crate) async fn connect(&self, socket_addr: SocketAddr) -> io::Result<()> {
-        let op = Op::connect(&self.fd, socket_addr)?;
+        let op = Op::connect(&self.fd, socket2::SockAddr::from(socket_addr))?;
         let completion = op.await;
         completion.result?;
         Ok(())
@@ -103,7 +102,7 @@ impl Socket {
 
     pub(crate) async fn connect_unix<P: AsRef<Path>>(&self, path: P) -> io::Result<()> {
         let addr = socket2::SockAddr::unix(path.as_ref())?;
-        let op = Op::connect_unix(&self.fd, addr)?;
+        let op = Op::connect(&self.fd, addr)?;
         let completion = op.await;
         completion.result?;
         Ok(())
@@ -111,12 +110,8 @@ impl Socket {
 
     pub(crate) fn bind(socket_addr: SocketAddr, socket_type: libc::c_int) -> io::Result<Socket> {
         let socket = Socket::new(socket_addr, socket_type)?;
-        let os_socket_addr = OsSocketAddr::from(socket_addr);
-        syscall!(bind(
-            socket.as_raw_fd(),
-            os_socket_addr.as_ptr(),
-            os_socket_addr.len()
-        ))?;
+        let addr = socket2::SockAddr::from(socket_addr);
+        syscall!(bind(socket.as_raw_fd(), addr.as_ptr(), addr.len()))?;
         Ok(socket)
     }
 

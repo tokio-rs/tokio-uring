@@ -19,9 +19,7 @@ use crate::{
 /// fn main() -> std::io::Result<()> {
 ///     tokio_uring::start(async {
 ///         // Connect to a peer
-///         let mut stream = TcpStream::connect(
-///             "127.0.0.1:8080".to_socket_addrs().unwrap().next().unwrap()
-///         ).await?;
+///         let mut stream = TcpStream::connect("127.0.0.1:8080").await?;
 ///
 ///         // Write some data.
 ///         let (result, _) = stream.write(b"hello world!".as_slice()).await;
