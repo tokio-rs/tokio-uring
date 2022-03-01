@@ -2,7 +2,6 @@ use crate::{
     buf::{IoBuf, IoBufMut},
     driver::{Op, SharedFd},
 };
-use socket2::SockAddr;
 use std::{
     io,
     net::SocketAddr,
@@ -27,7 +26,7 @@ impl Socket {
     pub(crate) fn new(socket_addr: SocketAddr, socket_type: libc::c_int) -> io::Result<Socket> {
         let socket_type = socket_type | libc::SOCK_CLOEXEC;
         let domain = get_domain(socket_addr);
-        let fd = syscall!(socket(domain, socket_type, 0))?;
+        let fd = socket2::Socket::new(domain.into(), socket_type.into(), None)?.into_raw_fd();
         let fd = SharedFd::new(fd);
         Ok(Socket { fd })
     }
@@ -35,7 +34,7 @@ impl Socket {
     pub(crate) fn new_unix(socket_type: libc::c_int) -> io::Result<Socket> {
         let socket_type = socket_type | libc::SOCK_CLOEXEC;
         let domain = libc::AF_UNIX;
-        let fd = syscall!(socket(domain, socket_type, 0))?;
+        let fd = socket2::Socket::new(domain.into(), socket_type.into(), None)?.into_raw_fd();
         let fd = SharedFd::new(fd);
         Ok(Socket { fd })
     }
@@ -75,7 +74,7 @@ impl Socket {
         let data = completion.data;
         let socket = Socket { fd };
         let (_, addr) = unsafe {
-            SockAddr::init(move |addr_storage, len| {
+            socket2::SockAddr::init(move |addr_storage, len| {
                 *addr_storage = data.socketaddr.0.to_owned();
                 *len = data.socketaddr.1;
                 Ok(())
@@ -84,7 +83,7 @@ impl Socket {
         Ok((socket, addr.as_socket()))
     }
 
-    pub(crate) async fn connect(&self, socket_addr: SockAddr) -> io::Result<()> {
+    pub(crate) async fn connect(&self, socket_addr: socket2::SockAddr) -> io::Result<()> {
         let op = Op::connect(&self.fd, socket_addr)?;
         let completion = op.await;
         completion.result?;
@@ -103,12 +102,12 @@ impl Socket {
         path: P,
         socket_type: libc::c_int,
     ) -> io::Result<Socket> {
-        let addr = SockAddr::unix(path.as_ref())?;
+        let addr = socket2::SockAddr::unix(path.as_ref())?;
         Self::bind_internal(addr, libc::AF_UNIX.into(), socket_type.into())
     }
 
     fn bind_internal(
-        socket_addr: SockAddr,
+        socket_addr: socket2::SockAddr,
         domain: socket2::Domain,
         socket_type: socket2::Type,
     ) -> io::Result<Socket> {
