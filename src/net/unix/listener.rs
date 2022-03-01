@@ -2,7 +2,7 @@ use super::UnixStream;
 use crate::driver::Socket;
 use std::{
     io,
-    path::{Path, PathBuf},
+    path::Path,
 };
 
 /// A Unix socket server, listening for connections.
@@ -17,10 +17,11 @@ use std::{
 /// use tokio_uring::net::UnixStream;
 ///
 /// fn main() {
-///     let listener = UnixListener::bind("/tmp/tokio-uring-unix-test.sock").unwrap();
+///     let sock_file = "/tmp/tokio-uring-unix-test.sock";
+///     let listener = UnixListener::bind(&sock_file).unwrap();
 ///
 ///     tokio_uring::start(async move {
-///         let tx_fut = UnixStream::connect("/tmp/tokio-uring-unix-test.sock");
+///         let tx_fut = UnixStream::connect(&sock_file);
 ///
 ///         let rx_fut = listener.accept();
 ///
@@ -32,24 +33,20 @@ use std::{
 ///
 ///         assert_eq!(buf, b"test");
 ///     });
+///     std::fs::remove_file(&sock_file);
 /// }
 /// ```
 pub struct UnixListener {
     inner: Socket,
-    path: PathBuf,
 }
 
 impl UnixListener {
     /// Creates a new UnixListener, which will be bound to the specified file path.
     /// The file path cannnot yet exist, and will be cleaned up upon dropping `UnixListener`
     pub fn bind<P: AsRef<Path>>(path: P) -> io::Result<UnixListener> {
-        let pathbuf = path.as_ref().to_path_buf();
         let socket = Socket::bind_unix(path, libc::SOCK_STREAM)?;
         socket.listen(1024)?;
-        Ok(UnixListener {
-            inner: socket,
-            path: pathbuf,
-        })
+        Ok(UnixListener { inner: socket })
     }
 
     /// Accepts a new incoming connection from this listener.
@@ -63,16 +60,5 @@ impl UnixListener {
         let (socket, _) = self.inner.accept().await?;
         let stream = UnixStream { inner: socket };
         Ok(stream)
-    }
-}
-
-impl std::ops::Drop for UnixListener {
-    fn drop(&mut self) {
-        // If the file could not be deleted, we tried our best
-        //
-        // TODO: Perhaps a stronger requirement is to try to clean up the
-        // file on exit?
-        let _ = std::fs::remove_file(&self.path);
-        std::mem::drop(self)
     }
 }

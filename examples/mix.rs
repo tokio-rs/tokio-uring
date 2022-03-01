@@ -16,7 +16,7 @@ fn main() {
 
     tokio_uring::start(async {
         // Start a TCP listener
-        let listener = TcpListener::bind("0.0.0.0:8080").unwrap();
+        let listener = TcpListener::bind("0.0.0.0:8080".parse().unwrap()).unwrap();
 
         // Accept new sockets
         loop {

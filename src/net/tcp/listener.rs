@@ -1,9 +1,6 @@
 use super::TcpStream;
 use crate::driver::Socket;
-use std::{
-    io,
-    net::{SocketAddr, ToSocketAddrs},
-};
+use std::{io, net::SocketAddr};
 
 /// A TCP socket server, listening for connections.
 ///
@@ -17,10 +14,10 @@ use std::{
 /// use tokio_uring::net::TcpStream;
 ///
 /// fn main() {
-///     let listener = TcpListener::bind("127.0.0.1:2345").unwrap();
+///     let listener = TcpListener::bind("127.0.0.1:2345".parse().unwrap()).unwrap();
 ///
 ///     tokio_uring::start(async move {
-///         let tx_fut = TcpStream::connect("127.0.0.1:2345");
+///         let tx_fut = TcpStream::connect("127.0.0.1:2345".parse().unwrap());
 ///
 ///         let rx_fut = listener.accept();
 ///
@@ -48,17 +45,10 @@ impl TcpListener {
     /// method.
     ///
     /// [`ToSocketAddrs`]: trait@std::net::ToSocketAddrs
-    pub fn bind<A: ToSocketAddrs>(addr: A) -> io::Result<Self> {
-        let mut sockets = addr.to_socket_addrs()?;
-        while let Some(socket_addr) = sockets.next() {
-            let socket = Socket::bind(socket_addr, libc::SOCK_STREAM)?;
-            socket.listen(1024)?;
-            return Ok(TcpListener { inner: socket });
-        }
-        Err(io::Error::new(
-            io::ErrorKind::Other,
-            "Could not connect to supplied sockets",
-        ))
+    pub fn bind(addr: SocketAddr) -> io::Result<Self> {
+        let socket = Socket::bind(addr, libc::SOCK_STREAM)?;
+        socket.listen(1024)?;
+        return Ok(TcpListener { inner: socket });
     }
 
     /// Accepts a new incoming connection from this listener.

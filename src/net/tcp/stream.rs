@@ -1,4 +1,4 @@
-use std::{io, net::ToSocketAddrs};
+use std::{io, net::SocketAddr};
 
 use crate::{
     buf::{IoBuf, IoBufMut},
@@ -19,7 +19,7 @@ use crate::{
 /// fn main() -> std::io::Result<()> {
 ///     tokio_uring::start(async {
 ///         // Connect to a peer
-///         let mut stream = TcpStream::connect("127.0.0.1:8080").await?;
+///         let mut stream = TcpStream::connect("127.0.0.1:8080".parse().unwrap()).await?;
 ///
 ///         // Write some data.
 ///         let (result, _) = stream.write(b"hello world!".as_slice()).await;
@@ -48,18 +48,11 @@ impl TcpStream {
     /// connection attempt (the last address) is returned.
     ///
     /// [`ToSocketAddrs`]: trait@std::net::ToSocketAddrs
-    pub async fn connect<A: ToSocketAddrs>(addr: A) -> io::Result<TcpStream> {
-        let mut sockets = addr.to_socket_addrs()?;
-        while let Some(socket_addr) = sockets.next() {
-            let socket = Socket::new(socket_addr, libc::SOCK_STREAM)?;
-            socket.connect(socket2::SockAddr::from(socket_addr)).await?;
-            let tcp_stream = TcpStream { inner: socket };
-            return Ok(tcp_stream);
-        }
-        Err(io::Error::new(
-            io::ErrorKind::Other,
-            "Could not connect to supplied sockets",
-        ))
+    pub async fn connect(addr: SocketAddr) -> io::Result<TcpStream> {
+        let socket = Socket::new(addr, libc::SOCK_STREAM)?;
+        socket.connect(socket2::SockAddr::from(addr)).await?;
+        let tcp_stream = TcpStream { inner: socket };
+        return Ok(tcp_stream);
     }
 
     /// Read some data from the stream into the buffer, returning the original buffer and

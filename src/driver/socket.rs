@@ -92,13 +92,33 @@ impl Socket {
     }
 
     pub(crate) fn bind(socket_addr: SocketAddr, socket_type: libc::c_int) -> io::Result<Socket> {
-        let sys_listener =
-            socket2::Socket::new(get_domain(socket_addr).into(), socket_type.into(), None)?;
+        Self::bind_internal(
+            socket_addr.into(),
+            get_domain(socket_addr).into(),
+            socket_type.into(),
+        )
+    }
+
+    pub(crate) fn bind_unix<P: AsRef<Path>>(
+        path: P,
+        socket_type: libc::c_int,
+    ) -> io::Result<Socket> {
+        let addr = SockAddr::unix(path.as_ref())?;
+        Self::bind_internal(addr, libc::AF_UNIX.into(), socket_type.into())
+    }
+
+    fn bind_internal(
+        socket_addr: SockAddr,
+        domain: socket2::Domain,
+        socket_type: socket2::Type,
+    ) -> io::Result<Socket> {
+        let sys_listener = socket2::Socket::new(domain, socket_type, None)?;
         let addr = socket2::SockAddr::from(socket_addr);
 
         sys_listener.set_reuse_port(true)?;
         sys_listener.set_reuse_address(true)?;
 
+        // TODO: config for buffer sizes
         // sys_listener.set_send_buffer_size(send_buf_size)?;
         // sys_listener.set_recv_buffer_size(recv_buf_size)?;
 
@@ -107,16 +127,6 @@ impl Socket {
         let fd = SharedFd::new(sys_listener.into_raw_fd());
 
         Ok(Self { fd })
-    }
-
-    pub(crate) fn bind_unix<P: AsRef<Path>>(
-        path: P,
-        socket_type: libc::c_int,
-    ) -> io::Result<Socket> {
-        let socket = Socket::new_unix(socket_type)?;
-        let addr = SockAddr::unix(path.as_ref())?;
-        syscall!(bind(socket.as_raw_fd(), addr.as_ptr(), addr.len()))?;
-        Ok(socket)
     }
 
     pub(crate) fn listen(&self, backlog: libc::c_int) -> io::Result<()> {
