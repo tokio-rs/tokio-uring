@@ -38,16 +38,7 @@ pub struct TcpStream {
 }
 
 impl TcpStream {
-    /// Opens a TCP connection to a remote host.
-    ///
-    /// `addr` is an address of the remote host. Anything which implements the
-    /// [`ToSocketAddrs`] trait can be supplied as the address.  If `addr`
-    /// yields multiple addresses, connect will be attempted with each of the
-    /// addresses until a connection is successful. If none of the addresses
-    /// result in a successful connection, the error returned from the last
-    /// connection attempt (the last address) is returned.
-    ///
-    /// [`ToSocketAddrs`]: trait@std::net::ToSocketAddrs
+    /// Opens a TCP connection to a remote host at the given `SocketAddr`
     pub async fn connect(addr: SocketAddr) -> io::Result<TcpStream> {
         let socket = Socket::new(addr, libc::SOCK_STREAM)?;
         socket.connect(socket2::SockAddr::from(addr)).await?;
