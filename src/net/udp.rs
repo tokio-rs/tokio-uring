@@ -1,9 +1,9 @@
-use std::{io, net::SocketAddr};
-
 use crate::{
     buf::{IoBuf, IoBufMut},
     driver::Socket,
 };
+use socket2::SockAddr;
+use std::{io, net::SocketAddr};
 
 /// A UDP socket.
 ///
@@ -100,7 +100,7 @@ impl UdpSocket {
     /// that there is a remote server listening on the port, rather, such an
     /// error would only be detected after the first send.
     pub async fn connect(&self, socket_addr: SocketAddr) -> io::Result<()> {
-        self.inner.connect(socket_addr).await
+        self.inner.connect(SockAddr::from(socket_addr)).await
     }
 
     /// Sends data on the socket to the given address. On success, returns the

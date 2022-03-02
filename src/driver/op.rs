@@ -145,7 +145,7 @@ where
                 Poll::Ready(Completion {
                     data: me.data.take().expect("unexpected operation state"),
                     result,
-                    flags: flags,
+                    flags,
                 })
             }
         }

@@ -3,7 +3,7 @@ use crate::{
     driver::{Op, SharedFd},
     BufResult,
 };
-use os_socketaddr::OsSocketAddr;
+use socket2::SockAddr;
 use std::{
     io::IoSliceMut,
     task::{Context, Poll},
@@ -15,7 +15,7 @@ pub(crate) struct RecvFrom<T> {
     fd: SharedFd,
     pub(crate) buf: T,
     io_slices: Vec<IoSliceMut<'static>>,
-    pub(crate) os_socket_addr: Box<OsSocketAddr>,
+    pub(crate) socket_addr: Box<SockAddr>,
     pub(crate) msghdr: Box<libc::msghdr>,
 }
 
@@ -27,20 +27,20 @@ impl<T: IoBufMut> Op<RecvFrom<T>> {
             std::slice::from_raw_parts_mut(buf.stable_mut_ptr(), buf.bytes_total())
         })];
 
-        let mut os_socket_addr = Box::new(OsSocketAddr::new());
+        let socket_addr = Box::new(unsafe { SockAddr::init(|_, _| Ok(()))?.1 });
 
         let mut msghdr: Box<libc::msghdr> = Box::new(unsafe { std::mem::zeroed() });
         msghdr.msg_iov = io_slices.as_mut_ptr().cast();
         msghdr.msg_iovlen = io_slices.len() as _;
-        msghdr.msg_name = os_socket_addr.as_mut_ptr() as *mut libc::c_void;
-        msghdr.msg_namelen = os_socket_addr.capacity();
+        msghdr.msg_name = socket_addr.as_ptr() as *mut libc::c_void;
+        msghdr.msg_namelen = socket_addr.len();
 
         Op::submit_with(
             RecvFrom {
                 fd: fd.clone(),
                 buf,
                 io_slices,
-                os_socket_addr,
+                socket_addr,
                 msghdr,
             },
             |recv_from| {
@@ -74,7 +74,7 @@ impl<T: IoBufMut> Op<RecvFrom<T>> {
         let result = match complete.result {
             Ok(v) => {
                 let v = v as usize;
-                let socket_addr: Option<SocketAddr> = (*complete.data.os_socket_addr).into();
+                let socket_addr: Option<SocketAddr> = (*complete.data.socket_addr).as_socket();
                 // If the operation was successful, advance the initialized cursor.
                 // Safety: the kernel wrote `v` bytes to the buffer.
                 unsafe {

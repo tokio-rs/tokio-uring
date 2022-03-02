@@ -2,11 +2,11 @@ use crate::{
     buf::{IoBuf, IoBufMut},
     driver::{Op, SharedFd},
 };
-use os_socketaddr::OsSocketAddr;
 use std::{
     io,
     net::SocketAddr,
-    os::unix::io::{AsRawFd, RawFd},
+    os::unix::io::{AsRawFd, IntoRawFd, RawFd},
+    path::Path,
 };
 
 #[derive(Clone)]
@@ -26,7 +26,15 @@ impl Socket {
     pub(crate) fn new(socket_addr: SocketAddr, socket_type: libc::c_int) -> io::Result<Socket> {
         let socket_type = socket_type | libc::SOCK_CLOEXEC;
         let domain = get_domain(socket_addr);
-        let fd = syscall!(socket(domain, socket_type, 0))?;
+        let fd = socket2::Socket::new(domain.into(), socket_type.into(), None)?.into_raw_fd();
+        let fd = SharedFd::new(fd);
+        Ok(Socket { fd })
+    }
+
+    pub(crate) fn new_unix(socket_type: libc::c_int) -> io::Result<Socket> {
+        let socket_type = socket_type | libc::SOCK_CLOEXEC;
+        let domain = libc::AF_UNIX;
+        let fd = socket2::Socket::new(domain.into(), socket_type.into(), None)?.into_raw_fd();
         let fd = SharedFd::new(fd);
         Ok(Socket { fd })
     }
@@ -58,23 +66,24 @@ impl Socket {
         op.recv().await
     }
 
-    pub(crate) async fn accept(&self) -> io::Result<(Socket, SocketAddr)> {
+    pub(crate) async fn accept(&self) -> io::Result<(Socket, Option<SocketAddr>)> {
         let op = Op::accept(&self.fd)?;
         let completion = op.await;
         let fd = completion.result?;
         let fd = SharedFd::new(fd as i32);
+        let data = completion.data;
         let socket = Socket { fd };
-        let os_socket_addr = unsafe {
-            OsSocketAddr::from_raw_parts(
-                &completion.data.socketaddr.0 as *const _ as _,
-                completion.data.socketaddr.1 as usize,
-            )
+        let (_, addr) = unsafe {
+            socket2::SockAddr::init(move |addr_storage, len| {
+                *addr_storage = data.socketaddr.0.to_owned();
+                *len = data.socketaddr.1;
+                Ok(())
+            })?
         };
-        let socket_addr = os_socket_addr.into_addr().unwrap();
-        Ok((socket, socket_addr))
+        Ok((socket, addr.as_socket()))
     }
 
-    pub(crate) async fn connect(&self, socket_addr: SocketAddr) -> io::Result<()> {
+    pub(crate) async fn connect(&self, socket_addr: socket2::SockAddr) -> io::Result<()> {
         let op = Op::connect(&self.fd, socket_addr)?;
         let completion = op.await;
         completion.result?;
@@ -82,14 +91,41 @@ impl Socket {
     }
 
     pub(crate) fn bind(socket_addr: SocketAddr, socket_type: libc::c_int) -> io::Result<Socket> {
-        let socket = Socket::new(socket_addr, socket_type)?;
-        let os_socket_addr = OsSocketAddr::from(socket_addr);
-        syscall!(bind(
-            socket.as_raw_fd(),
-            os_socket_addr.as_ptr(),
-            os_socket_addr.len()
-        ))?;
-        Ok(socket)
+        Self::bind_internal(
+            socket_addr.into(),
+            get_domain(socket_addr).into(),
+            socket_type.into(),
+        )
+    }
+
+    pub(crate) fn bind_unix<P: AsRef<Path>>(
+        path: P,
+        socket_type: libc::c_int,
+    ) -> io::Result<Socket> {
+        let addr = socket2::SockAddr::unix(path.as_ref())?;
+        Self::bind_internal(addr, libc::AF_UNIX.into(), socket_type.into())
+    }
+
+    fn bind_internal(
+        socket_addr: socket2::SockAddr,
+        domain: socket2::Domain,
+        socket_type: socket2::Type,
+    ) -> io::Result<Socket> {
+        let sys_listener = socket2::Socket::new(domain, socket_type, None)?;
+        let addr = socket2::SockAddr::from(socket_addr);
+
+        sys_listener.set_reuse_port(true)?;
+        sys_listener.set_reuse_address(true)?;
+
+        // TODO: config for buffer sizes
+        // sys_listener.set_send_buffer_size(send_buf_size)?;
+        // sys_listener.set_recv_buffer_size(recv_buf_size)?;
+
+        sys_listener.bind(&addr)?;
+
+        let fd = SharedFd::new(sys_listener.into_raw_fd());
+
+        Ok(Self { fd })
     }
 
     pub(crate) fn listen(&self, backlog: libc::c_int) -> io::Result<()> {

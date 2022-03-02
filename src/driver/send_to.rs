@@ -1,7 +1,7 @@
 use crate::buf::IoBuf;
 use crate::driver::{Op, SharedFd};
 use crate::BufResult;
-use os_socketaddr::OsSocketAddr;
+use socket2::SockAddr;
 use std::io::IoSlice;
 use std::task::{Context, Poll};
 use std::{boxed::Box, io, net::SocketAddr};
@@ -13,7 +13,7 @@ pub(crate) struct SendTo<T> {
     #[allow(dead_code)]
     io_slices: Vec<IoSlice<'static>>,
     #[allow(dead_code)]
-    os_socket_addr: Box<OsSocketAddr>,
+    socket_addr: Box<SockAddr>,
     pub(crate) msghdr: Box<libc::msghdr>,
 }
 
@@ -29,20 +29,20 @@ impl<T: IoBuf> Op<SendTo<T>> {
             std::slice::from_raw_parts(buf.stable_ptr(), buf.bytes_init())
         })];
 
-        let mut os_socket_addr = Box::new(OsSocketAddr::from(socket_addr));
+        let socket_addr = Box::new(SockAddr::from(socket_addr));
 
         let mut msghdr: Box<libc::msghdr> = Box::new(unsafe { std::mem::zeroed() });
         msghdr.msg_iov = io_slices.as_ptr() as *mut _;
         msghdr.msg_iovlen = io_slices.len() as _;
-        msghdr.msg_name = os_socket_addr.as_mut_ptr() as *mut libc::c_void;
-        msghdr.msg_namelen = os_socket_addr.len();
+        msghdr.msg_name = socket_addr.as_ptr() as *mut libc::c_void;
+        msghdr.msg_namelen = socket_addr.len();
 
         Op::submit_with(
             SendTo {
                 fd: fd.clone(),
                 buf,
                 io_slices,
-                os_socket_addr,
+                socket_addr,
                 msghdr,
             },
             |send_to| {

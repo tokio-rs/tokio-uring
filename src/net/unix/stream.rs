@@ -1,25 +1,25 @@
-use std::{io, net::SocketAddr};
-
 use crate::{
     buf::{IoBuf, IoBufMut},
     driver::Socket,
 };
+use socket2::SockAddr;
+use std::{io, path::Path};
 
-/// A TCP stream between a local and a remote socket.
+/// A Unix stream between two local sockets on a Unix OS.
 ///
-/// A TCP stream can either be created by connecting to an endpoint, via the
+/// A Unix stream can either be created by connecting to an endpoint, via the
 /// [`connect`] method, or by [`accepting`] a connection from a [`listener`].
 ///
 /// # Examples
 ///
 /// ```no_run
-/// use tokio_uring::net::TcpStream;
+/// use tokio_uring::net::UnixStream;
 /// use std::net::ToSocketAddrs;
 ///
 /// fn main() -> std::io::Result<()> {
 ///     tokio_uring::start(async {
 ///         // Connect to a peer
-///         let mut stream = TcpStream::connect("127.0.0.1:8080".parse().unwrap()).await?;
+///         let mut stream = UnixStream::connect("/tmp/tokio-uring-unix-test.sock").await?;
 ///
 ///         // Write some data.
 ///         let (result, _) = stream.write(b"hello world!".as_slice()).await;
@@ -30,20 +30,22 @@ use crate::{
 /// }
 /// ```
 ///
-/// [`connect`]: TcpStream::connect
-/// [`accepting`]: crate::net::TcpListener::accept
-/// [`listener`]: crate::net::TcpListener
-pub struct TcpStream {
+/// [`connect`]: UnixStream::connect
+/// [`accepting`]: crate::net::UnixListener::accept
+/// [`listener`]: crate::net::UnixListener
+pub struct UnixStream {
     pub(super) inner: Socket,
 }
 
-impl TcpStream {
-    /// Opens a TCP connection to a remote host at the given `SocketAddr`
-    pub async fn connect(addr: SocketAddr) -> io::Result<TcpStream> {
-        let socket = Socket::new(addr, libc::SOCK_STREAM)?;
-        socket.connect(socket2::SockAddr::from(addr)).await?;
-        let tcp_stream = TcpStream { inner: socket };
-        return Ok(tcp_stream);
+impl UnixStream {
+    /// Opens a Unix connection to the specified file path. There must be a
+    /// `UnixListener` or equivalent listening on the corresponding Unix domain socket
+    /// to successfully connect and return a `UnixStream`.
+    pub async fn connect<P: AsRef<Path>>(path: P) -> io::Result<UnixStream> {
+        let socket = Socket::new_unix(libc::SOCK_STREAM)?;
+        socket.connect(SockAddr::unix(path)?).await?;
+        let unix_stream = UnixStream { inner: socket };
+        Ok(unix_stream)
     }
 
     /// Read some data from the stream into the buffer, returning the original buffer and

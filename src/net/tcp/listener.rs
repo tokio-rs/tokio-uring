@@ -41,12 +41,14 @@ impl TcpListener {
     /// The returned listener is ready for accepting connections.
     ///
     /// Binding with a port number of 0 will request that the OS assigns a port
-    /// to this listener. The port allocated can be queried via the `local_addr`
+    /// to this listener.
+    ///
+    /// In the future, the port allocated can be queried via a (blocking) `local_addr`
     /// method.
-    pub fn bind(socket_addr: SocketAddr) -> io::Result<TcpListener> {
-        let socket = Socket::bind(socket_addr, libc::SOCK_STREAM)?;
+    pub fn bind(addr: SocketAddr) -> io::Result<Self> {
+        let socket = Socket::bind(addr, libc::SOCK_STREAM)?;
         socket.listen(1024)?;
-        Ok(TcpListener { inner: socket })
+        return Ok(TcpListener { inner: socket });
     }
 
     /// Accepts a new incoming connection from this listener.
@@ -59,6 +61,9 @@ impl TcpListener {
     pub async fn accept(&self) -> io::Result<(TcpStream, SocketAddr)> {
         let (socket, socket_addr) = self.inner.accept().await?;
         let stream = TcpStream { inner: socket };
+        let socket_addr = socket_addr.ok_or_else(|| {
+            io::Error::new(io::ErrorKind::Other, "Could not get socket IP address")
+        })?;
         Ok((stream, socket_addr))
     }
 }
