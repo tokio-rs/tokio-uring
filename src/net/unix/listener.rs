@@ -1,9 +1,6 @@
 use super::UnixStream;
 use crate::driver::Socket;
-use std::{
-    io,
-    path::Path,
-};
+use std::{io, path::Path};
 
 /// A Unix socket server, listening for connections.
 ///
