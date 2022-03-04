@@ -3,8 +3,8 @@
 net: add unix stream & listener ([#74])
 net: add tcp and udp support ([#40])
 
-[#66]: https://github.com/tokio-rs/tokio-uring/pull/74
-[#66]: https://github.com/tokio-rs/tokio-uring/pull/40
+[#74]: https://github.com/tokio-rs/tokio-uring/pull/74
+[#40]: https://github.com/tokio-rs/tokio-uring/pull/40
 
 # 0.2.0 (January 9th, 2022)
 
