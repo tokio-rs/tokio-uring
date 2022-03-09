@@ -1,9 +1,12 @@
-use crate::driver::Driver;
+use crate::driver::{Driver, CURRENT};
+use std::cell::RefCell;
 
 use std::future::Future;
 use std::io;
+use std::time::Duration;
 use tokio::io::unix::AsyncFd;
 use tokio::task::LocalSet;
+use tokio::time::MissedTickBehavior;
 
 pub(crate) struct Runtime {
     /// io-uring driver
@@ -51,6 +54,11 @@ pub fn spawn<T: std::future::Future + 'static>(task: T) -> tokio::task::JoinHand
 impl Runtime {
     pub(crate) fn new() -> io::Result<Runtime> {
         let rt = tokio::runtime::Builder::new_current_thread()
+            .on_thread_park(|| {
+                CURRENT.with(|x| {
+                    let _ = RefCell::borrow_mut(x).uring.submit();
+                });
+            })
             .enable_all()
             .build()?;
 
@@ -78,12 +86,26 @@ impl Runtime {
                 }
             };
 
+            let wakeup = async {
+                // TODO figure out what this duration should be
+                let mut interval = tokio::time::interval(Duration::from_millis(100));
+                interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
+
+                loop {
+                    interval.tick().await;
+
+                    let _ = self.driver.get_ref().submit();
+                }
+            };
+
             tokio::pin!(drive);
+            tokio::pin!(wakeup);
             tokio::pin!(future);
 
             self.rt
                 .block_on(self.local.run_until(crate::future::poll_fn(|cx| {
                     assert!(drive.as_mut().poll(cx).is_pending());
+                    assert!(wakeup.as_mut().poll(cx).is_pending());
                     future.as_mut().poll(cx)
                 })))
         })
