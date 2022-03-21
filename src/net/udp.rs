@@ -1,5 +1,5 @@
 use crate::{
-    buf::{IntoSlice, IoBuf, IoBufMut, Slice},
+    buf::{IntoSlice, IoBufMut, Slice},
     driver::Socket,
 };
 use socket2::SockAddr;
@@ -105,17 +105,21 @@ impl UdpSocket {
 
     /// Sends data on the socket to the given address. On success, returns the
     /// number of bytes written.
-    pub async fn send_to<T: IoBuf>(
+    pub async fn send_to<T: IntoSlice>(
         &self,
         buf: T,
         socket_addr: SocketAddr,
-    ) -> crate::BufResult<usize, T> {
+    ) -> crate::BufResult<usize, Slice<T::Buf>> {
         self.inner.send_to(buf, socket_addr).await
     }
 
     /// Receives a single datagram message on the socket. On success, returns
     /// the number of bytes read and the origin.
-    pub async fn recv_from<T: IoBufMut>(&self, buf: T) -> crate::BufResult<(usize, SocketAddr), T> {
+    pub async fn recv_from<T>(&self, buf: T) -> crate::BufResult<(usize, SocketAddr), Slice<T::Buf>>
+    where
+        T: IntoSlice,
+        T::Buf: IoBufMut,
+    {
         self.inner.recv_from(buf).await
     }
 

@@ -1,5 +1,5 @@
 use crate::{
-    buf::IoBufMut,
+    buf::{IoBufMut, Slice},
     driver::{Op, SharedFd},
     BufResult,
 };
@@ -13,14 +13,14 @@ use std::{
 #[allow(dead_code)]
 pub(crate) struct RecvFrom<T> {
     fd: SharedFd,
-    pub(crate) buf: T,
+    buf: Slice<T>,
     io_slices: Vec<IoSliceMut<'static>>,
     pub(crate) socket_addr: Box<SockAddr>,
     pub(crate) msghdr: Box<libc::msghdr>,
 }
 
 impl<T: IoBufMut> Op<RecvFrom<T>> {
-    pub(crate) fn recv_from(fd: &SharedFd, mut buf: T) -> io::Result<Op<RecvFrom<T>>> {
+    pub(crate) fn recv_from(fd: &SharedFd, mut buf: Slice<T>) -> io::Result<Op<RecvFrom<T>>> {
         use io_uring::{opcode, types};
 
         let mut io_slices = vec![IoSliceMut::new(unsafe {
@@ -53,7 +53,7 @@ impl<T: IoBufMut> Op<RecvFrom<T>> {
         )
     }
 
-    pub(crate) async fn recv(mut self) -> BufResult<(usize, SocketAddr), T> {
+    pub(crate) async fn recv(mut self) -> BufResult<(usize, SocketAddr), Slice<T>> {
         use crate::future::poll_fn;
 
         poll_fn(move |cx| self.poll_recv_from(cx)).await
@@ -62,7 +62,7 @@ impl<T: IoBufMut> Op<RecvFrom<T>> {
     pub(crate) fn poll_recv_from(
         &mut self,
         cx: &mut Context<'_>,
-    ) -> Poll<BufResult<(usize, SocketAddr), T>> {
+    ) -> Poll<BufResult<(usize, SocketAddr), Slice<T>>> {
         use std::future::Future;
         use std::pin::Pin;
 
