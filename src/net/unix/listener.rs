@@ -28,7 +28,7 @@ use std::{io, path::Path};
 ///
 ///         let (_, buf) = rx.read(vec![0; 4]).await;
 ///
-///         assert_eq!(buf, b"test");
+///         assert_eq!(buf.into_inner(), b"test");
 ///     });
 ///     std::fs::remove_file(&sock_file);
 /// }
