@@ -3,10 +3,8 @@ use std::cell::RefCell;
 
 use std::future::Future;
 use std::io;
-use std::time::Duration;
 use tokio::io::unix::AsyncFd;
 use tokio::task::LocalSet;
-use tokio::time::MissedTickBehavior;
 
 pub(crate) struct Runtime {
     /// io-uring driver
@@ -86,26 +84,12 @@ impl Runtime {
                 }
             };
 
-            let wakeup = async {
-                // TODO figure out what this duration should be
-                let mut interval = tokio::time::interval(Duration::from_millis(100));
-                interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
-
-                loop {
-                    interval.tick().await;
-
-                    let _ = self.driver.get_ref().submit();
-                }
-            };
-
             tokio::pin!(drive);
-            tokio::pin!(wakeup);
             tokio::pin!(future);
 
             self.rt
                 .block_on(self.local.run_until(crate::future::poll_fn(|cx| {
                     assert!(drive.as_mut().poll(cx).is_pending());
-                    assert!(wakeup.as_mut().poll(cx).is_pending());
                     future.as_mut().poll(cx)
                 })))
         })

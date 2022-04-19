@@ -80,11 +80,6 @@ impl Driver {
         inner.tick();
     }
 
-    pub(crate) fn submit(&self) -> io::Result<()> {
-        let mut inner = self.inner.borrow_mut();
-        inner.submit()
-    }
-
     fn wait(&self) -> io::Result<usize> {
         let mut inner = self.inner.borrow_mut();
         let inner = &mut *inner;
