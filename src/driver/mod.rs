@@ -44,19 +44,19 @@ pub(crate) struct Driver {
 
 type Handle = Rc<RefCell<Inner>>;
 
-struct Inner {
+pub(crate) struct Inner {
     /// In-flight operations
     ops: Ops,
 
     /// IoUring bindings
-    uring: IoUring,
+    pub(crate) uring: IoUring,
 }
 
 // When dropping the driver, all in-flight operations must have completed. This
 // type wraps the slab and ensures that, on drop, the slab is empty.
 struct Ops(Slab<op::Lifecycle>);
 
-scoped_thread_local!(static CURRENT: Rc<RefCell<Inner>>);
+scoped_thread_local!(pub(crate) static CURRENT: Rc<RefCell<Inner>>);
 
 impl Driver {
     pub(crate) fn new() -> io::Result<Driver> {
@@ -112,7 +112,7 @@ impl Inner {
         }
     }
 
-    fn submit(&mut self) -> io::Result<()> {
+    pub(crate) fn submit(&mut self) -> io::Result<()> {
         loop {
             match self.uring.submit() {
                 Ok(_) => {

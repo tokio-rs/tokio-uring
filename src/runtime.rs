@@ -1,4 +1,5 @@
-use crate::driver::Driver;
+use crate::driver::{Driver, CURRENT};
+use std::cell::RefCell;
 
 use std::future::Future;
 use std::io;
@@ -51,6 +52,11 @@ pub fn spawn<T: std::future::Future + 'static>(task: T) -> tokio::task::JoinHand
 impl Runtime {
     pub(crate) fn new() -> io::Result<Runtime> {
         let rt = tokio::runtime::Builder::new_current_thread()
+            .on_thread_park(|| {
+                CURRENT.with(|x| {
+                    let _ = RefCell::borrow_mut(x).uring.submit();
+                });
+            })
             .enable_all()
             .build()?;
 
