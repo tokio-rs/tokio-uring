@@ -106,6 +106,11 @@ impl Socket {
         Self::bind_internal(addr, libc::AF_UNIX.into(), socket_type.into())
     }
 
+    pub(crate) fn from_std(socket: std::net::UdpSocket) -> Socket {
+        let fd = SharedFd::new(socket.into_raw_fd());
+        Self { fd }
+    }
+
     fn bind_internal(
         socket_addr: socket2::SockAddr,
         domain: socket2::Domain,
