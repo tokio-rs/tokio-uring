@@ -96,8 +96,8 @@ impl UdpSocket {
     ///
     /// This function is intended to be used to wrap a UDP socket from the
     /// standard library in the Tokio equivalent. The conversion assumes nothing
-    /// about the underlying socket; it is left up to the user to set it in
-    /// non-blocking mode.
+    /// about the underlying socket; it is left up to the user to decide what socket
+    /// options are appropriate for their use case.
     ///
     /// This can be used in conjunction with socket2's `Socket` interface to
     /// configure a socket before it's handed off, such as setting options like
