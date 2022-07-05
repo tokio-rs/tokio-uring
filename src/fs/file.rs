@@ -171,6 +171,61 @@ impl File {
         op.read().await
     }
 
+    /// Read some bytes at the specified offset from the file into the specified
+    /// array of buffers, returning how many bytes were read.
+    ///
+    /// # Return
+    ///
+    /// The method returns the operation result and the same array of buffers
+    /// passed as an argument.
+    ///
+    /// If the method returns [`Ok(n)`], then the read was successful. A nonzero
+    /// `n` value indicates that the buffers have been filled with `n` bytes of
+    /// data from the file. If `n` is `0`, then one of the following happened:
+    ///
+    /// 1. The specified offset is the end of the file.
+    /// 2. The buffers specified were 0 bytes in length.
+    ///
+    /// It is not an error if the returned value `n` is smaller than the buffer
+    /// size, even when the file contains enough data to fill the buffer.
+    ///
+    /// # Errors
+    ///
+    /// If this function encounters any form of I/O or other error, an error
+    /// variant will be returned. The buffer is returned on error.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use tokio_uring::fs::File;
+    ///
+    /// fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ///     tokio_uring::start(async {
+    ///         let f = File::open("foo.txt").await?;
+    ///         let buffers = vec![Vec::<u8>::with_capacity(10), Vec::<u8>::with_capacity(10)];
+    ///
+    ///         // Read up to 20 bytes
+    ///         let (res, buffer) = f.readv_at(buffers, 0).await;
+    ///         let n = res?;
+    ///
+    ///         println!("Read {} bytes", n);
+    ///
+    ///         // Close the file
+    ///         f.close().await?;
+    ///         Ok(())
+    ///     })
+    /// }
+    /// ```
+    pub async fn readv_at<T: IoBufMut>(
+        &self,
+        bufs: Vec<T>,
+        pos: u64,
+    ) -> crate::BufResult<usize, Vec<T>> {
+        // Submit the read operation
+        let op = Op::readv_at(&self.fd, bufs, pos).unwrap();
+        op.readv().await
+    }
+
     /// Write a buffer into this file at the specified offset, returning how
     /// many bytes were written.
     ///
