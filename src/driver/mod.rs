@@ -32,6 +32,8 @@ mod util;
 
 mod write;
 
+mod writev;
+
 use io_uring::{cqueue, IoUring};
 use scoped_tls::scoped_thread_local;
 use slab::Slab;

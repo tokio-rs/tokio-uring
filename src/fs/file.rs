@@ -226,6 +226,62 @@ impl File {
         op.readv().await
     }
 
+    /// Write data from buffers into this file at the specified offset,
+    /// returning how many bytes were written.
+    ///
+    /// This function will attempt to write the entire contents of `bufs`, but
+    /// the entire write may not succeed, or the write may also generate an
+    /// error. The bytes will be written starting at the specified offset.
+    ///
+    /// # Return
+    ///
+    /// The method returns the operation result and the same array of buffers passed
+    /// in as an argument. A return value of `0` typically means that the
+    /// underlying file is no longer able to accept bytes and will likely not be
+    /// able to in the future as well, or that the buffer provided is empty.
+    ///
+    /// # Errors
+    ///
+    /// Each call to `write` may generate an I/O error indicating that the
+    /// operation could not be completed. If an error is returned then no bytes
+    /// in the buffer were written to this writer.
+    ///
+    /// It is **not** considered an error if the entire buffer could not be
+    /// written to this writer.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use tokio_uring::fs::File;
+    ///
+    /// fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ///     tokio_uring::start(async {
+    ///         let file = File::create("foo.txt").await?;
+    ///
+    ///         // Writes some prefix of the byte string, not necessarily all of it.
+    ///         let bufs = vec!["some".to_owned().into_bytes(), " bytes".to_owned().into_bytes()];
+    ///         let (res, _) = file.write_at(bufs, 0).await;
+    ///         let n = res?;
+    ///
+    ///         println!("wrote {} bytes", n);
+    ///
+    ///         // Close the file
+    ///         file.close().await?;
+    ///         Ok(())
+    ///     })
+    /// }
+    /// ```
+    ///
+    /// [`Ok(n)`]: Ok
+    pub async fn writev_at<T: IoBuf>(
+        &self,
+        buf: Vec<T>,
+        pos: u64,
+    ) -> crate::BufResult<usize, Vec<T>> {
+        let op = Op::writev_at(&self.fd, buf, pos).unwrap();
+        op.writev().await
+    }
+
     /// Write a buffer into this file at the specified offset, returning how
     /// many bytes were written.
     ///

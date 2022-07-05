@@ -64,6 +64,23 @@ fn vectored_read() {
 }
 
 #[test]
+fn vectored_write() {
+    tokio_uring::start(async {
+        let tempfile = tempfile();
+
+        let file = File::create(tempfile.path()).await.unwrap();
+        let buf1 = "hello".to_owned().into_bytes();
+        let buf2 = " world...".to_owned().into_bytes();
+        let bufs = vec![buf1, buf2];
+
+        file.writev_at(bufs, 0).await.0.unwrap();
+
+        let file = std::fs::read(tempfile.path()).unwrap();
+        assert_eq!(file, HELLO);
+    });
+}
+
+#[test]
 fn cancel_read() {
     tokio_uring::start(async {
         let mut tempfile = tempfile();
