@@ -368,3 +368,28 @@ impl fmt::Debug for File {
 pub async fn remove_file<P: AsRef<Path>>(path: P) -> io::Result<()> {
     Op::unlink_file(path.as_ref())?.await.result.map(|_| ())
 }
+
+/// Renames a file or directory to a new name, replacing the original file if
+/// `to` already exists.
+///
+/// This will not work if the new name is on a different mount point.
+///
+/// # Example
+///
+/// ```no_run
+/// use tokio_uring::fs::rename;
+///
+/// fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     tokio_uring::start(async {
+///         rename("a.txt", "b.txt").await?; // Rename a.txt to b.txt
+///         Ok::<(), std::io::Error>(())
+///     })?;
+///     Ok(())
+/// }
+/// ```
+pub async fn rename(from: impl AsRef<Path>, to: impl AsRef<Path>) -> io::Result<()> {
+    Op::rename_at(from.as_ref(), to.as_ref(), 0)?
+        .await
+        .result
+        .map(|_| ())
+}
