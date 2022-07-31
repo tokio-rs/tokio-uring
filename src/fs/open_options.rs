@@ -374,3 +374,9 @@ impl OpenOptions {
         })
     }
 }
+
+impl Default for OpenOptions {
+    fn default() -> Self {
+        Self::new()
+    }
+}

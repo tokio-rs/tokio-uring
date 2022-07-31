@@ -43,7 +43,7 @@ impl TcpStream {
         let socket = Socket::new(addr, libc::SOCK_STREAM)?;
         socket.connect(socket2::SockAddr::from(addr)).await?;
         let tcp_stream = TcpStream { inner: socket };
-        return Ok(tcp_stream);
+        Ok(tcp_stream)
     }
 
     /// Read some data from the stream into the buffer, returning the original buffer and

@@ -117,7 +117,6 @@ impl Socket {
         socket_type: socket2::Type,
     ) -> io::Result<Socket> {
         let sys_listener = socket2::Socket::new(domain, socket_type, None)?;
-        let addr = socket2::SockAddr::from(socket_addr);
 
         sys_listener.set_reuse_port(true)?;
         sys_listener.set_reuse_address(true)?;
@@ -126,7 +125,7 @@ impl Socket {
         // sys_listener.set_send_buffer_size(send_buf_size)?;
         // sys_listener.set_recv_buffer_size(recv_buf_size)?;
 
-        sys_listener.bind(&addr)?;
+        sys_listener.bind(&socket_addr)?;
 
         let fd = SharedFd::new(sys_listener.into_raw_fd());
 
