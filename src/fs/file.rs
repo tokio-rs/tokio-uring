@@ -1,4 +1,5 @@
-use crate::buf::{IoBuf, IoBufMut};
+use crate::buf::fixed::FixedBuf;
+use crate::buf::{IoBuf, IoBufMut, Slice};
 use crate::driver::{Op, SharedFd};
 use crate::fs::OpenOptions;
 
@@ -171,6 +172,56 @@ impl File {
         op.read().await
     }
 
+    /// Like [`read_at`], but using a pre-mapped buffer
+    /// registered with [`BufRegistry`].
+    ///
+    /// [`read_at`]: Self::read_at
+    /// [`BufRegistry`]: crate::buf::fixed::BufRegistry
+    ///
+    /// # Errors
+    ///
+    /// In addition to errors that can be reported by `read_at`,
+    /// this operation fails if the buffer is not registered in the
+    /// current `tokio-uring` runtime.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    ///# fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// use tokio_uring::fs::File;
+    /// use tokio_uring::buf::fixed::BufRegistry;
+    /// use tokio_uring::buf::IoBuf;
+    /// use std::iter;
+    ///
+    /// tokio_uring::start(async {
+    ///     let registry = BufRegistry::new(iter::repeat(vec![0; 10]).take(10));
+    ///     registry.register()?;
+    ///
+    ///     let f = File::open("foo.txt").await?;
+    ///     let buffer = registry.check_out(2).unwrap();
+    ///
+    ///     // Read up to 10 bytes
+    ///     let (res, buffer) = f.read_fixed_at(buffer.slice(..), 0).await;
+    ///     let n = res?;
+    ///
+    ///     println!("The bytes: {:?}", &buffer[..n]);
+    ///
+    ///     // Close the file
+    ///     f.close().await?;
+    ///     Ok(())
+    /// })
+    ///# }
+    /// ```
+    pub async fn read_fixed_at(
+        &self,
+        buf: Slice<FixedBuf>,
+        pos: u64,
+    ) -> crate::BufResult<usize, Slice<FixedBuf>> {
+        // Submit the read operation
+        let op = Op::read_fixed_at(&self.fd, buf, pos).unwrap();
+        op.read_fixed().await
+    }
+
     /// Write a buffer into this file at the specified offset, returning how
     /// many bytes were written.
     ///
@@ -220,6 +271,56 @@ impl File {
     pub async fn write_at<T: IoBuf>(&self, buf: T, pos: u64) -> crate::BufResult<usize, T> {
         let op = Op::write_at(&self.fd, buf, pos).unwrap();
         op.write().await
+    }
+
+    /// Like [`write_at`], but using a pre-mapped buffer
+    /// registered with [`BufRegistry`].
+    ///
+    /// [`write_at`]: Self::write_at
+    /// [`BufRegistry`]: crate::buf::fixed::BufRegistry
+    ///
+    /// # Errors
+    ///
+    /// In addition to errors that can be reported by `write_at`,
+    /// this operation fails if the buffer is not registered in the
+    /// current `tokio-uring` runtime.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    ///# fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// use tokio_uring::fs::File;
+    /// use tokio_uring::buf::fixed::BufRegistry;
+    /// use tokio_uring::buf::IoBuf;
+    ///
+    /// tokio_uring::start(async {
+    ///     let registry = BufRegistry::new([b"some bytes".to_vec()]);
+    ///     registry.register()?;
+    ///
+    ///     let file = File::create("foo.txt").await?;
+    ///
+    ///     let buffer = registry.check_out(0).unwrap();
+    ///
+    ///     // Writes some prefix of the buffer content,
+    ///     // not necessarily all of it.
+    ///     let (res, _) = file.write_fixed_at(buffer.slice(..), 0).await;
+    ///     let n = res?;
+    ///
+    ///     println!("wrote {} bytes", n);
+    ///
+    ///     // Close the file
+    ///     file.close().await?;
+    ///     Ok(())
+    /// })
+    ///# }
+    /// ```
+    pub async fn write_fixed_at(
+        &self,
+        buf: Slice<FixedBuf>,
+        pos: u64,
+    ) -> crate::BufResult<usize, Slice<FixedBuf>> {
+        let op = Op::write_fixed_at(&self.fd, buf, pos).unwrap();
+        op.write_fixed().await
     }
 
     /// Attempts to sync all OS-internal metadata to disk.

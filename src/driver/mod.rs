@@ -14,7 +14,12 @@ mod open;
 
 mod read;
 
+mod read_fixed;
+
 mod recv_from;
+
+mod register;
+pub(crate) use register::{register_buffers, unregister_buffers, Buffers};
 
 mod send_to;
 
@@ -29,6 +34,8 @@ mod unlink_at;
 mod util;
 
 mod write;
+
+mod write_fixed;
 
 use io_uring::{cqueue, IoUring};
 use scoped_tls::scoped_thread_local;
@@ -50,6 +57,9 @@ pub(crate) struct Inner {
 
     /// IoUring bindings
     pub(crate) uring: IoUring,
+
+    /// Reference to the currently registered buffers
+    buffers: Option<Rc<RefCell<Buffers>>>,
 }
 
 // When dropping the driver, all in-flight operations must have completed. This
@@ -65,6 +75,7 @@ impl Driver {
         let inner = Rc::new(RefCell::new(Inner {
             ops: Ops::new(),
             uring,
+            buffers: None,
         }));
 
         Ok(Driver { inner })
