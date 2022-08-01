@@ -120,6 +120,40 @@ fn sync_doesnt_kill_anything() {
     });
 }
 
+#[test]
+fn rename() {
+    use std::ffi::OsStr;
+    tokio_uring::start(async {
+        let mut tempfile = tempfile();
+        tempfile.write_all(HELLO).unwrap();
+
+        let old_path = tempfile.path();
+        let old_file = File::open(old_path).await.unwrap();
+        read_hello(&old_file).await;
+        old_file.close().await.unwrap();
+
+        let mut new_file_name = old_path
+            .file_name()
+            .unwrap_or_else(|| OsStr::new(""))
+            .to_os_string();
+        new_file_name.push("_renamed");
+
+        let new_path = old_path.with_file_name(new_file_name);
+
+        tokio_uring::fs::rename(&old_path, &new_path).await.unwrap();
+
+        let new_file = File::open(&new_path).await.unwrap();
+        read_hello(&new_file).await;
+
+        let old_file = File::open(old_path).await;
+        assert!(old_file.is_err());
+
+        // Since the file has been renamed, it won't be deleted
+        // in the TempPath destructor. We have to manually delete it.
+        std::fs::remove_file(&new_path).unwrap();
+    })
+}
+
 fn tempfile() -> NamedTempFile {
     NamedTempFile::new().unwrap()
 }

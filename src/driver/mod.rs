@@ -16,6 +16,8 @@ mod read;
 
 mod recv_from;
 
+mod rename_at;
+
 mod send_to;
 
 mod shared_fd;
