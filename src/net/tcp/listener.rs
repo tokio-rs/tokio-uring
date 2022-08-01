@@ -13,23 +13,21 @@ use std::{io, net::SocketAddr};
 /// use tokio_uring::net::TcpListener;
 /// use tokio_uring::net::TcpStream;
 ///
-/// fn main() {
-///     let listener = TcpListener::bind("127.0.0.1:2345".parse().unwrap()).unwrap();
+/// let listener = TcpListener::bind("127.0.0.1:2345".parse().unwrap()).unwrap();
 ///
-///     tokio_uring::start(async move {
-///         let tx_fut = TcpStream::connect("127.0.0.1:2345".parse().unwrap());
+/// tokio_uring::start(async move {
+///     let tx_fut = TcpStream::connect("127.0.0.1:2345".parse().unwrap());
 ///
-///         let rx_fut = listener.accept();
+///     let rx_fut = listener.accept();
 ///
-///         let (tx, (rx, _)) = tokio::try_join!(tx_fut, rx_fut).unwrap();
+///     let (tx, (rx, _)) = tokio::try_join!(tx_fut, rx_fut).unwrap();
 ///
-///         tx.write(b"test" as &'static [u8]).await.0.unwrap();
+///     tx.write(b"test" as &'static [u8]).await.0.unwrap();
 ///
-///         let (_, buf) = rx.read(vec![0; 4]).await;
+///     let (_, buf) = rx.read(vec![0; 4]).await;
 ///
-///         assert_eq!(buf, b"test");
-///     });
-/// }
+///     assert_eq!(buf, b"test");
+/// });
 /// ```
 pub struct TcpListener {
     inner: Socket,
@@ -48,7 +46,7 @@ impl TcpListener {
     pub fn bind(addr: SocketAddr) -> io::Result<Self> {
         let socket = Socket::bind(addr, libc::SOCK_STREAM)?;
         socket.listen(1024)?;
-        return Ok(TcpListener { inner: socket });
+        Ok(TcpListener { inner: socket })
     }
 
     /// Accepts a new incoming connection from this listener.

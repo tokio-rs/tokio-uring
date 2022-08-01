@@ -34,16 +34,14 @@ pub(crate) struct Runtime {
 /// that processes each received connection.
 ///
 /// ```no_run
-/// fn main() {
-///     tokio_uring::start(async {
-///         let handle = tokio_uring::spawn(async {
-///             println!("hello from a background task");
-///         });
-///
-///         // Let the task complete
-///         handle.await.unwrap();
+/// tokio_uring::start(async {
+///     let handle = tokio_uring::spawn(async {
+///         println!("hello from a background task");
 ///     });
-/// }
+///
+///     // Let the task complete
+///     handle.await.unwrap();
+/// });
 /// ```
 pub fn spawn<T: std::future::Future + 'static>(task: T) -> tokio::task::JoinHandle<T::Output> {
     tokio::task::spawn_local(task)
