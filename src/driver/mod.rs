@@ -14,6 +14,8 @@ mod open;
 
 mod read;
 
+mod readv;
+
 mod recv_from;
 
 mod send_to;
@@ -29,6 +31,8 @@ mod unlink_at;
 mod util;
 
 mod write;
+
+mod writev;
 
 use io_uring::{cqueue, IoUring};
 use scoped_tls::scoped_thread_local;
