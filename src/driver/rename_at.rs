@@ -5,6 +5,7 @@ use std::io;
 use std::path::Path;
 
 /// Renames a file, moving it between directories if required.
+///
 /// The given paths are interpreted relative to the current working directory
 /// of the calling process.
 pub(crate) struct RenameAt {
