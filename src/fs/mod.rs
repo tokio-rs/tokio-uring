@@ -5,6 +5,7 @@ pub use directory::remove_dir;
 
 mod file;
 pub use file::remove_file;
+pub use file::rename;
 pub use file::File;
 
 mod open_options;

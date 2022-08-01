@@ -13,25 +13,24 @@ use std::{io, path::Path};
 /// use tokio_uring::net::UnixListener;
 /// use tokio_uring::net::UnixStream;
 ///
-/// fn main() {
-///     let sock_file = "/tmp/tokio-uring-unix-test.sock";
-///     let listener = UnixListener::bind(&sock_file).unwrap();
+/// let sock_file = "/tmp/tokio-uring-unix-test.sock";
+/// let listener = UnixListener::bind(&sock_file).unwrap();
 ///
-///     tokio_uring::start(async move {
-///         let tx_fut = UnixStream::connect(&sock_file);
+/// tokio_uring::start(async move {
+///     let tx_fut = UnixStream::connect(&sock_file);
 ///
-///         let rx_fut = listener.accept();
+///     let rx_fut = listener.accept();
 ///
-///         let (tx, rx) = tokio::try_join!(tx_fut, rx_fut).unwrap();
+///     let (tx, rx) = tokio::try_join!(tx_fut, rx_fut).unwrap();
 ///
-///         tx.write(b"test" as &'static [u8]).await.0.unwrap();
+///     tx.write(b"test" as &'static [u8]).await.0.unwrap();
 ///
-///         let (_, buf) = rx.read(vec![0; 4]).await;
+///     let (_, buf) = rx.read(vec![0; 4]).await;
 ///
-///         assert_eq!(buf, b"test");
-///     });
-///     std::fs::remove_file(&sock_file);
-/// }
+///     assert_eq!(buf, b"test");
+/// });
+///
+/// std::fs::remove_file(&sock_file).unwrap();
 /// ```
 pub struct UnixListener {
     inner: Socket,

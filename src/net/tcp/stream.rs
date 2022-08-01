@@ -1,4 +1,8 @@
-use std::{io, net::SocketAddr};
+use std::{
+    io,
+    net::SocketAddr,
+    os::unix::prelude::{AsRawFd, RawFd},
+};
 
 use crate::{
     buf::{IoBuf, IoBufMut},
@@ -43,7 +47,7 @@ impl TcpStream {
         let socket = Socket::new(addr, libc::SOCK_STREAM)?;
         socket.connect(socket2::SockAddr::from(addr)).await?;
         let tcp_stream = TcpStream { inner: socket };
-        return Ok(tcp_stream);
+        Ok(tcp_stream)
     }
 
     /// Read some data from the stream into the buffer, returning the original buffer and
@@ -56,5 +60,11 @@ impl TcpStream {
     /// quantity of data written.
     pub async fn write<T: IoBuf>(&self, buf: T) -> crate::BufResult<usize, T> {
         self.inner.write(buf).await
+    }
+}
+
+impl AsRawFd for TcpStream {
+    fn as_raw_fd(&self) -> RawFd {
+        self.inner.as_raw_fd()
     }
 }

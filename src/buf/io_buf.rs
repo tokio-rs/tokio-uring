@@ -15,7 +15,7 @@ use std::ops;
 /// API: [`slice()`]. The method takes ownership fo the buffer and returns a
 /// `Slice<Self>` type that tracks the requested offset.
 ///
-/// # Implementation notes
+/// # Safety
 ///
 /// Buffers passed to `io-uring` operations must reference a stable memory
 /// region. While the runtime holds ownership to a buffer, the pointer returned

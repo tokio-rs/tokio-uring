@@ -16,6 +16,8 @@ mod read;
 
 mod recv_from;
 
+mod rename_at;
+
 mod send_to;
 
 mod shared_fd;
@@ -72,7 +74,7 @@ impl Driver {
 
     /// Enter the driver context. This enables using uring types.
     pub(crate) fn with<R>(&self, f: impl FnOnce() -> R) -> R {
-        CURRENT.set(&self.inner, || f())
+        CURRENT.set(&self.inner, f)
     }
 
     pub(crate) fn tick(&self) {
