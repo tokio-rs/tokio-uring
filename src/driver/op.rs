@@ -25,9 +25,7 @@ pub(crate) struct Op<T: 'static> {
 #[derive(Debug)]
 pub(crate) struct Completion<T> {
     pub(crate) data: T,
-    pub(crate) result: io::Result<u32>,
-    // the field is currently only read in tests
-    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) result: io::Result<i32>,
     pub(crate) flags: u32,
 }
 
@@ -43,7 +41,7 @@ pub(crate) enum Lifecycle {
     Ignored(Box<dyn std::any::Any>),
 
     /// The operation has completed.
-    Completed(io::Result<u32>, u32),
+    Completed(io::Result<i32>, u32),
 }
 
 impl<T> Op<T> {
@@ -167,7 +165,7 @@ impl<T> Drop for Op<T> {
 }
 
 impl Lifecycle {
-    pub(super) fn complete(&mut self, result: io::Result<u32>, flags: u32) -> bool {
+    pub(super) fn complete(&mut self, result: io::Result<i32>, flags: u32) -> bool {
         use std::mem;
 
         match mem::replace(self, Lifecycle::Submitted) {
@@ -320,7 +318,7 @@ mod test {
         (op, driver, data)
     }
 
-    fn complete(op: &Op<Rc<()>>, result: io::Result<u32>) {
+    fn complete(op: &Op<Rc<()>>, result: io::Result<i32>) {
         op.driver.borrow_mut().ops.complete(op.index, result, 0);
     }
 
