@@ -15,8 +15,9 @@ fn main() {
 
         let buf = vec![0u8; 128];
 
-        let (result, mut buf) = socket.recv_from(buf).await;
+        let (result, buf) = socket.recv_from(buf).await;
         let (read, socket_addr) = result.unwrap();
+        let mut buf = buf.into_inner();
         buf.resize(read, 0);
         println!("received from {}: {:?}", socket_addr, &buf[..]);
 

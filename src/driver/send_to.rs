@@ -1,4 +1,4 @@
-use crate::buf::IoBuf;
+use crate::buf::{IoBuf, Slice};
 use crate::driver::{Op, SharedFd};
 use crate::BufResult;
 use socket2::SockAddr;
@@ -9,7 +9,7 @@ use std::{boxed::Box, io, net::SocketAddr};
 pub(crate) struct SendTo<T> {
     #[allow(dead_code)]
     fd: SharedFd,
-    pub(crate) buf: T,
+    buf: Slice<T>,
     #[allow(dead_code)]
     io_slices: Vec<IoSlice<'static>>,
     #[allow(dead_code)]
@@ -20,7 +20,7 @@ pub(crate) struct SendTo<T> {
 impl<T: IoBuf> Op<SendTo<T>> {
     pub(crate) fn send_to(
         fd: &SharedFd,
-        buf: T,
+        buf: Slice<T>,
         socket_addr: SocketAddr,
     ) -> io::Result<Op<SendTo<T>>> {
         use io_uring::{opcode, types};
@@ -55,13 +55,13 @@ impl<T: IoBuf> Op<SendTo<T>> {
         )
     }
 
-    pub(crate) async fn send(mut self) -> BufResult<usize, T> {
+    pub(crate) async fn send(mut self) -> BufResult<usize, Slice<T>> {
         use crate::future::poll_fn;
 
         poll_fn(move |cx| self.poll_send(cx)).await
     }
 
-    pub(crate) fn poll_send(&mut self, cx: &mut Context<'_>) -> Poll<BufResult<usize, T>> {
+    pub(crate) fn poll_send(&mut self, cx: &mut Context<'_>) -> Poll<BufResult<usize, Slice<T>>> {
         use std::future::Future;
         use std::pin::Pin;
 

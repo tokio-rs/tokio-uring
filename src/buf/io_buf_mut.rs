@@ -23,7 +23,8 @@ pub unsafe trait IoBufMut: IoBuf {
 
     /// Updates the number of initialized bytes.
     ///
-    /// The specified `pos` becomes the new value returned by
+    /// If the specified `pos` is greater than the value returned by
+    /// [`IoBuf::bytes_init`], it becomes the new water mark as returned by
     /// `IoBuf::bytes_init`.
     ///
     /// # Safety

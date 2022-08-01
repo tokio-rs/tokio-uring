@@ -1,5 +1,5 @@
 use crate::{
-    buf::IoBuf,
+    buf::{IoBuf, Slice},
     driver::{Op, SharedFd},
     BufResult,
 };
@@ -14,11 +14,12 @@ pub(crate) struct Write<T> {
     #[allow(dead_code)]
     fd: SharedFd,
 
-    pub(crate) buf: T,
+    /// Owns the in-flight buffer.
+    buf: Slice<T>,
 }
 
 impl<T: IoBuf> Op<Write<T>> {
-    pub(crate) fn write_at(fd: &SharedFd, buf: T, offset: u64) -> io::Result<Op<Write<T>>> {
+    pub(crate) fn write_at(fd: &SharedFd, buf: Slice<T>, offset: u64) -> io::Result<Op<Write<T>>> {
         use io_uring::{opcode, types};
 
         Op::submit_with(
@@ -38,13 +39,13 @@ impl<T: IoBuf> Op<Write<T>> {
         )
     }
 
-    pub(crate) async fn write(mut self) -> BufResult<usize, T> {
+    pub(crate) async fn write(mut self) -> BufResult<usize, Slice<T>> {
         use crate::future::poll_fn;
 
         poll_fn(move |cx| self.poll_write(cx)).await
     }
 
-    pub(crate) fn poll_write(&mut self, cx: &mut Context<'_>) -> Poll<BufResult<usize, T>> {
+    pub(crate) fn poll_write(&mut self, cx: &mut Context<'_>) -> Poll<BufResult<usize, Slice<T>>> {
         use std::future::Future;
         use std::pin::Pin;
 

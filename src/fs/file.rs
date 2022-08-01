@@ -1,4 +1,4 @@
-use crate::buf::{IoBuf, IoBufMut};
+use crate::buf::{IntoSlice, IoBufMut, Slice};
 use crate::driver::{Op, SharedFd};
 use crate::fs::OpenOptions;
 
@@ -165,9 +165,13 @@ impl File {
     ///     })
     /// }
     /// ```
-    pub async fn read_at<T: IoBufMut>(&self, buf: T, pos: u64) -> crate::BufResult<usize, T> {
+    pub async fn read_at<T>(&self, buf: T, pos: u64) -> crate::BufResult<usize, Slice<T::Buf>>
+    where
+        T: IntoSlice,
+        T::Buf: IoBufMut,
+    {
         // Submit the read operation
-        let op = Op::read_at(&self.fd, buf, pos).unwrap();
+        let op = Op::read_at(&self.fd, buf.into_full_slice(), pos).unwrap();
         op.read().await
     }
 
@@ -217,8 +221,12 @@ impl File {
     /// ```
     ///
     /// [`Ok(n)`]: Ok
-    pub async fn write_at<T: IoBuf>(&self, buf: T, pos: u64) -> crate::BufResult<usize, T> {
-        let op = Op::write_at(&self.fd, buf, pos).unwrap();
+    pub async fn write_at<T: IntoSlice>(
+        &self,
+        buf: T,
+        pos: u64,
+    ) -> crate::BufResult<usize, Slice<T::Buf>> {
+        let op = Op::write_at(&self.fd, buf.into_full_slice(), pos).unwrap();
         op.write().await
     }
 

@@ -1,5 +1,5 @@
 use crate::{
-    buf::{IoBuf, IoBufMut},
+    buf::{IntoSlice, IoBufMut, Slice},
     driver::{Op, SharedFd},
 };
 use std::{
@@ -39,30 +39,41 @@ impl Socket {
         Ok(Socket { fd })
     }
 
-    pub(crate) async fn write<T: IoBuf>(&self, buf: T) -> crate::BufResult<usize, T> {
-        let op = Op::write_at(&self.fd, buf, 0).unwrap();
+    pub(crate) async fn write<T: IntoSlice>(
+        &self,
+        buf: T,
+    ) -> crate::BufResult<usize, Slice<T::Buf>> {
+        let op = Op::write_at(&self.fd, buf.into_full_slice(), 0).unwrap();
         op.write().await
     }
 
-    pub(crate) async fn send_to<T: IoBuf>(
+    pub(crate) async fn send_to<T: IntoSlice>(
         &self,
         buf: T,
         socket_addr: SocketAddr,
-    ) -> crate::BufResult<usize, T> {
-        let op = Op::send_to(&self.fd, buf, socket_addr).unwrap();
+    ) -> crate::BufResult<usize, Slice<T::Buf>> {
+        let op = Op::send_to(&self.fd, buf.into_full_slice(), socket_addr).unwrap();
         op.send().await
     }
 
-    pub(crate) async fn read<T: IoBufMut>(&self, buf: T) -> crate::BufResult<usize, T> {
-        let op = Op::read_at(&self.fd, buf, 0).unwrap();
+    pub(crate) async fn read<T>(&self, buf: T) -> crate::BufResult<usize, Slice<T::Buf>>
+    where
+        T: IntoSlice,
+        T::Buf: IoBufMut,
+    {
+        let op = Op::read_at(&self.fd, buf.into_full_slice(), 0).unwrap();
         op.read().await
     }
 
-    pub(crate) async fn recv_from<T: IoBufMut>(
+    pub(crate) async fn recv_from<T>(
         &self,
         buf: T,
-    ) -> crate::BufResult<(usize, SocketAddr), T> {
-        let op = Op::recv_from(&self.fd, buf).unwrap();
+    ) -> crate::BufResult<(usize, SocketAddr), Slice<T::Buf>>
+    where
+        T: IntoSlice,
+        T::Buf: IoBufMut,
+    {
+        let op = Op::recv_from(&self.fd, buf.into_full_slice()).unwrap();
         op.recv().await
     }
 
