@@ -171,6 +171,117 @@ impl File {
         op.read().await
     }
 
+    /// Read some bytes at the specified offset from the file into the specified
+    /// array of buffers, returning how many bytes were read.
+    ///
+    /// # Return
+    ///
+    /// The method returns the operation result and the same array of buffers
+    /// passed as an argument.
+    ///
+    /// If the method returns [`Ok(n)`], then the read was successful. A nonzero
+    /// `n` value indicates that the buffers have been filled with `n` bytes of
+    /// data from the file. If `n` is `0`, then one of the following happened:
+    ///
+    /// 1. The specified offset is the end of the file.
+    /// 2. The buffers specified were 0 bytes in length.
+    ///
+    /// It is not an error if the returned value `n` is smaller than the buffer
+    /// size, even when the file contains enough data to fill the buffer.
+    ///
+    /// # Errors
+    ///
+    /// If this function encounters any form of I/O or other error, an error
+    /// variant will be returned. The buffer is returned on error.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use tokio_uring::fs::File;
+    ///
+    /// fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ///     tokio_uring::start(async {
+    ///         let f = File::open("foo.txt").await?;
+    ///         let buffers = vec![Vec::<u8>::with_capacity(10), Vec::<u8>::with_capacity(10)];
+    ///
+    ///         // Read up to 20 bytes
+    ///         let (res, buffer) = f.readv_at(buffers, 0).await;
+    ///         let n = res?;
+    ///
+    ///         println!("Read {} bytes", n);
+    ///
+    ///         // Close the file
+    ///         f.close().await?;
+    ///         Ok(())
+    ///     })
+    /// }
+    /// ```
+    pub async fn readv_at<T: IoBufMut>(
+        &self,
+        bufs: Vec<T>,
+        pos: u64,
+    ) -> crate::BufResult<usize, Vec<T>> {
+        // Submit the read operation
+        let op = Op::readv_at(&self.fd, bufs, pos).unwrap();
+        op.readv().await
+    }
+
+    /// Write data from buffers into this file at the specified offset,
+    /// returning how many bytes were written.
+    ///
+    /// This function will attempt to write the entire contents of `bufs`, but
+    /// the entire write may not succeed, or the write may also generate an
+    /// error. The bytes will be written starting at the specified offset.
+    ///
+    /// # Return
+    ///
+    /// The method returns the operation result and the same array of buffers passed
+    /// in as an argument. A return value of `0` typically means that the
+    /// underlying file is no longer able to accept bytes and will likely not be
+    /// able to in the future as well, or that the buffer provided is empty.
+    ///
+    /// # Errors
+    ///
+    /// Each call to `write` may generate an I/O error indicating that the
+    /// operation could not be completed. If an error is returned then no bytes
+    /// in the buffer were written to this writer.
+    ///
+    /// It is **not** considered an error if the entire buffer could not be
+    /// written to this writer.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use tokio_uring::fs::File;
+    ///
+    /// fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ///     tokio_uring::start(async {
+    ///         let file = File::create("foo.txt").await?;
+    ///
+    ///         // Writes some prefix of the byte string, not necessarily all of it.
+    ///         let bufs = vec!["some".to_owned().into_bytes(), " bytes".to_owned().into_bytes()];
+    ///         let (res, _) = file.writev_at(bufs, 0).await;
+    ///         let n = res?;
+    ///
+    ///         println!("wrote {} bytes", n);
+    ///
+    ///         // Close the file
+    ///         file.close().await?;
+    ///         Ok(())
+    ///     })
+    /// }
+    /// ```
+    ///
+    /// [`Ok(n)`]: Ok
+    pub async fn writev_at<T: IoBuf>(
+        &self,
+        buf: Vec<T>,
+        pos: u64,
+    ) -> crate::BufResult<usize, Vec<T>> {
+        let op = Op::writev_at(&self.fd, buf, pos).unwrap();
+        op.writev().await
+    }
+
     /// Write a buffer into this file at the specified offset, returning how
     /// many bytes were written.
     ///

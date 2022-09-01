@@ -48,6 +48,39 @@ fn basic_write() {
 }
 
 #[test]
+fn vectored_read() {
+    tokio_uring::start(async {
+        let mut tempfile = tempfile();
+        tempfile.write_all(HELLO).unwrap();
+
+        let file = File::open(tempfile.path()).await.unwrap();
+        let bufs = vec![Vec::<u8>::with_capacity(5), Vec::<u8>::with_capacity(9)];
+        let (res, bufs) = file.readv_at(bufs, 0).await;
+        let n = res.unwrap();
+
+        assert_eq!(n, HELLO.len());
+        assert_eq!(bufs[1][0], b' ');
+    });
+}
+
+#[test]
+fn vectored_write() {
+    tokio_uring::start(async {
+        let tempfile = tempfile();
+
+        let file = File::create(tempfile.path()).await.unwrap();
+        let buf1 = "hello".to_owned().into_bytes();
+        let buf2 = " world...".to_owned().into_bytes();
+        let bufs = vec![buf1, buf2];
+
+        file.writev_at(bufs, 0).await.0.unwrap();
+
+        let file = std::fs::read(tempfile.path()).unwrap();
+        assert_eq!(file, HELLO);
+    });
+}
+
+#[test]
 fn cancel_read() {
     tokio_uring::start(async {
         let mut tempfile = tempfile();
