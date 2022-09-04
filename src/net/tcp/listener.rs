@@ -40,13 +40,41 @@ impl TcpListener {
     ///
     /// Binding with a port number of 0 will request that the OS assigns a port
     /// to this listener.
-    ///
-    /// In the future, the port allocated can be queried via a (blocking) `local_addr`
-    /// method.
     pub fn bind(addr: SocketAddr) -> io::Result<Self> {
         let socket = Socket::bind(addr, libc::SOCK_STREAM)?;
         socket.listen(1024)?;
         Ok(TcpListener { inner: socket })
+    }
+
+    /// Returns the local address that this listener is bound to.
+    ///
+    /// This can be useful, for example, when binding to port 0 to figure out
+    /// which port was actually bound. The implementation relies on the standard net
+    /// system call so is blocking.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+    /// use tokio_uring::net::TcpListener;
+    ///
+    /// let listener = TcpListener::bind("127.0.0.1:8080".parse().unwrap()).unwrap();
+    ///
+    /// let addr = listener.local_addr().expect("Couldn't get local address");
+    /// assert_eq!(addr, SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 8080)));
+    /// ```
+    #[cfg(unix)]
+    pub fn local_addr(&self) -> io::Result<SocketAddr> {
+        use std::os::unix::io::{AsRawFd, FromRawFd};
+
+        let fd = self.inner.as_raw_fd();
+        // SAFETY: Our fd is the handle the kernel has given us for a TcpListener.
+        // Create a std::net::TcpListener long enough to call its local_addr method
+        // and then forget it so the socket is not closed here.
+        let l = unsafe { std::net::TcpListener::from_raw_fd(fd) };
+        let local_addr = l.local_addr();
+        std::mem::forget(l);
+        local_addr
     }
 
     /// Accepts a new incoming connection from this listener.

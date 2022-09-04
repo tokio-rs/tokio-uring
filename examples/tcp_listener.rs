@@ -14,6 +14,8 @@ fn main() {
     tokio_uring::start(async {
         let listener = TcpListener::bind(socket_addr).unwrap();
 
+        println!("Listening on {}", listener.local_addr().unwrap());
+
         loop {
             let (stream, socket_addr) = listener.accept().await.unwrap();
             tokio_uring::spawn(async move {
