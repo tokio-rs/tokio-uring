@@ -48,9 +48,8 @@ impl TcpListener {
 
     /// Returns the local address that this listener is bound to.
     ///
-    /// This can be useful, for example, when binding to port 0 to figure out
-    /// which port was actually bound. The implementation relies on the standard net
-    /// system call so is blocking.
+    /// This can be useful, for example, when binding to port 0 to
+    /// figure out which port was actually bound.
     ///
     /// # Examples
     ///
@@ -63,7 +62,6 @@ impl TcpListener {
     /// let addr = listener.local_addr().expect("Couldn't get local address");
     /// assert_eq!(addr, SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 8080)));
     /// ```
-    #[cfg(unix)]
     pub fn local_addr(&self) -> io::Result<SocketAddr> {
         use std::os::unix::io::{AsRawFd, FromRawFd};
 
