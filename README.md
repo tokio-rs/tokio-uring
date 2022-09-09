@@ -3,7 +3,7 @@
 This crate provides [`io-uring`] for [Tokio] by exposing a new Runtime that is
 compatible with Tokio but also can drive [`io-uring`]-backed resources. Any
 library that works with [Tokio] also works with `tokio-uring`. The crate
-provides new resource types ([`fs::File`]) that work with [`io-uring`].
+provides new resource types that work with [`io-uring`].
 
 [`io-uring`]: https://unixism.net/loti/
 [Tokio]: https://github.com/tokio-rs/tokio
@@ -46,7 +46,7 @@ In particular `5.4.0` does not work (This is standard on Ubuntu 20.4). However `
 ## Project status
 
 The `tokio-uring` project is still very young. Currently, we are focusing on
-supporting filesystem operations. Eventually, we will add safe APIs for all
+supporting filesystem and network operations. Eventually, we will add safe APIs for all
 io-uring compatible operations.
 
 ## License

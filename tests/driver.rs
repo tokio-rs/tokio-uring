@@ -1,11 +1,10 @@
+use tempfile::NamedTempFile;
+
+use tokio_uring::{buf::IoBuf, fs::File};
+
 #[path = "../src/future.rs"]
 #[allow(warnings)]
 mod future;
-
-use tokio_uring::buf::IoBuf;
-use tokio_uring::fs::File;
-
-use tempfile::NamedTempFile;
 
 #[test]
 fn complete_ops_on_drop() {

@@ -1,12 +1,15 @@
-#[path = "../src/future.rs"]
-#[allow(warnings)]
-mod future;
+use std::{
+    io::prelude::*,
+    os::unix::io::{AsRawFd, FromRawFd, RawFd},
+};
+
+use tempfile::NamedTempFile;
 
 use tokio_uring::fs::File;
 
-use std::io::prelude::*;
-use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
-use tempfile::NamedTempFile;
+#[path = "../src/future.rs"]
+#[allow(warnings)]
+mod future;
 
 const HELLO: &[u8] = b"hello world...";
 
@@ -38,6 +41,39 @@ fn basic_write() {
         let file = File::create(tempfile.path()).await.unwrap();
 
         file.write_at(HELLO, 0).await.0.unwrap();
+
+        let file = std::fs::read(tempfile.path()).unwrap();
+        assert_eq!(file, HELLO);
+    });
+}
+
+#[test]
+fn vectored_read() {
+    tokio_uring::start(async {
+        let mut tempfile = tempfile();
+        tempfile.write_all(HELLO).unwrap();
+
+        let file = File::open(tempfile.path()).await.unwrap();
+        let bufs = vec![Vec::<u8>::with_capacity(5), Vec::<u8>::with_capacity(9)];
+        let (res, bufs) = file.readv_at(bufs, 0).await;
+        let n = res.unwrap();
+
+        assert_eq!(n, HELLO.len());
+        assert_eq!(bufs[1][0], b' ');
+    });
+}
+
+#[test]
+fn vectored_write() {
+    tokio_uring::start(async {
+        let tempfile = tempfile();
+
+        let file = File::create(tempfile.path()).await.unwrap();
+        let buf1 = "hello".to_owned().into_bytes();
+        let buf2 = " world...".to_owned().into_bytes();
+        let bufs = vec![buf1, buf2];
+
+        file.writev_at(bufs, 0).await.0.unwrap();
 
         let file = std::fs::read(tempfile.path()).unwrap();
         assert_eq!(file, HELLO);
@@ -115,6 +151,40 @@ fn sync_doesnt_kill_anything() {
         file.sync_all().await.unwrap();
         file.sync_data().await.unwrap();
     });
+}
+
+#[test]
+fn rename() {
+    use std::ffi::OsStr;
+    tokio_uring::start(async {
+        let mut tempfile = tempfile();
+        tempfile.write_all(HELLO).unwrap();
+
+        let old_path = tempfile.path();
+        let old_file = File::open(old_path).await.unwrap();
+        read_hello(&old_file).await;
+        old_file.close().await.unwrap();
+
+        let mut new_file_name = old_path
+            .file_name()
+            .unwrap_or_else(|| OsStr::new(""))
+            .to_os_string();
+        new_file_name.push("_renamed");
+
+        let new_path = old_path.with_file_name(new_file_name);
+
+        tokio_uring::fs::rename(&old_path, &new_path).await.unwrap();
+
+        let new_file = File::open(&new_path).await.unwrap();
+        read_hello(&new_file).await;
+
+        let old_file = File::open(old_path).await;
+        assert!(old_file.is_err());
+
+        // Since the file has been renamed, it won't be deleted
+        // in the TempPath destructor. We have to manually delete it.
+        std::fs::remove_file(&new_path).unwrap();
+    })
 }
 
 fn tempfile() -> NamedTempFile {

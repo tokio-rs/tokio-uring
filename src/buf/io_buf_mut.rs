@@ -5,7 +5,7 @@ use crate::buf::IoBuf;
 /// The `IoBufMut` trait is implemented by buffer types that can be passed to
 /// io-uring operations. Users will not need to use this trait directly.
 ///
-/// # Implementation notes
+/// # Safety
 ///
 /// Buffers passed to `io-uring` operations must reference a stable memory
 /// region. While the runtime holds ownership to a buffer, the pointer returned

@@ -1,5 +1,9 @@
+mod accept;
+
 mod close;
 pub(crate) use close::Close;
+
+mod connect;
 
 mod fsync;
 
@@ -10,16 +14,29 @@ mod open;
 
 mod read;
 
+mod readv;
+
+mod recv_from;
+
+mod rename_at;
+
+mod send_to;
+
 mod shared_fd;
 pub(crate) use shared_fd::SharedFd;
 
 mod mkdir_at;
+
+mod socket;
+pub(crate) use socket::Socket;
 
 mod unlink_at;
 
 mod util;
 
 mod write;
+
+mod writev;
 
 use io_uring::{cqueue, IoUring};
 use scoped_tls::scoped_thread_local;
@@ -35,19 +52,19 @@ pub(crate) struct Driver {
 
 type Handle = Rc<RefCell<Inner>>;
 
-struct Inner {
+pub(crate) struct Inner {
     /// In-flight operations
     ops: Ops,
 
     /// IoUring bindings
-    uring: IoUring,
+    pub(crate) uring: IoUring,
 }
 
 // When dropping the driver, all in-flight operations must have completed. This
 // type wraps the slab and ensures that, on drop, the slab is empty.
 struct Ops(Slab<op::Lifecycle>);
 
-scoped_thread_local!(static CURRENT: Rc<RefCell<Inner>>);
+scoped_thread_local!(pub(crate) static CURRENT: Rc<RefCell<Inner>>);
 
 impl Driver {
     pub(crate) fn new() -> io::Result<Driver> {
@@ -63,7 +80,7 @@ impl Driver {
 
     /// Enter the driver context. This enables using uring types.
     pub(crate) fn with<R>(&self, f: impl FnOnce() -> R) -> R {
-        CURRENT.set(&self.inner, || f())
+        CURRENT.set(&self.inner, f)
     }
 
     pub(crate) fn tick(&self) {
@@ -103,7 +120,7 @@ impl Inner {
         }
     }
 
-    fn submit(&mut self) -> io::Result<()> {
+    pub(crate) fn submit(&mut self) -> io::Result<()> {
         loop {
             match self.uring.submit() {
                 Ok(_) => {

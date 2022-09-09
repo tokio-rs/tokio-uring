@@ -6,7 +6,7 @@ use std::path::Path;
 
 /// Unlink a path relative to the current working directory of the caller's process.
 pub(crate) struct Unlink {
-    pub(crate) _path: CString,
+    pub(crate) path: CString,
 }
 
 impl Op<Unlink> {
@@ -24,14 +24,13 @@ impl Op<Unlink> {
     pub(crate) fn unlink(path: &Path, flags: i32) -> io::Result<Op<Unlink>> {
         use io_uring::{opcode, types};
 
-        let _path = driver::util::cstr(path)?;
+        let path = driver::util::cstr(path)?;
 
-        // Get a reference to the memory. The string will be held by the
-        // operation state and will not be accessed again until the operation
-        // completes.
-        let p_ref = _path.as_c_str().as_ptr();
-
-        Op::submit_with(Unlink { _path }, || {
+        Op::submit_with(Unlink { path }, |unlink| {
+            // Get a reference to the memory. The string will be held by the
+            // operation state and will not be accessed again until the operation
+            // completes.
+            let p_ref = unlink.path.as_c_str().as_ptr();
             opcode::UnlinkAt::new(types::Fd(libc::AT_FDCWD), p_ref)
                 .flags(flags)
                 .build()

@@ -22,7 +22,7 @@ impl Op<Mkdir> {
         // completes.
         let p_ref = _path.as_c_str().as_ptr();
 
-        Op::submit_with(Mkdir { _path }, || {
+        Op::submit_with(Mkdir { _path }, |_| {
             opcode::MkDirAt::new(types::Fd(libc::AT_FDCWD), p_ref)
                 .build()
         })

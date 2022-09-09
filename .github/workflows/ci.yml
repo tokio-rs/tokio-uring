@@ -13,18 +13,39 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
+  # Depends on all actions that are required for a "successful" CI run.
+  # Based on the ci here: https://github.com/tokio-rs/tokio/blob/master/.github/workflows/ci.yml
+  all-systems-go:
+    runs-on: ubuntu-latest
+    needs:
+      - check
+      - clippy
+      - fmt
+      - test
+      - docs
+    steps:
+      - run: exit 0
+
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: Install Rust
         run: rustup update stable
       - run: cargo check
 
+  clippy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install Rust
+        run: rustup update stable
+      - run: cargo clippy
+
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: Install Rust
         run: rustup update stable
       - run: cargo test
@@ -32,7 +53,7 @@ jobs:
   fmt:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: Install Rust
         run: rustup update stable
       - run: cargo fmt -- --check
@@ -40,7 +61,7 @@ jobs:
   docs:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: Install Rust
         run: rustup update nightly && rustup default nightly
       - run: cargo doc --no-deps --all-features

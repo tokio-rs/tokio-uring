@@ -1,12 +1,13 @@
-use crate::driver;
-
-use io_uring::squeue;
 use std::cell::RefCell;
 use std::future::Future;
 use std::io;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::task::{Context, Poll, Waker};
+
+use io_uring::squeue;
+
+use crate::driver;
 
 /// In-flight operation
 pub(crate) struct Op<T: 'static> {
@@ -25,10 +26,8 @@ pub(crate) struct Op<T: 'static> {
 pub(crate) struct Completion<T> {
     pub(crate) data: T,
     pub(crate) result: io::Result<u32>,
-    #[cfg_attr(
-        not(test),  // the field is currently only read in tests
-        allow(dead_code)
-    )]
+    // the field is currently only read in tests
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) flags: u32,
 }
 
@@ -63,7 +62,7 @@ impl<T> Op<T> {
     /// the kernel.
     pub(super) fn submit_with<F>(data: T, f: F) -> io::Result<Op<T>>
     where
-        F: FnOnce() -> squeue::Entry,
+        F: FnOnce(&mut T) -> squeue::Entry,
     {
         driver::CURRENT.with(|inner_rc| {
             let mut inner_ref = inner_rc.borrow_mut();
@@ -75,10 +74,10 @@ impl<T> Op<T> {
             }
 
             // Create the operation
-            let op = Op::new(data, inner, inner_rc);
+            let mut op = Op::new(data, inner, inner_rc);
 
             // Configure the SQE
-            let sqe = f().user_data(op.index as _);
+            let sqe = f(op.data.as_mut().unwrap()).user_data(op.index as _);
 
             {
                 let mut sq = inner.uring.submission();
@@ -89,12 +88,6 @@ impl<T> Op<T> {
                 }
             }
 
-            // Submit the new operation. At this point, the operation has been
-            // pushed onto the queue and the tail pointer has been updated, so
-            // the submission entry is visible to the kernel. If there is an
-            // error here (probably EAGAIN), we still return the operation. A
-            // future `io_uring_enter` will fully submit the event.
-            let _ = inner.submit();
             Ok(op)
         })
     }
@@ -102,7 +95,7 @@ impl<T> Op<T> {
     /// Try submitting an operation to uring
     pub(super) fn try_submit_with<F>(data: T, f: F) -> io::Result<Op<T>>
     where
-        F: FnOnce() -> squeue::Entry,
+        F: FnOnce(&mut T) -> squeue::Entry,
     {
         if driver::CURRENT.is_set() {
             Op::submit_with(data, f)
@@ -195,9 +188,11 @@ impl Lifecycle {
 
 #[cfg(test)]
 mod test {
-    use super::*;
     use std::rc::Rc;
+
     use tokio_test::{assert_pending, assert_ready, task};
+
+    use super::*;
 
     #[test]
     fn op_stays_in_slab_on_drop() {
