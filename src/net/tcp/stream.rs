@@ -64,10 +64,9 @@ impl TcpStream {
 
     /// Attempts to write an entire buffer to the stream.
     ///
-    /// This method will continuously call [`write`] until there is no more data
-    /// to be written or an error of non-[`ErrorKind::Interrupted`] kind is
-    /// returned. This method will not return until the entire buffer has been
-    /// successfully written or such an error occurs.
+    /// This method will continuously call [`write`] until there is no more data to be
+    /// written or an error is returned. This method will not return until the entire
+    /// buffer has been successfully written or an error has occurred.
     ///
     /// If the buffer contains no data, this will never call [`write`].
     ///
@@ -93,7 +92,7 @@ impl TcpStream {
     ///         let (stream, _) = listener.accept().await.unwrap();
     ///         tokio_uring::spawn(async move {
     ///             let mut n = 0;
-    ///             let mut buf = vec![1u8; 4096];
+    ///             let mut buf = vec![0u8; 4096];
     ///             loop {
     ///                 let (result, nbuf) = stream.read(buf).await;
     ///                 buf = nbuf;
