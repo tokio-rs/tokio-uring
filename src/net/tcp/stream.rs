@@ -61,6 +61,90 @@ impl TcpStream {
     pub async fn write<T: IoBuf>(&self, buf: T) -> crate::BufResult<usize, T> {
         self.inner.write(buf).await
     }
+
+    /// Attempts to write an entire buffer to the stream.
+    ///
+    /// This method will continuously call [`write`] until there is no more data
+    /// to be written or an error of non-[`ErrorKind::Interrupted`] kind is
+    /// returned. This method will not return until the entire buffer has been
+    /// successfully written or such an error occurs.
+    ///
+    /// If the buffer contains no data, this will never call [`write`].
+    ///
+    /// # Errors
+    ///
+    /// This function will return the first error that [`write`] returns.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use std::net::SocketAddr;
+    /// use tokio_uring::net::TcpListener;
+    /// use tokio_uring::buf::IoBuf;
+    ///
+    /// let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
+    ///
+    /// tokio_uring::start(async {
+    ///     let listener = TcpListener::bind(addr).unwrap();
+    ///
+    ///     println!("Listening on {}", listener.local_addr().unwrap());
+    ///
+    ///     loop {
+    ///         let (stream, _) = listener.accept().await.unwrap();
+    ///         tokio_uring::spawn(async move {
+    ///             let mut n = 0;
+    ///             let mut buf = vec![1u8; 4096];
+    ///             loop {
+    ///                 let (result, nbuf) = stream.read(buf).await;
+    ///                 buf = nbuf;
+    ///                 let read = result.unwrap();
+    ///                 if read == 0 {
+    ///                     break;
+    ///                 }
+    ///
+    ///                 let (res, slice) = stream.write_all(buf.slice(..read)).await;
+    ///                 let _ = res.unwrap();
+    ///                 buf = slice.into_inner();
+    ///                 n += read;
+    ///             }
+    ///         });
+    ///     }
+    /// });
+    /// ```
+    ///
+    /// [`write`]: Self::write
+    pub async fn write_all<T: IoBuf>(&self, mut buf: T) -> crate::BufResult<(), T> {
+        let mut n = 0;
+        while n < buf.bytes_init() {
+            let res = self.write(buf.slice(n..)).await;
+            match res {
+                (Ok(0), slice) => {
+                    return (
+                        Err(std::io::Error::new(
+                            std::io::ErrorKind::WriteZero,
+                            "failed to write whole buffer",
+                        )),
+                        slice.into_inner(),
+                    )
+                }
+                (Ok(m), slice) => {
+                    n += m;
+                    buf = slice.into_inner();
+                }
+
+                // This match on an EINTR error is not performed because this
+                // crate's design ensures we are not calling the 'wait' option
+                // in the ENTER syscall. Only an Enter with 'wait' can generate
+                // an EINTR according to the io_uring man pages.
+                // (Err(ref e), slice) if e.kind() == std::io::ErrorKind::Interrupted => {
+                //     buf = slice.into_inner();
+                // },
+                (Err(e), slice) => return (Err(e), slice.into_inner()),
+            }
+        }
+
+        (Ok(()), buf)
+    }
 }
 
 impl AsRawFd for TcpStream {
