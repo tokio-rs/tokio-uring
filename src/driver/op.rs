@@ -308,7 +308,7 @@ mod test {
     fn init() -> (Op<Rc<()>>, crate::driver::Driver, Rc<()>) {
         use crate::driver::Driver;
 
-        let driver = Driver::new().unwrap();
+        let driver = Driver::new(&crate::builder()).unwrap();
         let handle = driver.inner.clone();
         let data = Rc::new(());
 

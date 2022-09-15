@@ -65,8 +65,8 @@ struct Ops(Slab<op::Lifecycle>);
 scoped_thread_local!(pub(crate) static CURRENT: Rc<RefCell<Inner>>);
 
 impl Driver {
-    pub(crate) fn new() -> io::Result<Driver> {
-        let uring = IoUring::new(256)?;
+    pub(crate) fn new(b: &crate::Builder) -> io::Result<Driver> {
+        let uring = b.urb.build(b.entries)?;
 
         let inner = Rc::new(RefCell::new(Inner {
             ops: Ops::new(),
