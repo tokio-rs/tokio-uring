@@ -48,7 +48,7 @@ pub fn spawn<T: std::future::Future + 'static>(task: T) -> tokio::task::JoinHand
 }
 
 impl Runtime {
-    pub(crate) fn new() -> io::Result<Runtime> {
+    pub(crate) fn new(b: &crate::Builder) -> io::Result<Runtime> {
         let rt = tokio::runtime::Builder::new_current_thread()
             .on_thread_park(|| {
                 CURRENT.with(|x| {
@@ -62,7 +62,7 @@ impl Runtime {
 
         let driver = {
             let _guard = rt.enter();
-            AsyncFd::new(Driver::new()?)?
+            AsyncFd::new(Driver::new(b)?)?
         };
 
         Ok(Runtime { driver, local, rt })
