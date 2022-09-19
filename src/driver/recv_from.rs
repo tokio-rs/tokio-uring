@@ -1,3 +1,4 @@
+use crate::driver::op::Completable;
 use crate::{
     buf::IoBufMut,
     driver::{Op, SharedFd},
@@ -68,22 +69,35 @@ impl<T: IoBufMut> Op<RecvFrom<T>> {
 
         let complete = ready!(Pin::new(self).poll(cx));
 
-        // Recover the buffer
-        let mut buf = complete.data.buf;
+        Poll::Ready(complete)
+    }
+}
 
-        let result = match complete.result {
-            Ok(v) => {
-                let v = v as usize;
-                let socket_addr: Option<SocketAddr> = (*complete.data.socket_addr).as_socket();
-                // If the operation was successful, advance the initialized cursor.
-                // Safety: the kernel wrote `v` bytes to the buffer.
-                unsafe {
-                    buf.set_init(v);
-                }
-                Ok((v, socket_addr.unwrap()))
+impl<T> Completable for RecvFrom<T>
+where
+    T: IoBufMut,
+{
+    type Output = BufResult<(usize, SocketAddr), T>;
+
+    fn complete(self, result: io::Result<u32>, _flags: u32) -> Self::Output {
+        // Convert the operation result to `usize`
+        let res = result.map(|v| v as usize);
+        // Recover the buffer
+        let mut buf = self.buf;
+
+        let socket_addr = (*self.socket_addr).as_socket();
+
+        let res = res.map(|n| {
+            let socket_addr: SocketAddr = socket_addr.unwrap();
+
+            // Safety: the kernel wrote `n` bytes to the buffer.
+            unsafe {
+                buf.set_init(n);
             }
-            Err(e) => Err(e),
-        };
-        Poll::Ready((result, buf))
+
+            (n, socket_addr)
+        });
+
+        (res, buf)
     }
 }

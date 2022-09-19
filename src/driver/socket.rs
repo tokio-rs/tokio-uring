@@ -12,7 +12,7 @@ use std::{
 #[derive(Clone)]
 pub(crate) struct Socket {
     /// Open file descriptor
-    fd: SharedFd,
+    pub(crate) fd: SharedFd,
 }
 
 pub(crate) fn get_domain(socket_addr: SocketAddr) -> libc::c_int {
@@ -68,26 +68,12 @@ impl Socket {
 
     pub(crate) async fn accept(&self) -> io::Result<(Socket, Option<SocketAddr>)> {
         let op = Op::accept(&self.fd)?;
-        let completion = op.await;
-        let fd = completion.result?;
-        let fd = SharedFd::new(fd as i32);
-        let data = completion.data;
-        let socket = Socket { fd };
-        let (_, addr) = unsafe {
-            socket2::SockAddr::init(move |addr_storage, len| {
-                *addr_storage = data.socketaddr.0.to_owned();
-                *len = data.socketaddr.1;
-                Ok(())
-            })?
-        };
-        Ok((socket, addr.as_socket()))
+        op.await
     }
 
     pub(crate) async fn connect(&self, socket_addr: socket2::SockAddr) -> io::Result<()> {
         let op = Op::connect(&self.fd, socket_addr)?;
-        let completion = op.await;
-        completion.result?;
-        Ok(())
+        op.await
     }
 
     pub(crate) fn bind(socket_addr: SocketAddr, socket_type: libc::c_int) -> io::Result<Socket> {

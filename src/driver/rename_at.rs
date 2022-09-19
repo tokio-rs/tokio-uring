@@ -1,5 +1,6 @@
 use crate::driver::{self, Op};
 
+use crate::driver::op::Completable;
 use std::ffi::CString;
 use std::io;
 use std::path::Path;
@@ -37,5 +38,13 @@ impl Op<RenameAt> {
             .flags(flags)
             .build()
         })
+    }
+}
+
+impl Completable for RenameAt {
+    type Output = io::Result<()>;
+
+    fn complete(self, result: io::Result<u32>, _flags: u32) -> Self::Output {
+        result.map(|_| ())
     }
 }

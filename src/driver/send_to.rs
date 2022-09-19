@@ -1,4 +1,5 @@
 use crate::buf::IoBuf;
+use crate::driver::op::Completable;
 use crate::driver::{Op, SharedFd};
 use crate::BufResult;
 use socket2::SockAddr;
@@ -66,6 +67,22 @@ impl<T: IoBuf> Op<SendTo<T>> {
         use std::pin::Pin;
 
         let complete = ready!(Pin::new(self).poll(cx));
-        Poll::Ready((complete.result.map(|v| v as _), complete.data.buf))
+        Poll::Ready(complete)
+    }
+}
+
+impl<T> Completable for SendTo<T>
+where
+    T: IoBuf,
+{
+    type Output = BufResult<usize, T>;
+
+    fn complete(self, result: io::Result<u32>, _flags: u32) -> Self::Output {
+        // Convert the operation result to `usize`
+        let res = result.map(|v| v as usize);
+        // Recover the buffer
+        let buf = self.buf;
+
+        (res, buf)
     }
 }

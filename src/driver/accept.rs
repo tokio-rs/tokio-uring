@@ -1,4 +1,6 @@
-use crate::driver::{Op, SharedFd};
+use crate::driver::op::Completable;
+use crate::driver::{Op, SharedFd, Socket};
+use std::net::SocketAddr;
 use std::{boxed::Box, io};
 
 pub(crate) struct Accept {
@@ -29,5 +31,23 @@ impl Op<Accept> {
                 .build()
             },
         )
+    }
+}
+
+impl Completable for Accept {
+    type Output = io::Result<(Socket, Option<SocketAddr>)>;
+
+    fn complete(self, result: io::Result<u32>, _flags: u32) -> Self::Output {
+        let fd = result?;
+        let fd = SharedFd::new(fd as i32);
+        let socket = Socket { fd };
+        let (_, addr) = unsafe {
+            socket2::SockAddr::init(move |addr_storage, len| {
+                *addr_storage = self.socketaddr.0.to_owned();
+                *len = self.socketaddr.1;
+                Ok(())
+            })?
+        };
+        Ok((socket, addr.as_socket()))
     }
 }
