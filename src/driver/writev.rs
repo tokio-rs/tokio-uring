@@ -1,3 +1,4 @@
+use crate::driver::op::Completable;
 use crate::{
     buf::IoBuf,
     driver::{Op, SharedFd},
@@ -67,6 +68,22 @@ impl<T: IoBuf> Op<Writev<T>> {
         use std::pin::Pin;
 
         let complete = ready!(Pin::new(self).poll(cx));
-        Poll::Ready((complete.result.map(|v| v as _), complete.data.bufs))
+        Poll::Ready(complete)
+    }
+}
+
+impl<T> Completable for Writev<T>
+where
+    T: IoBuf,
+{
+    type Output = BufResult<usize, Vec<T>>;
+
+    fn complete(self, result: io::Result<u32>, _flags: u32) -> Self::Output {
+        // Convert the operation result to `usize`
+        let res = result.map(|v| v as usize);
+        // Recover the buffer
+        let buf = self.bufs;
+
+        (res, buf)
     }
 }

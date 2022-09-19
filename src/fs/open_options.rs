@@ -1,4 +1,4 @@
-use crate::driver::{Op, SharedFd};
+use crate::driver::Op;
 use crate::fs::File;
 
 use std::io;
@@ -330,13 +330,7 @@ impl OpenOptions {
     /// [`Other`]: io::ErrorKind::Other
     /// [`PermissionDenied`]: io::ErrorKind::PermissionDenied
     pub async fn open(&self, path: impl AsRef<Path>) -> io::Result<File> {
-        let op = Op::open(path.as_ref(), self)?;
-
-        // Await the completion of the event
-        let completion = op.await;
-
-        // The file is open
-        Ok(File::from_shared_fd(SharedFd::new(completion.result? as _)))
+        Op::open(path.as_ref(), self)?.await
     }
 
     pub(crate) fn access_mode(&self) -> io::Result<libc::c_int> {
