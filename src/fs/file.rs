@@ -362,11 +362,7 @@ impl File {
     /// }
     /// ```
     pub async fn sync_all(&self) -> io::Result<()> {
-        let op = Op::fsync(&self.fd).unwrap();
-        let completion = op.await;
-
-        completion.result?;
-        Ok(())
+        Op::fsync(&self.fd)?.await
     }
 
     /// Attempts to sync file data to disk.
@@ -403,11 +399,7 @@ impl File {
     /// }
     /// ```
     pub async fn sync_data(&self) -> io::Result<()> {
-        let op = Op::datasync(&self.fd).unwrap();
-        let completion = op.await;
-
-        completion.result?;
-        Ok(())
+        Op::datasync(&self.fd)?.await
     }
 
     /// Closes the file.
@@ -477,7 +469,7 @@ impl fmt::Debug for File {
 /// }
 /// ```
 pub async fn remove_file<P: AsRef<Path>>(path: P) -> io::Result<()> {
-    Op::unlink_file(path.as_ref())?.await.result.map(|_| ())
+    Op::unlink_file(path.as_ref())?.await
 }
 
 /// Renames a file or directory to a new name, replacing the original file if
@@ -499,8 +491,5 @@ pub async fn remove_file<P: AsRef<Path>>(path: P) -> io::Result<()> {
 /// }
 /// ```
 pub async fn rename(from: impl AsRef<Path>, to: impl AsRef<Path>) -> io::Result<()> {
-    Op::rename_at(from.as_ref(), to.as_ref(), 0)?
-        .await
-        .result
-        .map(|_| ())
+    Op::rename_at(from.as_ref(), to.as_ref(), 0)?.await
 }

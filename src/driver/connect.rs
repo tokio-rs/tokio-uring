@@ -1,3 +1,4 @@
+use crate::driver::op::Completable;
 use crate::driver::{Op, SharedFd};
 use socket2::SockAddr;
 use std::io;
@@ -27,5 +28,13 @@ impl Op<Connect> {
                 .build()
             },
         )
+    }
+}
+
+impl Completable for Connect {
+    type Output = io::Result<()>;
+
+    fn complete(self, result: io::Result<u32>, _flags: u32) -> Self::Output {
+        result.map(|_| ())
     }
 }

@@ -21,14 +21,9 @@ pub(crate) struct Op<T: 'static> {
     data: Option<T>,
 }
 
-/// Operation completion. Returns stored state with the result of the operation.
-#[derive(Debug)]
-pub(crate) struct Completion<T> {
-    pub(crate) data: T,
-    pub(crate) result: io::Result<u32>,
-    // the field is currently only read in tests
-    #[cfg_attr(not(test), allow(dead_code))]
-    pub(crate) flags: u32,
+pub(crate) trait Completable {
+    type Output;
+    fn complete(self, result: io::Result<u32>, flags: u32) -> Self::Output;
 }
 
 pub(crate) enum Lifecycle {
@@ -46,7 +41,10 @@ pub(crate) enum Lifecycle {
     Completed(io::Result<u32>, u32),
 }
 
-impl<T> Op<T> {
+impl<T> Op<T>
+where
+    T: Completable,
+{
     /// Create a new operation
     fn new(data: T, inner: &mut driver::Inner, inner_rc: &Rc<RefCell<driver::Inner>>) -> Op<T> {
         Op {
@@ -107,9 +105,9 @@ impl<T> Op<T> {
 
 impl<T> Future for Op<T>
 where
-    T: Unpin + 'static,
+    T: Unpin + 'static + Completable,
 {
-    type Output = Completion<T>;
+    type Output = T::Output;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         use std::mem;
@@ -136,11 +134,7 @@ where
                 inner.ops.remove(me.index);
                 me.index = usize::MAX;
 
-                Poll::Ready(Completion {
-                    data: me.data.take().expect("unexpected operation state"),
-                    result,
-                    flags,
-                })
+                Poll::Ready(me.data.take().unwrap().complete(result, flags))
             }
         }
     }
@@ -193,6 +187,25 @@ mod test {
     use tokio_test::{assert_pending, assert_ready, task};
 
     use super::*;
+
+    #[derive(Debug)]
+    pub(crate) struct Completion {
+        result: io::Result<u32>,
+        flags: u32,
+        data: Rc<()>,
+    }
+
+    impl Completable for Rc<()> {
+        type Output = Completion;
+
+        fn complete(self, result: io::Result<u32>, flags: u32) -> Self::Output {
+            Completion {
+                result,
+                flags,
+                data: self.clone(),
+            }
+        }
+    }
 
     #[test]
     fn op_stays_in_slab_on_drop() {
@@ -308,7 +321,7 @@ mod test {
     fn init() -> (Op<Rc<()>>, crate::driver::Driver, Rc<()>) {
         use crate::driver::Driver;
 
-        let driver = Driver::new().unwrap();
+        let driver = Driver::new(&crate::builder()).unwrap();
         let handle = driver.inner.clone();
         let data = Rc::new(());
 

@@ -2,6 +2,7 @@ use crate::buf::IoBufMut;
 use crate::driver::{Op, SharedFd};
 use crate::BufResult;
 
+use crate::driver::op::Completable;
 use std::io;
 use std::task::{Context, Poll};
 
@@ -45,10 +46,21 @@ impl<T: IoBufMut> Op<Read<T>> {
 
         let complete = ready!(Pin::new(self).poll(cx));
 
+        Poll::Ready(complete)
+    }
+}
+
+impl<T> Completable for Read<T>
+where
+    T: IoBufMut,
+{
+    type Output = BufResult<usize, T>;
+
+    fn complete(self, result: io::Result<u32>, _flags: u32) -> Self::Output {
         // Convert the operation result to `usize`
-        let res = complete.result.map(|v| v as usize);
+        let res = result.map(|v| v as usize);
         // Recover the buffer
-        let mut buf = complete.data.buf;
+        let mut buf = self.buf;
 
         // If the operation was successful, advance the initialized cursor.
         if let Ok(n) = res {
@@ -58,6 +70,6 @@ impl<T: IoBufMut> Op<Read<T>> {
             }
         }
 
-        Poll::Ready((res, buf))
+        (res, buf)
     }
 }
