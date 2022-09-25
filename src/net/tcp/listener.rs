@@ -16,11 +16,18 @@ use std::{io, net::SocketAddr};
 /// let listener = TcpListener::bind("127.0.0.1:2345".parse().unwrap()).unwrap();
 ///
 /// tokio_uring::start(async move {
-///     let tx_fut = TcpStream::connect("127.0.0.1:2345".parse().unwrap());
+///     let (tx_ch, rx_ch) = tokio::sync::oneshot::channel();
 ///
-///     let rx_fut = listener.accept();
+///     tokio_uring::spawn(async move {
+///         let (rx, _) = listener.accept().await.unwrap();
+///         if let Err(_) = tx_ch.send(rx) {
+///             panic!("The receiver dropped");
+///         }
+///     });
+///     tokio::task::yield_now().await; // Ensure the listener.accept().await has been kicked off.
 ///
-///     let (tx, (rx, _)) = tokio::try_join!(tx_fut, rx_fut).unwrap();
+///     let tx = TcpStream::connect("127.0.0.1:2345".parse().unwrap()).await.unwrap();
+///     let rx = rx_ch.await.expect("The spawned task expected to send a TcpStream");
 ///
 ///     tx.write(b"test" as &'static [u8]).await.0.unwrap();
 ///
