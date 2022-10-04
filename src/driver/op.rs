@@ -10,7 +10,7 @@ use io_uring::squeue;
 use crate::driver;
 
 /// In-flight operation
-pub(crate) struct Op<T: 'static> {
+pub(crate) struct Op<T: Completable + 'static> {
     // Driver running the operation
     pub(super) driver: Rc<RefCell<driver::Inner>>,
 
@@ -23,7 +23,18 @@ pub(crate) struct Op<T: 'static> {
 
 pub(crate) trait Completable {
     type Output;
+    fn update(self, result: io::Result<u32>, flags: u32) -> Update<Self::Output, Self> where Self: Sized {
+        Update::Finished(self.complete(result, flags))
+    }
     fn complete(self, result: io::Result<u32>, flags: u32) -> Self::Output;
+}
+
+pub(crate) enum Update<F,M>{
+    /// The operation has finished
+    Finished(F),
+
+    /// The operation expects more completion events
+    More(M),
 }
 
 pub(crate) enum Lifecycle {
@@ -37,7 +48,7 @@ pub(crate) enum Lifecycle {
     /// must be passed to the driver and held until the operation completes.
     Ignored(Box<dyn std::any::Any>),
 
-    /// The operation has completed.
+    /// The operation has received a completion event.
     Completed(io::Result<u32>, u32),
 }
 
@@ -131,29 +142,48 @@ where
             }
             Lifecycle::Ignored(..) => unreachable!(),
             Lifecycle::Completed(result, flags) => {
-                inner.ops.remove(me.index);
-                me.index = usize::MAX;
-
-                Poll::Ready(me.data.take().unwrap().complete(result, flags))
+                // Check if the operation requires more events to complete
+                match me.data.take().unwrap().update(result, flags) {
+                    Update::Finished(result) => {
+                        inner.ops.remove(me.index);
+                        me.index = usize::MAX;
+                        Poll::Ready(result)
+                    },
+                    Update::More(op) => {
+                        let _ = me.data.insert(op);
+                        *lifecycle = Lifecycle::Waiting(cx.waker().clone());
+                        Poll::Pending
+                    }
+                }
             }
         }
     }
 }
 
-impl<T> Drop for Op<T> {
+impl<T: Completable> Drop for Op<T> {
     fn drop(&mut self) {
+        use std::mem;
+
         let mut inner = self.driver.borrow_mut();
         let lifecycle = match inner.ops.get_mut(self.index) {
             Some(lifecycle) => lifecycle,
             None => return,
         };
 
-        match lifecycle {
+        match mem::replace(lifecycle, Lifecycle::Submitted) {
             Lifecycle::Submitted | Lifecycle::Waiting(_) => {
                 *lifecycle = Lifecycle::Ignored(Box::new(self.data.take()));
             }
-            Lifecycle::Completed(..) => {
-                inner.ops.remove(self.index);
+            Lifecycle::Completed(result, flags) => {
+                // Check if data is still pending
+                match self.data.take().unwrap().update(result, flags) {
+                    Update::Finished(_) => {
+                        inner.ops.remove(self.index);
+                    }
+                    Update::More(op) => {
+                        *lifecycle = Lifecycle::Ignored(Box::new(op));
+                    }
+                }
             }
             Lifecycle::Ignored(..) => unreachable!(),
         }
