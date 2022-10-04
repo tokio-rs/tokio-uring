@@ -6,6 +6,7 @@ use std::rc::Rc;
 use std::task::{Context, Poll, Waker};
 
 use io_uring::squeue;
+use smallvec::{smallvec, SmallVec};
 
 use crate::driver;
 
@@ -48,8 +49,11 @@ pub(crate) enum Lifecycle {
     /// must be passed to the driver and held until the operation completes.
     Ignored(Box<dyn std::any::Any>),
 
-    /// The operation has received a completion event.
-    Completed(io::Result<u32>, u32),
+    /// The operation has 1 or more unserviced completion events, and poll has yet to be called
+    ///
+    /// This allocates if more than the default number of completions (currently 4)
+    /// Are received before poll is invoked
+    Completed( SmallVec<[(io::Result<u32>, u32); 4]>),
 }
 
 impl<T> Op<T>
@@ -141,9 +145,18 @@ where
                 Poll::Pending
             }
             Lifecycle::Ignored(..) => unreachable!(),
-            Lifecycle::Completed(result, flags) => {
+            Lifecycle::Completed(v) => {
+                let data = me.data.take().unwrap();
+                let updated = v.into_iter()
+                    .fold(Update::More(data), |data, (result, flags)|
+                        if let Update::More(data) = data {
+                            data.update(result, flags)
+                        } else {
+                            data
+                        }
+                    );
                 // Check if the operation requires more events to complete
-                match me.data.take().unwrap().update(result, flags) {
+                match updated {
                     Update::Finished(result) => {
                         inner.ops.remove(me.index);
                         me.index = usize::MAX;
@@ -174,9 +187,18 @@ impl<T: Completable> Drop for Op<T> {
             Lifecycle::Submitted | Lifecycle::Waiting(_) => {
                 *lifecycle = Lifecycle::Ignored(Box::new(self.data.take()));
             }
-            Lifecycle::Completed(result, flags) => {
-                // Check if data is still pending
-                match self.data.take().unwrap().update(result, flags) {
+            Lifecycle::Completed(v) => {
+                let data = self.data.take().unwrap();
+                let updated = v.into_iter()
+                    .fold(Update::More(data), |data, (result, flags)|
+                        if let Update::More(data) = data {
+                            data.update(result, flags)
+                        } else {
+                            data
+                        }
+                    );
+                // Check if the operation requires more events to complete
+                match updated {
                     Update::Finished(_) => {
                         inner.ops.remove(self.index);
                     }
@@ -196,11 +218,11 @@ impl Lifecycle {
 
         match mem::replace(self, Lifecycle::Submitted) {
             Lifecycle::Submitted => {
-                *self = Lifecycle::Completed(result, flags);
+                *self = Lifecycle::Completed(smallvec!((result, flags)));
                 false
             }
             Lifecycle::Waiting(waker) => {
-                *self = Lifecycle::Completed(result, flags);
+                *self = Lifecycle::Completed(smallvec!((result, flags)));
                 waker.wake();
                 false
             }
@@ -212,8 +234,14 @@ impl Lifecycle {
                     true
                 }
             },
+            Lifecycle::Completed(mut v) => {
+                // We've run a data race between a multi-completion event and
+                // the first call to poll().
+                v.push((result,flags));
+                *self = Lifecycle::Completed(v);
+                false
+            }
 
-            Lifecycle::Completed(..) => unreachable!("invalid operation state"),
         }
     }
 }
