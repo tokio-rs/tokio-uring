@@ -169,6 +169,15 @@ impl UdpSocket {
         self.inner.send_to(buf, socket_addr).await
     }
 
+    /// Sends data on the socket. Will attempt to do so without intermediate copies.
+    /// On success, returns the number of bytes written.
+    pub async fn send_zc<T: IoBuf>(
+        &self,
+        buf: T
+    ) -> crate::BufResult<usize, T> {
+        self.inner.send_zc(buf).await
+    }
+
     /// Receives a single datagram message on the socket. On success, returns
     /// the number of bytes read and the origin.
     pub async fn recv_from<T: IoBufMut>(&self, buf: T) -> crate::BufResult<(usize, SocketAddr), T> {

@@ -53,6 +53,14 @@ impl Socket {
         op.send().await
     }
 
+    pub(crate) async fn send_zc<T: IoBuf>(
+        &self,
+        buf: T
+    ) -> crate::BufResult<usize, T> {
+        let op = Op::send_zc(&self.fd, buf).unwrap();
+        op.send().await
+    }
+
     pub(crate) async fn read<T: IoBufMut>(&self, buf: T) -> crate::BufResult<usize, T> {
         let op = Op::read_at(&self.fd, buf, 0).unwrap();
         op.read().await
