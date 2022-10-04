@@ -204,7 +204,15 @@ impl Lifecycle {
                 waker.wake();
                 false
             }
-            Lifecycle::Ignored(..) => true,
+            Lifecycle::Ignored(op) => {
+                if io_uring::cqueue::more(flags){
+                    *self = Lifecycle::Ignored(op);
+                    false
+                } else {
+                    true
+                }
+            },
+
             Lifecycle::Completed(..) => unreachable!("invalid operation state"),
         }
     }
