@@ -6,11 +6,12 @@ use std::rc::Rc;
 use std::task::{Context, Poll, Waker};
 
 use io_uring::squeue;
+use smallvec::{smallvec, SmallVec};
 
 use crate::driver;
 
 /// In-flight operation
-pub(crate) struct Op<T: 'static> {
+pub(crate) struct Op<T: Completable + 'static> {
     // Driver running the operation
     pub(super) driver: Rc<RefCell<driver::Inner>>,
 
@@ -23,7 +24,18 @@ pub(crate) struct Op<T: 'static> {
 
 pub(crate) trait Completable {
     type Output;
+    fn update(self, result: io::Result<u32>, flags: u32) -> Update<Self::Output, Self> where Self: Sized {
+        Update::Finished(self.complete(result, flags))
+    }
     fn complete(self, result: io::Result<u32>, flags: u32) -> Self::Output;
+}
+
+pub(crate) enum Update<F,M>{
+    /// The operation has finished
+    Finished(F),
+
+    /// The operation expects more completion events
+    More(M),
 }
 
 pub(crate) enum Lifecycle {
@@ -37,8 +49,11 @@ pub(crate) enum Lifecycle {
     /// must be passed to the driver and held until the operation completes.
     Ignored(Box<dyn std::any::Any>),
 
-    /// The operation has completed.
-    Completed(io::Result<u32>, u32),
+    /// The operation has 1 or more unserviced completion events, and poll has yet to be called
+    ///
+    /// This allocates if more than the default number of completions (currently 4)
+    /// Are received before poll is invoked
+    Completed( SmallVec<[(io::Result<u32>, u32); 4]>),
 }
 
 impl<T> Op<T>
@@ -130,30 +145,67 @@ where
                 Poll::Pending
             }
             Lifecycle::Ignored(..) => unreachable!(),
-            Lifecycle::Completed(result, flags) => {
-                inner.ops.remove(me.index);
-                me.index = usize::MAX;
-
-                Poll::Ready(me.data.take().unwrap().complete(result, flags))
+            Lifecycle::Completed(v) => {
+                let data = me.data.take().unwrap();
+                let updated = v.into_iter()
+                    .fold(Update::More(data), |data, (result, flags)|
+                        if let Update::More(data) = data {
+                            data.update(result, flags)
+                        } else {
+                            data
+                        }
+                    );
+                // Check if the operation requires more events to complete
+                match updated {
+                    Update::Finished(result) => {
+                        inner.ops.remove(me.index);
+                        me.index = usize::MAX;
+                        Poll::Ready(result)
+                    },
+                    Update::More(op) => {
+                        let _ = me.data.insert(op);
+                        *lifecycle = Lifecycle::Waiting(cx.waker().clone());
+                        Poll::Pending
+                    }
+                }
             }
         }
     }
 }
 
-impl<T> Drop for Op<T> {
+impl<T: Completable> Drop for Op<T> {
     fn drop(&mut self) {
+        use std::mem;
+
         let mut inner = self.driver.borrow_mut();
         let lifecycle = match inner.ops.get_mut(self.index) {
             Some(lifecycle) => lifecycle,
             None => return,
         };
 
-        match lifecycle {
+        match mem::replace(lifecycle, Lifecycle::Submitted) {
             Lifecycle::Submitted | Lifecycle::Waiting(_) => {
                 *lifecycle = Lifecycle::Ignored(Box::new(self.data.take()));
             }
-            Lifecycle::Completed(..) => {
-                inner.ops.remove(self.index);
+            Lifecycle::Completed(v) => {
+                let data = self.data.take().unwrap();
+                let updated = v.into_iter()
+                    .fold(Update::More(data), |data, (result, flags)|
+                        if let Update::More(data) = data {
+                            data.update(result, flags)
+                        } else {
+                            data
+                        }
+                    );
+                // Check if the operation requires more events to complete
+                match updated {
+                    Update::Finished(_) => {
+                        inner.ops.remove(self.index);
+                    }
+                    Update::More(op) => {
+                        *lifecycle = Lifecycle::Ignored(Box::new(op));
+                    }
+                }
             }
             Lifecycle::Ignored(..) => unreachable!(),
         }
@@ -166,16 +218,30 @@ impl Lifecycle {
 
         match mem::replace(self, Lifecycle::Submitted) {
             Lifecycle::Submitted => {
-                *self = Lifecycle::Completed(result, flags);
+                *self = Lifecycle::Completed(smallvec!((result, flags)));
                 false
             }
             Lifecycle::Waiting(waker) => {
-                *self = Lifecycle::Completed(result, flags);
+                *self = Lifecycle::Completed(smallvec!((result, flags)));
                 waker.wake();
                 false
             }
-            Lifecycle::Ignored(..) => true,
-            Lifecycle::Completed(..) => unreachable!("invalid operation state"),
+            Lifecycle::Ignored(op) => {
+                if io_uring::cqueue::more(flags){
+                    *self = Lifecycle::Ignored(op);
+                    false
+                } else {
+                    true
+                }
+            },
+            Lifecycle::Completed(mut v) => {
+                // We've run a data race between a multi-completion event and
+                // the first call to poll().
+                v.push((result,flags));
+                *self = Lifecycle::Completed(v);
+                false
+            }
+
         }
     }
 }
