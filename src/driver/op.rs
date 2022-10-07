@@ -24,13 +24,16 @@ pub(crate) struct Op<T: Completable + 'static> {
 
 pub(crate) trait Completable {
     type Output;
-    fn update(self, result: io::Result<u32>, flags: u32) -> Update<Self::Output, Self> where Self: Sized {
+    fn update(self, result: io::Result<u32>, flags: u32) -> Update<Self::Output, Self>
+    where
+        Self: Sized,
+    {
         Update::Finished(self.complete(result, flags))
     }
     fn complete(self, result: io::Result<u32>, flags: u32) -> Self::Output;
 }
 
-pub(crate) enum Update<F,M>{
+pub(crate) enum Update<F, M> {
     /// The operation has finished
     Finished(F),
 
@@ -53,7 +56,7 @@ pub(crate) enum Lifecycle {
     ///
     /// This allocates if more than the default number of completions (currently 4)
     /// Are received before poll is invoked
-    Completed( SmallVec<[(io::Result<u32>, u32); 4]>),
+    Completed(SmallVec<[(io::Result<u32>, u32); 4]>),
 }
 
 impl<T> Op<T>
@@ -147,21 +150,22 @@ where
             Lifecycle::Ignored(..) => unreachable!(),
             Lifecycle::Completed(v) => {
                 let data = me.data.take().unwrap();
-                let updated = v.into_iter()
-                    .fold(Update::More(data), |data, (result, flags)|
+                let updated = v
+                    .into_iter()
+                    .fold(Update::More(data), |data, (result, flags)| {
                         if let Update::More(data) = data {
                             data.update(result, flags)
                         } else {
                             data
                         }
-                    );
+                    });
                 // Check if the operation requires more events to complete
                 match updated {
                     Update::Finished(result) => {
                         inner.ops.remove(me.index);
                         me.index = usize::MAX;
                         Poll::Ready(result)
-                    },
+                    }
                     Update::More(op) => {
                         let _ = me.data.insert(op);
                         *lifecycle = Lifecycle::Waiting(cx.waker().clone());
@@ -189,14 +193,15 @@ impl<T: Completable> Drop for Op<T> {
             }
             Lifecycle::Completed(v) => {
                 let data = self.data.take().unwrap();
-                let updated = v.into_iter()
-                    .fold(Update::More(data), |data, (result, flags)|
+                let updated = v
+                    .into_iter()
+                    .fold(Update::More(data), |data, (result, flags)| {
                         if let Update::More(data) = data {
                             data.update(result, flags)
                         } else {
                             data
                         }
-                    );
+                    });
                 // Check if the operation requires more events to complete
                 match updated {
                     Update::Finished(_) => {
@@ -227,21 +232,20 @@ impl Lifecycle {
                 false
             }
             Lifecycle::Ignored(op) => {
-                if io_uring::cqueue::more(flags){
+                if io_uring::cqueue::more(flags) {
                     *self = Lifecycle::Ignored(op);
                     false
                 } else {
                     true
                 }
-            },
+            }
             Lifecycle::Completed(mut v) => {
                 // We've run a data race between a multi-completion event and
                 // the first call to poll().
-                v.push((result,flags));
+                v.push((result, flags));
                 *self = Lifecycle::Completed(v);
                 false
             }
-
         }
     }
 }
