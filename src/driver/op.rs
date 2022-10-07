@@ -225,7 +225,7 @@ mod test {
         assert_pending!(op.poll());
         assert_eq!(2, Rc::strong_count(&data));
 
-        complete(&op, Ok(1));
+        complete(&op, &driver, Ok(1));
         assert_eq!(1, driver.num_operations());
         assert_eq!(2, Rc::strong_count(&data));
 
@@ -255,7 +255,7 @@ mod test {
         assert_pending!(op.poll());
         assert_pending!(op.poll());
 
-        complete(&op, Ok(1));
+        complete(&op, &driver, Ok(1));
 
         assert!(op.is_woken());
         let Completion { result, flags, .. } = assert_ready!(op.poll());
@@ -275,7 +275,7 @@ mod test {
         let mut op = task::spawn(op);
         assert_pending!(op.poll());
 
-        complete(&op, Ok(1));
+        complete(&op, &driver, Ok(1));
 
         assert!(op.is_woken());
         let Completion { result, flags, .. } = assert_ready!(op.poll());
@@ -289,7 +289,7 @@ mod test {
     fn complete_before_poll() {
         let (op, driver, data) = init();
         let mut op = task::spawn(op);
-        complete(&op, Ok(1));
+        complete(&op, &driver, Ok(1));
         assert_eq!(1, driver.num_operations());
         assert_eq!(2, Rc::strong_count(&data));
 
@@ -322,19 +322,19 @@ mod test {
         use crate::driver::Driver;
 
         let driver = Driver::new(&crate::builder()).unwrap();
-        let handle = driver.inner.clone();
+        let handle = &driver.inner;
         let data = Rc::new(());
 
         let op = {
             let mut inner = handle.borrow_mut();
-            Op::new(data.clone(), &mut inner, &handle)
+            Op::new(data.clone(), &mut inner)
         };
 
         (op, driver, data)
     }
 
-    fn complete(op: &Op<Rc<()>>, result: io::Result<u32>) {
-        op.driver.borrow_mut().ops.complete(op.index, result, 0);
+    fn complete(op: &Op<Rc<()>>, driver: &crate::driver::Driver, result: io::Result<u32>) {
+        driver.inner.borrow_mut().ops.complete(op.index, result, 0);
     }
 
     fn release(driver: crate::driver::Driver) {
