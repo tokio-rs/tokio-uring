@@ -144,6 +144,15 @@ impl TcpStream {
 
         (Ok(()), buf)
     }
+
+    /// Shuts down the read, write, or both halves of this connection.
+    ///
+    /// This function will cause all pending and future I/O on the specified portions to return
+    /// immediately with an appropriate value.
+    pub fn shutdown(&self, how: std::net::Shutdown) -> io::Result<()> {
+        // TODO same method for unix stream for consistency.
+        self.inner.shutdown(how)
+    }
 }
 
 impl AsRawFd for TcpStream {
