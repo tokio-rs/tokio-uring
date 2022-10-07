@@ -65,7 +65,7 @@ pub(crate) enum Lifecycle {
     /// The operation has 1 or more unserviced completion events, and poll has yet to be called
     ///
     /// This allocates if more than the default number of completions (currently 4)
-    /// Are received before poll is invoked
+    /// are received before poll is invoked
     Completed(SmallVec<[(io::Result<u32>, u32); 4]>),
 }
 
