@@ -24,10 +24,20 @@ pub(crate) struct Op<T: Completable + 'static> {
 
 pub(crate) trait Completable {
     type Output;
-    fn update(self, result: io::Result<u32>, flags: u32) -> Update<Self::Output, Self>
+    /// Called with one or more completion events.
+    ///
+    /// The implementation should update the state of the Op, and return
+    /// either the completed result, or the Op if more completions are required.
+    ///
+    /// The default implementation is suitable for all single completion event Op's.
+    fn update(
+        self,
+        mut completions: SmallVec<[(io::Result<u32>, u32); 4]>,
+    ) -> Update<Self::Output, Self>
     where
         Self: Sized,
     {
+        let (result, flags) = completions.remove(0);
         Update::Finished(self.complete(result, flags))
     }
     fn complete(self, result: io::Result<u32>, flags: u32) -> Self::Output;
@@ -148,19 +158,10 @@ where
                 Poll::Pending
             }
             Lifecycle::Ignored(..) => unreachable!(),
-            Lifecycle::Completed(v) => {
+            Lifecycle::Completed(events) => {
                 let data = me.data.take().unwrap();
-                let updated = v
-                    .into_iter()
-                    .fold(Update::More(data), |data, (result, flags)| {
-                        if let Update::More(data) = data {
-                            data.update(result, flags)
-                        } else {
-                            data
-                        }
-                    });
                 // Check if the operation requires more events to complete
-                match updated {
+                match data.update(events) {
                     Update::Finished(result) => {
                         inner.ops.remove(me.index);
                         me.index = usize::MAX;
@@ -191,19 +192,10 @@ impl<T: Completable> Drop for Op<T> {
             Lifecycle::Submitted | Lifecycle::Waiting(_) => {
                 *lifecycle = Lifecycle::Ignored(Box::new(self.data.take()));
             }
-            Lifecycle::Completed(v) => {
+            Lifecycle::Completed(events) => {
                 let data = self.data.take().unwrap();
-                let updated = v
-                    .into_iter()
-                    .fold(Update::More(data), |data, (result, flags)| {
-                        if let Update::More(data) = data {
-                            data.update(result, flags)
-                        } else {
-                            data
-                        }
-                    });
                 // Check if the operation requires more events to complete
-                match updated {
+                match data.update(events) {
                     Update::Finished(_) => {
                         inner.ops.remove(self.index);
                     }
