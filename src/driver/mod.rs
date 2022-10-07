@@ -42,13 +42,12 @@ use slab::Slab;
 use std::cell::RefCell;
 use std::io;
 use std::os::unix::io::{AsRawFd, RawFd};
-use std::rc::Rc;
 
 pub(crate) struct Driver {
     inner: Handle,
 }
 
-type Handle = Rc<RefCell<Inner>>;
+type Handle = RefCell<Inner>;
 
 pub(crate) struct Inner {
     /// In-flight operations
@@ -62,16 +61,16 @@ pub(crate) struct Inner {
 // type wraps the slab and ensures that, on drop, the slab is empty.
 struct Ops(Slab<op::Lifecycle>);
 
-scoped_thread_local!(pub(crate) static CURRENT: Rc<RefCell<Inner>>);
+scoped_thread_local!(pub(crate) static CURRENT: Handle);
 
 impl Driver {
     pub(crate) fn new(b: &crate::Builder) -> io::Result<Driver> {
         let uring = b.urb.build(b.entries)?;
 
-        let inner = Rc::new(RefCell::new(Inner {
+        let inner = RefCell::new(Inner {
             ops: Ops::new(),
             uring,
-        }));
+        });
 
         Ok(Driver { inner })
     }

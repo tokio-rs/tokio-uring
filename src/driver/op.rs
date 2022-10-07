@@ -1,19 +1,15 @@
-use std::cell::RefCell;
 use std::future::Future;
 use std::io;
 use std::pin::Pin;
-use std::rc::Rc;
 use std::task::{Context, Poll, Waker};
 
 use io_uring::squeue;
 
 use crate::driver;
+use crate::driver::CURRENT;
 
 /// In-flight operation
 pub(crate) struct Op<T: 'static> {
-    // Driver running the operation
-    pub(super) driver: Rc<RefCell<driver::Inner>>,
-
     // Operation index in the slab
     pub(super) index: usize,
 
@@ -46,9 +42,8 @@ where
     T: Completable,
 {
     /// Create a new operation
-    fn new(data: T, inner: &mut driver::Inner, inner_rc: &Rc<RefCell<driver::Inner>>) -> Op<T> {
+    fn new(data: T, inner: &mut driver::Inner) -> Op<T> {
         Op {
-            driver: inner_rc.clone(),
             index: inner.ops.insert(),
             data: Some(data),
         }
@@ -72,7 +67,7 @@ where
             }
 
             // Create the operation
-            let mut op = Op::new(data, inner, inner_rc);
+            let mut op = Op::new(data, inner);
 
             // Configure the SQE
             let sqe = f(op.data.as_mut().unwrap()).user_data(op.index as _);
@@ -112,51 +107,56 @@ where
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         use std::mem;
 
-        let me = &mut *self;
-        let mut inner = me.driver.borrow_mut();
-        let lifecycle = inner.ops.get_mut(me.index).expect("invalid internal state");
+        CURRENT.with(|inner| {
+            let me = &mut *self;
+            let mut inner = inner.borrow_mut();
+            let lifecycle = inner.ops.get_mut(me.index).expect("invalid internal state");
 
-        match mem::replace(lifecycle, Lifecycle::Submitted) {
-            Lifecycle::Submitted => {
-                *lifecycle = Lifecycle::Waiting(cx.waker().clone());
-                Poll::Pending
-            }
-            Lifecycle::Waiting(waker) if !waker.will_wake(cx.waker()) => {
-                *lifecycle = Lifecycle::Waiting(cx.waker().clone());
-                Poll::Pending
-            }
-            Lifecycle::Waiting(waker) => {
-                *lifecycle = Lifecycle::Waiting(waker);
-                Poll::Pending
-            }
-            Lifecycle::Ignored(..) => unreachable!(),
-            Lifecycle::Completed(result, flags) => {
-                inner.ops.remove(me.index);
-                me.index = usize::MAX;
+            match mem::replace(lifecycle, Lifecycle::Submitted) {
+                Lifecycle::Submitted => {
+                    *lifecycle = Lifecycle::Waiting(cx.waker().clone());
+                    Poll::Pending
+                }
+                Lifecycle::Waiting(waker) if !waker.will_wake(cx.waker()) => {
+                    *lifecycle = Lifecycle::Waiting(cx.waker().clone());
+                    Poll::Pending
+                }
+                Lifecycle::Waiting(waker) => {
+                    *lifecycle = Lifecycle::Waiting(waker);
+                    Poll::Pending
+                }
+                Lifecycle::Ignored(..) => unreachable!(),
+                Lifecycle::Completed(result, flags) => {
+                    inner.ops.remove(me.index);
+                    me.index = usize::MAX;
 
-                Poll::Ready(me.data.take().unwrap().complete(result, flags))
+                    Poll::Ready(me.data.take().unwrap().complete(result, flags))
+                }
             }
-        }
+        })
     }
 }
 
 impl<T> Drop for Op<T> {
     fn drop(&mut self) {
-        let mut inner = self.driver.borrow_mut();
-        let lifecycle = match inner.ops.get_mut(self.index) {
-            Some(lifecycle) => lifecycle,
-            None => return,
-        };
+        CURRENT.with(|inner| {
+            let mut inner = inner.borrow_mut();
 
-        match lifecycle {
-            Lifecycle::Submitted | Lifecycle::Waiting(_) => {
-                *lifecycle = Lifecycle::Ignored(Box::new(self.data.take()));
+            let lifecycle = match inner.ops.get_mut(self.index) {
+                Some(lifecycle) => lifecycle,
+                None => return,
+            };
+
+            match lifecycle {
+                Lifecycle::Submitted | Lifecycle::Waiting(_) => {
+                    *lifecycle = Lifecycle::Ignored(Box::new(self.data.take()));
+                }
+                Lifecycle::Completed(..) => {
+                    inner.ops.remove(self.index);
+                }
+                Lifecycle::Ignored(..) => unreachable!(),
             }
-            Lifecycle::Completed(..) => {
-                inner.ops.remove(self.index);
-            }
-            Lifecycle::Ignored(..) => unreachable!(),
-        }
+        })
     }
 }
 
