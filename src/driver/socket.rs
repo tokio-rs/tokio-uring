@@ -130,6 +130,24 @@ impl Socket {
         syscall!(listen(self.as_raw_fd(), backlog))?;
         Ok(())
     }
+
+    /// Shuts down the read, write, or both halves of this connection.
+    ///
+    /// This function will cause all pending and future I/O on the specified portions to return
+    /// immediately with an appropriate value.
+    pub fn shutdown(&self, how: std::net::Shutdown) -> io::Result<()> {
+        use std::os::unix::io::FromRawFd;
+
+        let fd = self.as_raw_fd();
+        // SAFETY: Our fd is the handle the kernel has given us for a socket,
+        // TCP or Unix, Listener or Stream, so it is a valid file descriptor/socket.
+        // Create a socket2::Socket long enough to call its shutdown method
+        // and then forget it so the socket is not otherwise dropped here.
+        let s = unsafe { socket2::Socket::from_raw_fd(fd) };
+        let result = s.shutdown(how);
+        std::mem::forget(s);
+        result
+    }
 }
 
 impl AsRawFd for Socket {
