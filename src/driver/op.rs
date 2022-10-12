@@ -8,6 +8,10 @@ use std::task::{Context, Poll, Waker};
 
 use io_uring::squeue;
 
+mod completion;
+pub(crate) use completion::*;
+use slab::Slab;
+
 use crate::driver;
 
 /// In-flight operation
