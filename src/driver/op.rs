@@ -48,8 +48,11 @@ pub(crate) enum Lifecycle {
     /// must be passed to the driver and held until the operation completes.
     Ignored(Box<dyn std::any::Any>),
 
-    /// The operation has completed.
+    /// The operation has completed with a single result
     Completed(io::Result<u32>, u32),
+
+    /// One or more completion results have been recieved
+    CompletionIndices(CompletionIndices),
 }
 
 impl<T,CqeType> Op<T,CqeType>
@@ -126,7 +129,7 @@ where
 
         let me = &mut *self;
         let mut inner = me.driver.borrow_mut();
-        let lifecycle = inner.ops.get_mut(me.index).expect("invalid internal state");
+        let lifecycle = inner.ops.get_mut(me.index).expect("invalid internal state").0;
 
         match mem::replace(lifecycle, Lifecycle::Submitted) {
             Lifecycle::Submitted => {
@@ -145,27 +148,46 @@ where
             Lifecycle::Completed(result, flags) => {
                 inner.ops.remove(me.index);
                 me.index = usize::MAX;
-
                 Poll::Ready(me.data.take().unwrap().complete(result, flags))
+            }
+            Lifecycle::CompletionIndices(..) => {
+                unreachable!()
             }
         }
     }
 }
 
-impl<T> Drop for Op<T> {
+impl<T, CqeType> Drop for Op<T, CqeType> {
     fn drop(&mut self) {
+        use std::mem;
+
         let mut inner = self.driver.borrow_mut();
-        let lifecycle = match inner.ops.get_mut(self.index) {
-            Some(lifecycle) => lifecycle,
+        let (lifecycle, completions) = match inner.ops.get_mut(self.index) {
+            Some(val) => val,
             None => return,
         };
 
-        match lifecycle {
+        match mem::replace(lifecycle, Lifecycle::Submitted) {
             Lifecycle::Submitted | Lifecycle::Waiting(_) => {
                 *lifecycle = Lifecycle::Ignored(Box::new(self.data.take()));
             }
             Lifecycle::Completed(..) => {
                 inner.ops.remove(self.index);
+            }
+            Lifecycle::CompletionIndices(indices) => {
+                // Deallocate list entries, recording if the more CQE's are expected
+                let more = {
+                    let mut list = indices.into_list(completions);
+                    io_uring::cqueue::more(list.peek_end().unwrap().1)
+                    // Dropping list dealloctes the list entries
+                };
+                if more {
+                    // If more are expected, we have to keep the op around
+                    *lifecycle = Lifecycle::Ignored(Box::new(self.data.take()));
+                } else {
+                    inner.ops.remove(self.index);
+                }
+
             }
             Lifecycle::Ignored(..) => unreachable!(),
         }
@@ -173,24 +195,35 @@ impl<T> Drop for Op<T> {
 }
 
 impl Lifecycle {
-    pub(super) fn complete(&mut self, result: io::Result<u32>, flags: u32) -> bool {
+    pub(super) fn complete(&mut self, completions: &mut Slab<Completion>, result: io::Result<u32>, flags: u32) -> bool {
         use std::mem;
 
         match mem::replace(self, Lifecycle::Submitted) {
-            Lifecycle::Submitted => {
-                *self = Lifecycle::Completed(result, flags);
-                false
-            }
-            Lifecycle::Waiting(waker) => {
-                *self = Lifecycle::Completed(result, flags);
-                waker.wake();
+            x@Lifecycle::Submitted | x@Lifecycle::Waiting(..) => {
+                if io_uring::cqueue::more(flags){
+                    let mut list = CompletionIndices::new().into_list(completions);
+                    list.push((result, flags));
+                    *self = Lifecycle::CompletionIndices(list.into_indices());
+                } else {
+                    *self = Lifecycle::Completed(result, flags);
+                }
+                if let Lifecycle::Waiting(waker) = x {
+                    waker.wake();
+                }
                 false
             }
             Lifecycle::Ignored(..) => true,
             Lifecycle::Completed(..) => unreachable!("invalid operation state"),
+            Lifecycle::CompletionIndices(indices) => {
+                let mut list = indices.into_list(completions);
+                list.push((result, flags));
+                *self = Lifecycle::CompletionIndices(list.into_indices());
+                false
+            },
         }
     }
 }
+
 
 #[cfg(test)]
 mod test {
@@ -351,6 +384,7 @@ mod test {
 
     fn release(driver: crate::driver::Driver) {
         // Clear ops, we aren't really doing any I/O
-        driver.inner.borrow_mut().ops.0.clear();
+        driver.inner.borrow_mut().ops.lifecycle.clear();
+        driver.inner.borrow_mut().ops.completions.clear();
     }
 }
