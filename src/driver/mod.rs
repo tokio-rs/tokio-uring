@@ -60,9 +60,14 @@ pub(crate) struct Inner {
     pub(crate) uring: IoUring,
 }
 
-// When dropping the driver, all in-flight operations must have completed. This
-// type wraps the slab and ensures that, on drop, the slab is empty.
-struct Ops(Slab<op::Lifecycle>);
+struct Ops {
+    // When dropping the driver, all in-flight operations must have completed. This
+    // type wraps the slab and ensures that, on drop, the slab is empty.
+    lifecycle: Slab<op::Lifecycle>,
+
+    /// Received but unserviced Op completions
+    completions: Slab<op::Completion>,
+}
 
 scoped_thread_local!(pub(crate) static CURRENT: Rc<RefCell<Inner>>);
 
@@ -97,7 +102,7 @@ impl Driver {
 
     fn num_operations(&self) -> usize {
         let inner = self.inner.borrow();
-        inner.ops.0.len()
+        inner.ops.lifecycle.len()
     }
 }
 
@@ -157,33 +162,41 @@ impl Drop for Driver {
 
 impl Ops {
     fn new() -> Ops {
-        Ops(Slab::with_capacity(64))
+        Ops {
+            lifecycle: Slab::with_capacity(64),
+            completions: Slab::with_capacity(64),
+        }
     }
 
-    fn get_mut(&mut self, index: usize) -> Option<&mut op::Lifecycle> {
-        self.0.get_mut(index)
+    fn get_mut(&mut self, index: usize) -> Option<(&mut op::Lifecycle, &mut Slab<op::Completion>)> {
+        let completions = &mut self.completions;
+        self.lifecycle
+            .get_mut(index)
+            .map(|lifecycle| (lifecycle, completions))
     }
 
     // Insert a new operation
     fn insert(&mut self) -> usize {
-        self.0.insert(op::Lifecycle::Submitted)
+        self.lifecycle.insert(op::Lifecycle::Submitted)
     }
 
     // Remove an operation
     fn remove(&mut self, index: usize) {
-        self.0.remove(index);
+        self.lifecycle.remove(index);
     }
 
     fn complete(&mut self, index: usize, result: io::Result<u32>, flags: u32) {
-        if self.0[index].complete(result, flags) {
-            self.0.remove(index);
+        let completions = &mut self.completions;
+        if self.lifecycle[index].complete(completions, result, flags) {
+            self.lifecycle.remove(index);
         }
     }
 }
 
 impl Drop for Ops {
     fn drop(&mut self) {
-        assert!(self.0.is_empty());
+        assert!(self.lifecycle.is_empty());
+        assert!(self.completions.is_empty());
     }
 }
 

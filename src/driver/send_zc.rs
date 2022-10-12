@@ -1,4 +1,4 @@
-use crate::driver::op::{Completable, Update};
+use crate::driver::op::{Completable, Updateable};
 use crate::{
     buf::IoBuf,
     driver::{Op, SharedFd},
@@ -63,21 +63,21 @@ where
 {
     type Output = BufResult<usize, T>;
 
-    fn update(mut self, result: io::Result<u32>, flags: u32) -> Update<Self::Output, Self> where Self: Sized{
-        if io_uring::cqueue::more(flags) {
-            // More with a failed send "cannot" happen
-            self.bytes += result.map(|v| v as usize).unwrap();
-            Update::More(self)
-        } else {
-            Update::Finished(self.complete(result, flags))
-        }
-    }
-
     fn complete(self, result: io::Result<u32>, _flags: u32) -> Self::Output {
         // Convert the operation result to `usize`
         let res = result.map(|v| self.bytes + v as usize);
         // Recover the buffer
         let buf = self.buf;
         (res, buf)
+    }
+}
+
+impl<T> Updateable for SendZc<T>
+where
+    T: IoBuf,
+{
+    fn update(&mut self, cqe :&(io::Result<u32>, u32)) {
+        // uring send_zc promises there will be no error on CQE's marked more
+        self.bytes += *cqe.0.as_ref().unwrap() as usize;
     }
 }

@@ -1,17 +1,21 @@
 use std::cell::RefCell;
 use std::future::Future;
 use std::io;
+use std::marker::PhantomData;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::task::{Context, Poll, Waker};
 
 use io_uring::squeue;
-use smallvec::{smallvec, SmallVec};
+
+mod completion;
+pub(crate) use completion::*;
+use slab::Slab;
 
 use crate::driver;
 
 /// In-flight operation
-pub(crate) struct Op<T: Completable + 'static> {
+pub(crate) struct Op<T: 'static, CqeType = SingleCQE> {
     // Driver running the operation
     pub(super) driver: Rc<RefCell<driver::Inner>>,
 
@@ -20,22 +24,25 @@ pub(crate) struct Op<T: Completable + 'static> {
 
     // Per-operation data
     data: Option<T>,
+
+    // CqeType marker
+    _cqe_type: PhantomData<CqeType>,
 }
+
+/// A Marker for Ops which expect only a single completion event
+pub(crate) struct SingleCQE;
+
+/// A Marker for Operations will process multiple completion events,
+/// which combined resolve to a single Future value
+pub(crate) struct MultiCQEFuture;
 
 pub(crate) trait Completable {
     type Output;
-    fn update(self, result: io::Result<u32>, flags: u32) -> Update<Self::Output, Self> where Self: Sized {
-        Update::Finished(self.complete(result, flags))
-    }
     fn complete(self, result: io::Result<u32>, flags: u32) -> Self::Output;
 }
 
-pub(crate) enum Update<F,M>{
-    /// The operation has finished
-    Finished(F),
-
-    /// The operation expects more completion events
-    More(M),
+pub(crate) trait Updateable: Completable {
+    fn update(&mut self, cqe: &(io::Result<u32>, u32));
 }
 
 pub(crate) enum Lifecycle {
@@ -49,23 +56,25 @@ pub(crate) enum Lifecycle {
     /// must be passed to the driver and held until the operation completes.
     Ignored(Box<dyn std::any::Any>),
 
-    /// The operation has 1 or more unserviced completion events, and poll has yet to be called
-    ///
-    /// This allocates if more than the default number of completions (currently 4)
-    /// Are received before poll is invoked
-    Completed( SmallVec<[(io::Result<u32>, u32); 4]>),
+    /// The operation has completed with a single result
+    Completed(io::Result<u32>, u32),
+
+    /// One or more completion results have been recieved
+    /// This holds the indices uniquely identifying the list within the slab
+    CompletionList(CompletionIndices),
 }
 
-impl<T> Op<T>
+impl<T, CqeType> Op<T, CqeType>
 where
     T: Completable,
 {
     /// Create a new operation
-    fn new(data: T, inner: &mut driver::Inner, inner_rc: &Rc<RefCell<driver::Inner>>) -> Op<T> {
+    fn new(data: T, inner: &mut driver::Inner, inner_rc: &Rc<RefCell<driver::Inner>>) -> Self {
         Op {
             driver: inner_rc.clone(),
             index: inner.ops.insert(),
             data: Some(data),
+            _cqe_type: PhantomData,
         }
     }
 
@@ -73,7 +82,7 @@ where
     ///
     /// `state` is stored during the operation tracking any state submitted to
     /// the kernel.
-    pub(super) fn submit_with<F>(data: T, f: F) -> io::Result<Op<T>>
+    pub(super) fn submit_with<F>(data: T, f: F) -> io::Result<Self>
     where
         F: FnOnce(&mut T) -> squeue::Entry,
     {
@@ -106,7 +115,7 @@ where
     }
 
     /// Try submitting an operation to uring
-    pub(super) fn try_submit_with<F>(data: T, f: F) -> io::Result<Op<T>>
+    pub(super) fn try_submit_with<F>(data: T, f: F) -> io::Result<Self>
     where
         F: FnOnce(&mut T) -> squeue::Entry,
     {
@@ -118,7 +127,7 @@ where
     }
 }
 
-impl<T> Future for Op<T>
+impl<T> Future for Op<T, SingleCQE>
 where
     T: Unpin + 'static + Completable,
 {
@@ -129,7 +138,11 @@ where
 
         let me = &mut *self;
         let mut inner = me.driver.borrow_mut();
-        let lifecycle = inner.ops.get_mut(me.index).expect("invalid internal state");
+        let lifecycle = inner
+            .ops
+            .get_mut(me.index)
+            .expect("invalid internal state")
+            .0;
 
         match mem::replace(lifecycle, Lifecycle::Submitted) {
             Lifecycle::Submitted => {
@@ -145,41 +158,88 @@ where
                 Poll::Pending
             }
             Lifecycle::Ignored(..) => unreachable!(),
-            Lifecycle::Completed(v) => {
-                let data = me.data.take().unwrap();
-                let updated = v.into_iter()
-                    .fold(Update::More(data), |data, (result, flags)|
-                        if let Update::More(data) = data {
-                            data.update(result, flags)
-                        } else {
-                            data
-                        }
-                    );
-                // Check if the operation requires more events to complete
-                match updated {
-                    Update::Finished(result) => {
-                        inner.ops.remove(me.index);
-                        me.index = usize::MAX;
-                        Poll::Ready(result)
-                    },
-                    Update::More(op) => {
-                        let _ = me.data.insert(op);
-                        *lifecycle = Lifecycle::Waiting(cx.waker().clone());
-                        Poll::Pending
+            Lifecycle::Completed(result, flags) => {
+                inner.ops.remove(me.index);
+                me.index = usize::MAX;
+                Poll::Ready(me.data.take().unwrap().complete(result, flags))
+            }
+            Lifecycle::CompletionList(..) => {
+                unreachable!()
+            }
+        }
+    }
+}
+
+impl<T> Future for Op<T, MultiCQEFuture>
+where
+    T: Unpin + 'static + Completable + Updateable,
+{
+    type Output = T::Output;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        use std::mem;
+
+        let me = &mut *self;
+        let mut inner = me.driver.borrow_mut();
+        let (lifecycle, completions) = inner
+            .ops
+            .get_mut(me.index)
+            .expect("invalid internal state");
+
+        match mem::replace(lifecycle, Lifecycle::Submitted) {
+            Lifecycle::Submitted => {
+                *lifecycle = Lifecycle::Waiting(cx.waker().clone());
+                Poll::Pending
+            }
+            Lifecycle::Waiting(waker) if !waker.will_wake(cx.waker()) => {
+                *lifecycle = Lifecycle::Waiting(cx.waker().clone());
+                Poll::Pending
+            }
+            Lifecycle::Waiting(waker) => {
+                *lifecycle = Lifecycle::Waiting(waker);
+                Poll::Pending
+            }
+            Lifecycle::Ignored(..) => unreachable!(),
+            Lifecycle::Completed(result, flags) => {
+                // This is possible. We may have previously polled a CompletionList,
+                // and the final CQE is enqueued as a Completed
+                inner.ops.remove(me.index);
+                me.index = usize::MAX;
+                Poll::Ready(me.data.take().unwrap().complete(result, flags))
+            }
+            Lifecycle::CompletionList(indices) => {
+                let mut data = me.data.take().unwrap();
+
+                let last = indices.into_list(completions).skip_while(|cqe| {
+                    let more = io_uring::cqueue::more(cqe.1);
+                    if more {
+                        data.update(cqe);
                     }
+                    more
+                }).next();
+
+                if let Some((result, flags)) = last {
+                    inner.ops.remove(me.index);
+                    me.index = usize::MAX;
+                    Poll::Ready(data.complete(result, flags))
+                } else {
+                    // We need more CQE's. Restore the op state
+                    let _ = me.data.insert(data);
+                    *lifecycle = Lifecycle::Waiting(cx.waker().clone());
+                    Poll::Pending
                 }
             }
         }
     }
 }
 
-impl<T: Completable> Drop for Op<T> {
+impl<T, CqeType> Drop for Op<T, CqeType> {
     fn drop(&mut self) {
         use std::mem;
 
         let mut inner = self.driver.borrow_mut();
-        let lifecycle = match inner.ops.get_mut(self.index) {
-            Some(lifecycle) => lifecycle,
+        let (lifecycle, completions) = match inner.ops.get_mut(self.index) {
+            Some(val) => val,
             None => return,
         };
 
@@ -187,24 +247,21 @@ impl<T: Completable> Drop for Op<T> {
             Lifecycle::Submitted | Lifecycle::Waiting(_) => {
                 *lifecycle = Lifecycle::Ignored(Box::new(self.data.take()));
             }
-            Lifecycle::Completed(v) => {
-                let data = self.data.take().unwrap();
-                let updated = v.into_iter()
-                    .fold(Update::More(data), |data, (result, flags)|
-                        if let Update::More(data) = data {
-                            data.update(result, flags)
-                        } else {
-                            data
-                        }
-                    );
-                // Check if the operation requires more events to complete
-                match updated {
-                    Update::Finished(_) => {
-                        inner.ops.remove(self.index);
-                    }
-                    Update::More(op) => {
-                        *lifecycle = Lifecycle::Ignored(Box::new(op));
-                    }
+            Lifecycle::Completed(..) => {
+                inner.ops.remove(self.index);
+            }
+            Lifecycle::CompletionList(indices) => {
+                // Deallocate list entries, recording if the more CQE's are expected
+                let more = {
+                    let mut list = indices.into_list(completions);
+                    io_uring::cqueue::more(list.peek_end().unwrap().1)
+                    // Dropping list dealloctes the list entries
+                };
+                if more {
+                    // If more are expected, we have to keep the op around
+                    *lifecycle = Lifecycle::Ignored(Box::new(self.data.take()));
+                } else {
+                    inner.ops.remove(self.index);
                 }
             }
             Lifecycle::Ignored(..) => unreachable!(),
@@ -213,35 +270,48 @@ impl<T: Completable> Drop for Op<T> {
 }
 
 impl Lifecycle {
-    pub(super) fn complete(&mut self, result: io::Result<u32>, flags: u32) -> bool {
+    pub(super) fn complete(
+        &mut self,
+        completions: &mut Slab<Completion>,
+        result: io::Result<u32>,
+        flags: u32,
+    ) -> bool {
         use std::mem;
 
         match mem::replace(self, Lifecycle::Submitted) {
-            Lifecycle::Submitted => {
-                *self = Lifecycle::Completed(smallvec!((result, flags)));
+            x @ Lifecycle::Submitted | x @ Lifecycle::Waiting(..) => {
+                if io_uring::cqueue::more(flags) {
+                    let mut list = CompletionIndices::new().into_list(completions);
+                    list.push((result, flags));
+                    *self = Lifecycle::CompletionList(list.into_indices());
+                } else {
+                    *self = Lifecycle::Completed(result, flags);
+                }
+                if let Lifecycle::Waiting(waker) = x {
+                    waker.wake();
+                }
                 false
             }
-            Lifecycle::Waiting(waker) => {
-                *self = Lifecycle::Completed(smallvec!((result, flags)));
-                waker.wake();
-                false
-            }
-            Lifecycle::Ignored(op) => {
-                if io_uring::cqueue::more(flags){
-                    *self = Lifecycle::Ignored(op);
+            lifecycle @ Lifecycle::Ignored(..) => {
+                // We must check if any more CQEs are expected before dropping
+                if io_uring::cqueue::more(flags) {
+                    *self = lifecycle;
                     false
                 } else {
                     true
                 }
-            },
-            Lifecycle::Completed(mut v) => {
-                // We've run a data race between a multi-completion event and
-                // the first call to poll().
-                v.push((result,flags));
-                *self = Lifecycle::Completed(v);
+            }
+            Lifecycle::Completed(..) => {
+                // To construct Lifecycle::Completed, a CQE without MORE was received
+                // we shouldn't be receiving another.
+                unreachable!("invalid operation state")
+            }
+            Lifecycle::CompletionList(indices) => {
+                let mut list = indices.into_list(completions);
+                list.push((result, flags));
+                *self = Lifecycle::CompletionList(list.into_indices());
                 false
             }
-
         }
     }
 }
@@ -405,6 +475,7 @@ mod test {
 
     fn release(driver: crate::driver::Driver) {
         // Clear ops, we aren't really doing any I/O
-        driver.inner.borrow_mut().ops.0.clear();
+        driver.inner.borrow_mut().ops.lifecycle.clear();
+        driver.inner.borrow_mut().ops.completions.clear();
     }
 }
