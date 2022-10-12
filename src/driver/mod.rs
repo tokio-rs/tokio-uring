@@ -58,13 +58,13 @@ pub(crate) struct Inner {
     pub(crate) uring: IoUring,
 }
 
-struct Ops{
+struct Ops {
     // When dropping the driver, all in-flight operations must have completed. This
     // type wraps the slab and ensures that, on drop, the slab is empty.
     lifecycle: Slab<op::Lifecycle>,
 
     /// Received but unserviced Op completions
-    completions: Slab<op::Completion>
+    completions: Slab<op::Completion>,
 }
 
 scoped_thread_local!(pub(crate) static CURRENT: Rc<RefCell<Inner>>);
@@ -160,15 +160,17 @@ impl Drop for Driver {
 
 impl Ops {
     fn new() -> Ops {
-        Ops{
+        Ops {
             lifecycle: Slab::with_capacity(64),
-            completions: Slab::with_capacity(64)
+            completions: Slab::with_capacity(64),
         }
     }
 
     fn get_mut(&mut self, index: usize) -> Option<(&mut op::Lifecycle, &mut Slab<op::Completion>)> {
         let completions = &mut self.completions;
-        self.lifecycle.get_mut(index).map(|lifecycle| (lifecycle, completions))
+        self.lifecycle
+            .get_mut(index)
+            .map(|lifecycle| (lifecycle, completions))
     }
 
     // Insert a new operation

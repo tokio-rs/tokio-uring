@@ -1,6 +1,8 @@
-
-use std::{io, ops::{Deref, DerefMut}};
 use slab::Slab;
+use std::{
+    io,
+    ops::{Deref, DerefMut},
+};
 
 /// A linked list of CQE events
 pub(crate) struct CompletionList<'a> {
@@ -38,29 +40,28 @@ impl DerefMut for Completion {
     }
 }
 
-
-impl CompletionIndices{
+impl CompletionIndices {
     pub(crate) fn new() -> Self {
         let start = usize::MAX;
-        CompletionIndices { start, end:start }
+        CompletionIndices { start, end: start }
     }
 
     pub(crate) fn into_list<'a>(self, completions: &'a mut Slab<Completion>) -> CompletionList<'a> {
         CompletionList::from_indices(self, completions)
     }
-
 }
 
-
 impl<'a> CompletionList<'a> {
-    pub(crate) fn from_indices(index: CompletionIndices, completions: &'a mut Slab<Completion>) -> Self {
-            CompletionList { completions, index }
+    pub(crate) fn from_indices(
+        index: CompletionIndices,
+        completions: &'a mut Slab<Completion>,
+    ) -> Self {
+        CompletionList { completions, index }
     }
 
-    pub(crate) fn is_empty(&self) -> bool{
+    pub(crate) fn is_empty(&self) -> bool {
         self.index.start == usize::MAX
     }
-
 
     /// Peek at the end of the list (most recently pushed)
     /// This leaves the list unchanged
@@ -75,15 +76,17 @@ impl<'a> CompletionList<'a> {
     /// Pop from front of list
     #[allow(dead_code)]
     pub(crate) fn pop(&mut self) -> Option<(io::Result<u32>, u32)> {
-        self.completions.try_remove(self.index.start).map(| Completion{next, val,..} |{
-            if next != usize::MAX {
-                self.completions[next].prev = usize::MAX;
-            } else {
-                self.index.end = usize::MAX;
-            }
-            self.index.start = next;
-            val
-        })
+        self.completions
+            .try_remove(self.index.start)
+            .map(|Completion { next, val, .. }| {
+                if next != usize::MAX {
+                    self.completions[next].prev = usize::MAX;
+                } else {
+                    self.index.end = usize::MAX;
+                }
+                self.index.start = next;
+                val
+            })
     }
 
     /// Push to the end of the list

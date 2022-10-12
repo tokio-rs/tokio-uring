@@ -26,7 +26,7 @@ pub(crate) struct Op<T: 'static, CqeType = SingleCQE> {
     data: Option<T>,
 
     // CqeType marker
-    _cqe_type: PhantomData<CqeType>
+    _cqe_type: PhantomData<CqeType>,
 }
 
 /// A Marker for Ops which expect only a single completion event
@@ -52,10 +52,11 @@ pub(crate) enum Lifecycle {
     Completed(io::Result<u32>, u32),
 
     /// One or more completion results have been recieved
-    CompletionIndices(CompletionIndices),
+    /// This holds the indices uniquely identifying the list within the slab
+    CompletionList(CompletionIndices),
 }
 
-impl<T,CqeType> Op<T,CqeType>
+impl<T, CqeType> Op<T, CqeType>
 where
     T: Completable,
 {
@@ -129,7 +130,11 @@ where
 
         let me = &mut *self;
         let mut inner = me.driver.borrow_mut();
-        let lifecycle = inner.ops.get_mut(me.index).expect("invalid internal state").0;
+        let lifecycle = inner
+            .ops
+            .get_mut(me.index)
+            .expect("invalid internal state")
+            .0;
 
         match mem::replace(lifecycle, Lifecycle::Submitted) {
             Lifecycle::Submitted => {
@@ -150,7 +155,7 @@ where
                 me.index = usize::MAX;
                 Poll::Ready(me.data.take().unwrap().complete(result, flags))
             }
-            Lifecycle::CompletionIndices(..) => {
+            Lifecycle::CompletionList(..) => {
                 unreachable!()
             }
         }
@@ -174,7 +179,7 @@ impl<T, CqeType> Drop for Op<T, CqeType> {
             Lifecycle::Completed(..) => {
                 inner.ops.remove(self.index);
             }
-            Lifecycle::CompletionIndices(indices) => {
+            Lifecycle::CompletionList(indices) => {
                 // Deallocate list entries, recording if the more CQE's are expected
                 let more = {
                     let mut list = indices.into_list(completions);
@@ -187,7 +192,6 @@ impl<T, CqeType> Drop for Op<T, CqeType> {
                 } else {
                     inner.ops.remove(self.index);
                 }
-
             }
             Lifecycle::Ignored(..) => unreachable!(),
         }
@@ -195,15 +199,20 @@ impl<T, CqeType> Drop for Op<T, CqeType> {
 }
 
 impl Lifecycle {
-    pub(super) fn complete(&mut self, completions: &mut Slab<Completion>, result: io::Result<u32>, flags: u32) -> bool {
+    pub(super) fn complete(
+        &mut self,
+        completions: &mut Slab<Completion>,
+        result: io::Result<u32>,
+        flags: u32,
+    ) -> bool {
         use std::mem;
 
         match mem::replace(self, Lifecycle::Submitted) {
-            x@Lifecycle::Submitted | x@Lifecycle::Waiting(..) => {
-                if io_uring::cqueue::more(flags){
+            x @ Lifecycle::Submitted | x @ Lifecycle::Waiting(..) => {
+                if io_uring::cqueue::more(flags) {
                     let mut list = CompletionIndices::new().into_list(completions);
                     list.push((result, flags));
-                    *self = Lifecycle::CompletionIndices(list.into_indices());
+                    *self = Lifecycle::CompletionList(list.into_indices());
                 } else {
                     *self = Lifecycle::Completed(result, flags);
                 }
@@ -214,16 +223,15 @@ impl Lifecycle {
             }
             Lifecycle::Ignored(..) => true,
             Lifecycle::Completed(..) => unreachable!("invalid operation state"),
-            Lifecycle::CompletionIndices(indices) => {
+            Lifecycle::CompletionList(indices) => {
                 let mut list = indices.into_list(completions);
                 list.push((result, flags));
-                *self = Lifecycle::CompletionIndices(list.into_indices());
+                *self = Lifecycle::CompletionList(list.into_indices());
                 false
-            },
+            }
         }
     }
 }
-
 
 #[cfg(test)]
 mod test {
