@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::future::Future;
 use std::io;
+use std::marker::PhantomData;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::task::{Context, Poll, Waker};
@@ -10,7 +11,7 @@ use io_uring::squeue;
 use crate::driver;
 
 /// In-flight operation
-pub(crate) struct Op<T: 'static> {
+pub(crate) struct Op<T: 'static, CqeType = SingleCQE> {
     // Driver running the operation
     pub(super) driver: Rc<RefCell<driver::Inner>>,
 
@@ -19,7 +20,13 @@ pub(crate) struct Op<T: 'static> {
 
     // Per-operation data
     data: Option<T>,
+
+    // CqeType marker
+    _cqe_type: PhantomData<CqeType>
 }
+
+/// A Marker for Ops which expect only a single completion event
+pub(crate) struct SingleCQE;
 
 pub(crate) trait Completable {
     type Output;
@@ -41,16 +48,17 @@ pub(crate) enum Lifecycle {
     Completed(io::Result<u32>, u32),
 }
 
-impl<T> Op<T>
+impl<T,CqeType> Op<T,CqeType>
 where
     T: Completable,
 {
     /// Create a new operation
-    fn new(data: T, inner: &mut driver::Inner, inner_rc: &Rc<RefCell<driver::Inner>>) -> Op<T> {
+    fn new(data: T, inner: &mut driver::Inner, inner_rc: &Rc<RefCell<driver::Inner>>) -> Self {
         Op {
             driver: inner_rc.clone(),
             index: inner.ops.insert(),
             data: Some(data),
+            _cqe_type: PhantomData,
         }
     }
 
@@ -58,7 +66,7 @@ where
     ///
     /// `state` is stored during the operation tracking any state submitted to
     /// the kernel.
-    pub(super) fn submit_with<F>(data: T, f: F) -> io::Result<Op<T>>
+    pub(super) fn submit_with<F>(data: T, f: F) -> io::Result<Self>
     where
         F: FnOnce(&mut T) -> squeue::Entry,
     {
@@ -91,7 +99,7 @@ where
     }
 
     /// Try submitting an operation to uring
-    pub(super) fn try_submit_with<F>(data: T, f: F) -> io::Result<Op<T>>
+    pub(super) fn try_submit_with<F>(data: T, f: F) -> io::Result<Self>
     where
         F: FnOnce(&mut T) -> squeue::Entry,
     {
@@ -103,7 +111,7 @@ where
     }
 }
 
-impl<T> Future for Op<T>
+impl<T> Future for Op<T, SingleCQE>
 where
     T: Unpin + 'static + Completable,
 {
