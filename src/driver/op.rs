@@ -221,8 +221,20 @@ impl Lifecycle {
                 }
                 false
             }
-            Lifecycle::Ignored(..) => true,
-            Lifecycle::Completed(..) => unreachable!("invalid operation state"),
+            lifecycle @ Lifecycle::Ignored(..) => {
+                // We must check if any more CQEs are expected before dropping
+                if io_uring::cqueue::more(flags) {
+                    *self = lifecycle;
+                    false
+                } else {
+                    true
+                }
+            }
+            Lifecycle::Completed(..) => {
+                // To construct Lifecycle::Completed, a CQE without MORE was received
+                // we shouldn't be receiving another.
+                unreachable!("invalid operation state")
+            }
             Lifecycle::CompletionList(indices) => {
                 let mut list = indices.into_list(completions);
                 list.push((result, flags));
