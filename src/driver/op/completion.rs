@@ -46,7 +46,7 @@ impl CompletionIndices {
         CompletionIndices { start, end: start }
     }
 
-    pub(crate) fn into_list<'a>(self, completions: &'a mut Slab<Completion>) -> CompletionList<'a> {
+    pub(crate) fn into_list(self, completions: &mut Slab<Completion>) -> CompletionList<'_> {
         CompletionList::from_indices(self, completions)
     }
 }
