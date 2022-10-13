@@ -4,7 +4,7 @@ use crate::fs::OpenOptions;
 
 use std::fmt;
 use std::io;
-use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
+use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 use std::path::Path;
 
 /// A reference to an open file on the filesystem.
@@ -118,6 +118,14 @@ impl File {
 
     pub(crate) fn from_shared_fd(fd: SharedFd) -> File {
         File { fd }
+    }
+
+    /// Converts a [`std::fs::File`][std] to a [`tokio_uring::fs::File`][file].
+    ///
+    /// [std]: std::fs::File
+    /// [file]: File
+    pub fn from_std(file: std::fs::File) -> File {
+        File::from_shared_fd(SharedFd::new(file.into_raw_fd()))
     }
 
     /// Read some bytes at the specified offset from the file into the specified
