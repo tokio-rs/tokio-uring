@@ -1,4 +1,4 @@
-use crate::driver::{Op,op::Completable};
+use crate::driver::{op::Completable, Op};
 use std::io;
 
 /// No operation. Just posts a completion event, nothing else.
@@ -8,14 +8,9 @@ pub struct NoOp {}
 
 impl Op<NoOp> {
     pub fn no_op() -> io::Result<Op<NoOp>> {
-        use io_uring::{opcode};
+        use io_uring::opcode;
 
-        Op::submit_with(
-            NoOp {},
-            |_| {
-                opcode::Nop::new().build()
-            },
-        )
+        Op::submit_with(NoOp {}, |_| opcode::Nop::new().build())
     }
 }
 
