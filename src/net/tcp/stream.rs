@@ -1,12 +1,12 @@
 use std::{
     io,
     net::SocketAddr,
-    os::unix::prelude::{AsRawFd, RawFd},
+    os::unix::prelude::{AsRawFd, FromRawFd, RawFd},
 };
 
 use crate::{
     buf::{IoBuf, IoBufMut},
-    driver::Socket,
+    driver::{SharedFd, Socket},
 };
 
 /// A TCP stream between a local and a remote socket.
@@ -48,6 +48,10 @@ impl TcpStream {
         socket.connect(socket2::SockAddr::from(addr)).await?;
         let tcp_stream = TcpStream { inner: socket };
         Ok(tcp_stream)
+    }
+
+    pub(crate) fn from_socket(inner: Socket) -> Self {
+        Self { inner }
     }
 
     /// Read some data from the stream into the buffer, returning the original buffer and
@@ -152,6 +156,12 @@ impl TcpStream {
     pub fn shutdown(&self, how: std::net::Shutdown) -> io::Result<()> {
         // TODO same method for unix stream for consistency.
         self.inner.shutdown(how)
+    }
+}
+
+impl FromRawFd for TcpStream {
+    unsafe fn from_raw_fd(fd: RawFd) -> Self {
+        TcpStream::from_socket(Socket::from_shared_fd(SharedFd::new(fd)))
     }
 }
 
