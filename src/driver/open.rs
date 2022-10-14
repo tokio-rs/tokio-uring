@@ -18,7 +18,10 @@ impl Op<Open> {
     pub(crate) fn open(path: &Path, options: &OpenOptions) -> io::Result<Op<Open>> {
         use io_uring::{opcode, types};
         let path = driver::util::cstr(path)?;
-        let flags = libc::O_CLOEXEC | options.access_mode()? | options.creation_mode()?;
+        let flags = libc::O_CLOEXEC
+            | options.access_mode()?
+            | options.creation_mode()?
+            | (options.custom_flags & !libc::O_ACCMODE);
 
         Op::submit_with(Open { path, flags }, |open| {
             // Get a reference to the memory. The string will be held by the
