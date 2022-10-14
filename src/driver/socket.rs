@@ -94,6 +94,10 @@ impl Socket {
 
     pub(crate) fn from_std(socket: std::net::UdpSocket) -> Socket {
         let fd = SharedFd::new(socket.into_raw_fd());
+        Self::from_shared_fd(fd)
+    }
+
+    pub(crate) fn from_shared_fd(fd: SharedFd) -> Socket {
         Self { fd }
     }
 
