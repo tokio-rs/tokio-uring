@@ -1,9 +1,13 @@
 use crate::{
     buf::{IoBuf, IoBufMut},
-    driver::Socket,
+    driver::{SharedFd, Socket},
 };
 use socket2::SockAddr;
-use std::{io, net::SocketAddr};
+use std::{
+    io,
+    net::SocketAddr,
+    os::unix::prelude::{AsRawFd, FromRawFd, RawFd},
+};
 
 /// A UDP socket.
 ///
@@ -95,7 +99,7 @@ impl UdpSocket {
     /// Creates new `UdpSocket` from a previously bound `std::net::UdpSocket`.
     ///
     /// This function is intended to be used to wrap a UDP socket from the
-    /// standard library in the Tokio equivalent. The conversion assumes nothing
+    /// standard library in the Tokio uring equivalent. The conversion assumes nothing
     /// about the underlying socket; it is left up to the user to decide what socket
     /// options are appropriate for their use case.
     ///
@@ -141,11 +145,13 @@ impl UdpSocket {
     ///     })
     /// }
     /// ```
-    pub fn from_std(socket: std::net::UdpSocket) -> UdpSocket {
-        let inner_socket = Socket::from_std(socket);
-        Self {
-            inner: inner_socket,
-        }
+    pub fn from_std(socket: std::net::UdpSocket) -> Self {
+        let inner = Socket::from_std(socket);
+        Self { inner }
+    }
+
+    pub(crate) fn from_socket(inner: Socket) -> Self {
+        Self { inner }
     }
 
     /// Connects this UDP socket to a remote address, allowing the `write` and
@@ -185,5 +191,25 @@ impl UdpSocket {
     /// quantity of data written.
     pub async fn write<T: IoBuf>(&self, buf: T) -> crate::BufResult<usize, T> {
         self.inner.write(buf).await
+    }
+
+    /// Shuts down the read, write, or both halves of this connection.
+    ///
+    /// This function will cause all pending and future I/O on the specified portions to return
+    /// immediately with an appropriate value.
+    pub fn shutdown(&self, how: std::net::Shutdown) -> io::Result<()> {
+        self.inner.shutdown(how)
+    }
+}
+
+impl FromRawFd for UdpSocket {
+    unsafe fn from_raw_fd(fd: RawFd) -> Self {
+        UdpSocket::from_socket(Socket::from_shared_fd(SharedFd::new(fd)))
+    }
+}
+
+impl AsRawFd for UdpSocket {
+    fn as_raw_fd(&self) -> RawFd {
+        self.inner.as_raw_fd()
     }
 }
