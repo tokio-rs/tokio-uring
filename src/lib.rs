@@ -75,6 +75,8 @@ mod driver;
 mod runtime;
 
 pub mod buf;
+pub mod bufgroup;
+pub mod bufring;
 pub mod fs;
 pub mod net;
 

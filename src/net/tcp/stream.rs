@@ -4,6 +4,7 @@ use std::{
     os::unix::prelude::{AsRawFd, FromRawFd, RawFd},
 };
 
+use crate::bufgroup::{self, BufX};
 use crate::{
     buf::{IoBuf, IoBufMut},
     driver::{SharedFd, Socket},
@@ -58,6 +59,23 @@ impl TcpStream {
     /// quantity of data read.
     pub async fn read<T: IoBufMut>(&self, buf: T) -> crate::BufResult<usize, T> {
         self.inner.read(buf).await
+    }
+
+    /// Read some data from the stream into a buffer from the buffer group, returning the buffer
+    /// that the kernel selected. The quantity of data read can be inferred from the length of the
+    /// buffer.
+    ///
+    /// When the buffer being returned goes out of scope, it is returned to the buffer group for
+    /// the kernel to reuse until such time that the buffer group is unregistered or the uring
+    /// interface is shutdown.
+    ///
+    /// Holding the returned buffer may lead to starvation of other read or receiver requests that
+    /// are programmed to use the same buffer group.
+    pub async fn read_bg<G>(&self, buf_group: G) -> io::Result<BufX<G>>
+    where
+        G: Clone + bufgroup::Group + std::marker::Unpin + 'static,
+    {
+        self.inner.read_bg(buf_group).await
     }
 
     /// Write some data to the stream from the buffer, returning the original buffer and
@@ -156,6 +174,18 @@ impl TcpStream {
     pub fn shutdown(&self, how: std::net::Shutdown) -> io::Result<()> {
         // TODO same method for unix stream for consistency.
         self.inner.shutdown(how)
+    }
+
+    /// Returns the socket address of the remote peer of this TCP connection.
+    pub fn peer_addr(&self) -> io::Result<SocketAddr> {
+        let fd = self.inner.as_raw_fd();
+        // SAFETY: Our fd is the handle the kernel has given us for a TcpListener.
+        // Create a std::net::TcpListener long enough to call its peer_addr method
+        // and then forget it so the socket is not closed here.
+        let s = unsafe { std::net::TcpStream::from_raw_fd(fd) };
+        let peer_addr = s.peer_addr();
+        std::mem::forget(s);
+        peer_addr
     }
 }
 

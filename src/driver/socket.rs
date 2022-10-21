@@ -1,3 +1,4 @@
+use crate::bufgroup::{self, BufX};
 use crate::{
     buf::{IoBuf, IoBufMut},
     driver::{Op, SharedFd},
@@ -56,6 +57,15 @@ impl Socket {
     pub(crate) async fn read<T: IoBufMut>(&self, buf: T) -> crate::BufResult<usize, T> {
         let op = Op::read_at(&self.fd, buf, 0).unwrap();
         op.await
+    }
+
+    pub(crate) async fn read_bg<G>(&self, buf_group: G) -> io::Result<BufX<G>>
+    where
+        G: Clone + bufgroup::Group + std::marker::Unpin + 'static,
+    {
+        let op = Op::read_at_bg(&self.fd, 0, buf_group).unwrap();
+        // TODO resolve where the Ok is added.
+        Ok(op.await)
     }
 
     pub(crate) async fn recv_from<T: IoBufMut>(

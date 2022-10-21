@@ -18,14 +18,14 @@ fn main() {
         println!("Listening on {}", listener.local_addr().unwrap());
 
         loop {
-            let (stream, socket_addr) = listener.accept().await.unwrap();
+            let (stream, peer_addr) = listener.accept().await.unwrap();
             tokio_uring::spawn(async move {
                 // implement ping-pong loop
 
                 use tokio_uring::buf::IoBuf; // for slice()
 
-                println!("{} connected", socket_addr);
-                let mut n = 0;
+                println!("{} connected", peer_addr);
+                let mut tot = 0;
 
                 let mut buf = vec![0u8; 4096];
                 loop {
@@ -33,15 +33,18 @@ fn main() {
                     buf = nbuf;
                     let read = result.unwrap();
                     if read == 0 {
-                        println!("{} closed, {} total ping-ponged", socket_addr, n);
+                        println!("{} closed, {} total bytes ping-ponged\n\n", peer_addr, tot);
                         break;
                     }
+                    tot += read;
 
                     let (res, slice) = stream.write_all(buf.slice(..read)).await;
                     let _ = res.unwrap();
                     buf = slice.into_inner();
-                    println!("{} all {} bytes ping-ponged", socket_addr, read);
-                    n += read;
+                    println!(
+                        "{} all {} bytes ping-ponged, running total {} bytes",
+                        peer_addr, read, tot
+                    );
                 }
             });
         }
