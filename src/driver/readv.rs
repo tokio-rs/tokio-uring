@@ -5,7 +5,6 @@ use crate::BufResult;
 use crate::driver::op::Completable;
 use libc::iovec;
 use std::io;
-use std::task::{Context, Poll};
 
 pub(crate) struct Readv<T> {
     /// Holds a strong ref to the FD, preventing the file from being closed
@@ -53,19 +52,6 @@ impl<T: IoBufMut> Op<Readv<T>> {
                 .build()
             },
         )
-    }
-
-    pub(crate) async fn readv(mut self) -> BufResult<usize, Vec<T>> {
-        crate::future::poll_fn(move |cx| self.poll_readv(cx)).await
-    }
-
-    pub(crate) fn poll_readv(&mut self, cx: &mut Context<'_>) -> Poll<BufResult<usize, Vec<T>>> {
-        use std::future::Future;
-        use std::pin::Pin;
-
-        let complete = ready!(Pin::new(self).poll(cx));
-
-        Poll::Ready(complete)
     }
 }
 

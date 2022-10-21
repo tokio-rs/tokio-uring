@@ -7,7 +7,6 @@ use crate::{
 use socket2::SockAddr;
 use std::{
     io::IoSliceMut,
-    task::{Context, Poll},
     {boxed::Box, io, net::SocketAddr},
 };
 
@@ -52,24 +51,6 @@ impl<T: IoBufMut> Op<RecvFrom<T>> {
                 .build()
             },
         )
-    }
-
-    pub(crate) async fn recv(mut self) -> BufResult<(usize, SocketAddr), T> {
-        use crate::future::poll_fn;
-
-        poll_fn(move |cx| self.poll_recv_from(cx)).await
-    }
-
-    pub(crate) fn poll_recv_from(
-        &mut self,
-        cx: &mut Context<'_>,
-    ) -> Poll<BufResult<(usize, SocketAddr), T>> {
-        use std::future::Future;
-        use std::pin::Pin;
-
-        let complete = ready!(Pin::new(self).poll(cx));
-
-        Poll::Ready(complete)
     }
 }
 

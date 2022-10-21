@@ -4,10 +4,7 @@ use crate::{
     driver::{Op, SharedFd},
     BufResult,
 };
-use std::{
-    io,
-    task::{Context, Poll},
-};
+use std::io;
 
 pub(crate) struct Write<T> {
     /// Holds a strong ref to the FD, preventing the file from being closed
@@ -37,20 +34,6 @@ impl<T: IoBuf> Op<Write<T>> {
                     .build()
             },
         )
-    }
-
-    pub(crate) async fn write(mut self) -> BufResult<usize, T> {
-        use crate::future::poll_fn;
-
-        poll_fn(move |cx| self.poll_write(cx)).await
-    }
-
-    pub(crate) fn poll_write(&mut self, cx: &mut Context<'_>) -> Poll<BufResult<usize, T>> {
-        use std::future::Future;
-        use std::pin::Pin;
-
-        let complete = ready!(Pin::new(self).poll(cx));
-        Poll::Ready(complete)
     }
 }
 
