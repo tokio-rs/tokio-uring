@@ -4,7 +4,6 @@ use crate::driver::{Op, SharedFd};
 use crate::BufResult;
 use socket2::SockAddr;
 use std::io::IoSlice;
-use std::task::{Context, Poll};
 use std::{boxed::Box, io, net::SocketAddr};
 
 pub(crate) struct SendTo<T> {
@@ -54,20 +53,6 @@ impl<T: IoBuf> Op<SendTo<T>> {
                 .build()
             },
         )
-    }
-
-    pub(crate) async fn send(mut self) -> BufResult<usize, T> {
-        use crate::future::poll_fn;
-
-        poll_fn(move |cx| self.poll_send(cx)).await
-    }
-
-    pub(crate) fn poll_send(&mut self, cx: &mut Context<'_>) -> Poll<BufResult<usize, T>> {
-        use std::future::Future;
-        use std::pin::Pin;
-
-        let complete = ready!(Pin::new(self).poll(cx));
-        Poll::Ready(complete)
     }
 }
 

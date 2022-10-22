@@ -41,7 +41,7 @@ impl Socket {
 
     pub(crate) async fn write<T: IoBuf>(&self, buf: T) -> crate::BufResult<usize, T> {
         let op = Op::write_at(&self.fd, buf, 0).unwrap();
-        op.write().await
+        op.await
     }
 
     pub(crate) async fn send_to<T: IoBuf>(
@@ -50,12 +50,12 @@ impl Socket {
         socket_addr: SocketAddr,
     ) -> crate::BufResult<usize, T> {
         let op = Op::send_to(&self.fd, buf, socket_addr).unwrap();
-        op.send().await
+        op.await
     }
 
     pub(crate) async fn read<T: IoBufMut>(&self, buf: T) -> crate::BufResult<usize, T> {
         let op = Op::read_at(&self.fd, buf, 0).unwrap();
-        op.read().await
+        op.await
     }
 
     pub(crate) async fn recv_from<T: IoBufMut>(
@@ -63,7 +63,7 @@ impl Socket {
         buf: T,
     ) -> crate::BufResult<(usize, SocketAddr), T> {
         let op = Op::recv_from(&self.fd, buf).unwrap();
-        op.recv().await
+        op.await
     }
 
     pub(crate) async fn accept(&self) -> io::Result<(Socket, Option<SocketAddr>)> {
