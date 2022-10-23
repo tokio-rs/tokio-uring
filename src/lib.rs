@@ -273,7 +273,7 @@ pub type BufResult<T, B> = (std::io::Result<T>, B);
 /// fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///     tokio_uring::start(async {
 ///         // Place a NoOp on the ring, and await completion event
-///         no_op()?;
+///         tokio_uring::no_op().await?;
 ///         Ok(())
 ///     })
 /// }
