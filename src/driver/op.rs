@@ -61,7 +61,7 @@ pub(crate) enum Lifecycle {
 
     /// One or more completion results have been recieved
     /// This holds the indices uniquely identifying the list within the slab
-    SlabList(SlabListIndices),
+    CompletionList(SlabListIndices),
 }
 
 /// A single CQE entry
@@ -182,7 +182,7 @@ where
                 me.index = usize::MAX;
                 Poll::Ready(me.data.take().unwrap().complete(cqe))
             }
-            Lifecycle::SlabList(..) => {
+            Lifecycle::CompletionList(..) => {
                 unreachable!()
             }
         }
@@ -206,7 +206,7 @@ impl<T, CqeType> Drop for Op<T, CqeType> {
             Lifecycle::Completed(..) => {
                 inner.ops.remove(self.index);
             }
-            Lifecycle::SlabList(indices) => {
+            Lifecycle::CompletionList(indices) => {
                 // Deallocate list entries, recording if the more CQE's are expected
                 let more = {
                     let mut list = indices.into_list(completions);
@@ -234,7 +234,7 @@ impl Lifecycle {
                 if io_uring::cqueue::more(cqe.flags) {
                     let mut list = SlabListIndices::new().into_list(completions);
                     list.push(cqe);
-                    *self = Lifecycle::SlabList(list.into_indices());
+                    *self = Lifecycle::CompletionList(list.into_indices());
                 } else {
                     *self = Lifecycle::Completed(cqe);
                 }
@@ -257,10 +257,10 @@ impl Lifecycle {
                 // we shouldn't be receiving another.
                 unreachable!("invalid operation state")
             }
-            Lifecycle::SlabList(indices) => {
+            Lifecycle::CompletionList(indices) => {
                 let mut list = indices.into_list(completions);
                 list.push(cqe);
-                *self = Lifecycle::SlabList(list.into_indices());
+                *self = Lifecycle::CompletionList(list.into_indices());
                 false
             }
         }
