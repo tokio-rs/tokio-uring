@@ -50,6 +50,21 @@ impl TcpStream {
         Ok(tcp_stream)
     }
 
+    /// Creates new `TcpStream` from a previously bound `std::net::TcpStream`.
+    ///
+    /// This function is intended to be used to wrap a TCP stream from the
+    /// standard library in the tokio-uring equivalent. The conversion assumes nothing
+    /// about the underlying socket; it is left up to the user to decide what socket
+    /// options are appropriate for their use case.
+    ///
+    /// This can be used in conjunction with socket2's `Socket` interface to
+    /// configure a socket before it's handed off, such as setting options like
+    /// `reuse_address` or binding to multiple addresses.
+    pub fn from_std(socket: std::net::TcpStream) -> Self {
+        let inner = Socket::from_std(socket);
+        Self { inner }
+    }
+
     pub(crate) fn from_socket(inner: Socket) -> Self {
         Self { inner }
     }
@@ -154,7 +169,6 @@ impl TcpStream {
     /// This function will cause all pending and future I/O on the specified portions to return
     /// immediately with an appropriate value.
     pub fn shutdown(&self, how: std::net::Shutdown) -> io::Result<()> {
-        // TODO same method for unix stream for consistency.
         self.inner.shutdown(how)
     }
 }
