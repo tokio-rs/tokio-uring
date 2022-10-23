@@ -37,7 +37,10 @@ impl RuntimeContext {
 
     /// Check if driver is initialized
     pub(crate) fn is_set(&self) -> bool {
-        self.driver.borrow().is_some()
+        self.driver
+            .try_borrow()
+            .map(|b| b.is_some())
+            .unwrap_or(false)
     }
 
     /// Execute a function which requires access to the driver.
