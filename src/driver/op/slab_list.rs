@@ -5,10 +5,6 @@
 //! which holds the index of the first element of the list.
 //! It also holds the index of the last element, to support
 //! push operations without list traversal.
-//!
-//! SlabListIndices may be upgraded to a SlabList, by providing
-//! a reference to the backing slab. This seperates the SlabListIndices
-//! from the lifetime of the storage (at type level only).
 use slab::Slab;
 use std::ops::{Deref, DerefMut};
 
@@ -102,7 +98,12 @@ impl<'a, T> SlabList<'a, T> {
             next: usize::MAX,
         };
         self.index.end = self.slab.insert(entry);
-        self.slab[prev].next = self.index.end;
+        if prev != usize::MAX {
+            self.slab[prev].next = self.index.end;
+        } else {
+            self.index.start = self.index.end;
+        }
+
     }
 
     /// Consume the list, without dropping entries, returning just the start and end indices
@@ -117,5 +118,55 @@ impl<'a, T> Drop for SlabList<'a, T> {
             let removed = self.slab.remove(self.index.start);
             self.index.start = removed.next;
         }
+    }
+}
+
+
+
+mod test {
+    use super::*;
+
+    #[test]
+    fn push_pop() {
+        let mut slab = Slab::with_capacity(8);
+        let mut list =  SlabListIndices::new().into_list(&mut slab);
+        assert!(list.is_empty());
+        assert_eq!(list.pop(), None);
+        for i in 0..5 {
+            list.push(i);
+            assert_eq!(list.peek_end(), Some(&i));
+            assert!(!list.is_empty());
+            assert!(!list.slab.is_empty());
+        }
+        for i in 0..5 {
+            assert_eq!(list.pop(), Some(i))
+        }
+        assert!(list.is_empty());
+        assert!(list.slab.is_empty());
+        assert_eq!(list.pop(), None);
+    }
+
+    #[test]
+    fn entries_freed_on_drop() {
+        let mut slab = Slab::with_capacity(8);
+        {
+            let mut list =  SlabListIndices::new().into_list(&mut slab);
+            list.push(42);
+            assert!(!list.is_empty());
+        }
+        assert!(slab.is_empty());
+    }
+
+    #[test]
+    fn entries_kept_on_converion_to_index() {
+        let mut slab = Slab::with_capacity(8);
+        {
+            let mut list =  SlabListIndices::new().into_list(&mut slab);
+            list.push(42);
+            assert!(!list.is_empty());
+            // This forgets the entries
+            let _ = list.into_indices();
+        }
+        assert!(!slab.is_empty());
     }
 }
