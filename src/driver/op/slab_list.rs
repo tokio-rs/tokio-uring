@@ -120,6 +120,7 @@ impl<'a, T> Drop for SlabList<'a, T> {
     }
 }
 
+#[cfg(test)]
 mod test {
     use super::*;
 
