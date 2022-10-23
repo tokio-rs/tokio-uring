@@ -103,7 +103,6 @@ impl<'a, T> SlabList<'a, T> {
         } else {
             self.index.start = self.index.end;
         }
-
     }
 
     /// Consume the list, without dropping entries, returning just the start and end indices
@@ -121,15 +120,13 @@ impl<'a, T> Drop for SlabList<'a, T> {
     }
 }
 
-
-
 mod test {
     use super::*;
 
     #[test]
     fn push_pop() {
         let mut slab = Slab::with_capacity(8);
-        let mut list =  SlabListIndices::new().into_list(&mut slab);
+        let mut list = SlabListIndices::new().into_list(&mut slab);
         assert!(list.is_empty());
         assert_eq!(list.pop(), None);
         for i in 0..5 {
@@ -150,7 +147,7 @@ mod test {
     fn entries_freed_on_drop() {
         let mut slab = Slab::with_capacity(8);
         {
-            let mut list =  SlabListIndices::new().into_list(&mut slab);
+            let mut list = SlabListIndices::new().into_list(&mut slab);
             list.push(42);
             assert!(!list.is_empty());
         }
@@ -161,7 +158,7 @@ mod test {
     fn entries_kept_on_converion_to_index() {
         let mut slab = Slab::with_capacity(8);
         {
-            let mut list =  SlabListIndices::new().into_list(&mut slab);
+            let mut list = SlabListIndices::new().into_list(&mut slab);
             list.push(42);
             assert!(!list.is_empty());
             // This forgets the entries
