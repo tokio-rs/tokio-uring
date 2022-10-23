@@ -22,6 +22,7 @@ jobs:
       - clippy
       - fmt
       - test
+      - test-docs
       - docs
     steps:
       - run: exit 0
@@ -49,6 +50,15 @@ jobs:
       - name: Install Rust
         run: rustup update stable
       - run: cargo test
+
+  test-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install Rust
+        run: rustup update stable
+      - run: cargo test --doc
+
 
   fmt:
     runs-on: ubuntu-latest
