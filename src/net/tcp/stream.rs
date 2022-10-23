@@ -1,12 +1,12 @@
 use std::{
     io,
     net::SocketAddr,
-    os::unix::prelude::{AsRawFd, RawFd},
+    os::unix::prelude::{AsRawFd, FromRawFd, RawFd},
 };
 
 use crate::{
     buf::{IoBuf, IoBufMut},
-    driver::Socket,
+    driver::{SharedFd, Socket},
 };
 
 /// A TCP stream between a local and a remote socket.
@@ -48,6 +48,25 @@ impl TcpStream {
         socket.connect(socket2::SockAddr::from(addr)).await?;
         let tcp_stream = TcpStream { inner: socket };
         Ok(tcp_stream)
+    }
+
+    /// Creates new `TcpStream` from a previously bound `std::net::TcpStream`.
+    ///
+    /// This function is intended to be used to wrap a TCP stream from the
+    /// standard library in the tokio-uring equivalent. The conversion assumes nothing
+    /// about the underlying socket; it is left up to the user to decide what socket
+    /// options are appropriate for their use case.
+    ///
+    /// This can be used in conjunction with socket2's `Socket` interface to
+    /// configure a socket before it's handed off, such as setting options like
+    /// `reuse_address` or binding to multiple addresses.
+    pub fn from_std(socket: std::net::TcpStream) -> Self {
+        let inner = Socket::from_std(socket);
+        Self { inner }
+    }
+
+    pub(crate) fn from_socket(inner: Socket) -> Self {
+        Self { inner }
     }
 
     /// Read some data from the stream into the buffer, returning the original buffer and
@@ -150,8 +169,13 @@ impl TcpStream {
     /// This function will cause all pending and future I/O on the specified portions to return
     /// immediately with an appropriate value.
     pub fn shutdown(&self, how: std::net::Shutdown) -> io::Result<()> {
-        // TODO same method for unix stream for consistency.
         self.inner.shutdown(how)
+    }
+}
+
+impl FromRawFd for TcpStream {
+    unsafe fn from_raw_fd(fd: RawFd) -> Self {
+        TcpStream::from_socket(Socket::from_shared_fd(SharedFd::new(fd)))
     }
 }
 

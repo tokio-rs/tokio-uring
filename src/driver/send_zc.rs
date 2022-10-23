@@ -1,4 +1,4 @@
-use crate::driver::op::{Completable, Updateable};
+use crate::driver::op::{self, Completable, Updateable};
 use crate::{
     buf::IoBuf,
     driver::{Op, SharedFd},
@@ -18,7 +18,7 @@ pub(crate) struct SendZc<T> {
     pub(crate) buf: T,
 
     /// Hold the number of transmitted bytes
-    bytes: usize
+    bytes: usize,
 }
 
 impl<T: IoBuf> Op<SendZc<T>> {
@@ -36,8 +36,7 @@ impl<T: IoBuf> Op<SendZc<T>> {
                 let ptr = send.buf.stable_ptr();
                 let len = send.buf.bytes_init();
 
-                opcode::SendZc::new(types::Fd(fd.raw_fd()), ptr, len as _)
-                    .build()
+                opcode::SendZc::new(types::Fd(fd.raw_fd()), ptr, len as _).build()
             },
         )
     }
@@ -63,9 +62,9 @@ where
 {
     type Output = BufResult<usize, T>;
 
-    fn complete(self, result: io::Result<u32>, _flags: u32) -> Self::Output {
+    fn complete(self, cqe: op::CqeResult) -> Self::Output {
         // Convert the operation result to `usize`
-        let res = result.map(|v| self.bytes + v as usize);
+        let res = cqe.result.map(|v| self.bytes + v as usize);
         // Recover the buffer
         let buf = self.buf;
         (res, buf)
@@ -76,8 +75,8 @@ impl<T> Updateable for SendZc<T>
 where
     T: IoBuf,
 {
-    fn update(&mut self, cqe :&(io::Result<u32>, u32)) {
+    fn update(&mut self, cqe: &op::CqeResult) {
         // uring send_zc promises there will be no error on CQE's marked more
-        self.bytes += *cqe.0.as_ref().unwrap() as usize;
+        self.bytes += *cqe.result.as_ref().unwrap() as usize;
     }
 }

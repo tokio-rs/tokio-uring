@@ -6,13 +6,21 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::task::{Context, Poll, Waker};
 
-use io_uring::squeue;
+use io_uring::{cqueue, squeue};
 
-mod completion;
-pub(crate) use completion::*;
+mod slab_list;
+
 use slab::Slab;
+use slab_list::{SlabListEntry, SlabListIndices};
 
 use crate::driver;
+
+/// A SlabList is used to hold unserved completions.
+///
+/// This is relevant to multi-completion Operations,
+/// which require an unknown number of CQE events to be
+/// captured before completion.
+pub(crate) type Completion = SlabListEntry<CqeResult>;
 
 /// In-flight operation
 pub(crate) struct Op<T: 'static, CqeType = SingleCQE> {
@@ -38,11 +46,11 @@ pub(crate) struct MultiCQEFuture;
 
 pub(crate) trait Completable {
     type Output;
-    fn complete(self, result: io::Result<u32>, flags: u32) -> Self::Output;
+    fn complete(self, cqe: CqeResult) -> Self::Output;
 }
 
 pub(crate) trait Updateable: Completable {
-    fn update(&mut self, cqe: &(io::Result<u32>, u32));
+    fn update(&mut self, cqe: &CqeResult);
 }
 
 pub(crate) enum Lifecycle {
@@ -56,12 +64,31 @@ pub(crate) enum Lifecycle {
     /// must be passed to the driver and held until the operation completes.
     Ignored(Box<dyn std::any::Any>),
 
-    /// The operation has completed with a single result
-    Completed(io::Result<u32>, u32),
+    /// The operation has completed with a single cqe result
+    Completed(CqeResult),
 
     /// One or more completion results have been recieved
     /// This holds the indices uniquely identifying the list within the slab
-    CompletionList(CompletionIndices),
+    CompletionList(SlabListIndices),
+}
+
+/// A single CQE entry
+pub(crate) struct CqeResult {
+    pub(crate) result: io::Result<u32>,
+    pub(crate) flags: u32,
+}
+
+impl From<cqueue::Entry> for CqeResult {
+    fn from(cqe: cqueue::Entry) -> Self {
+        let res = cqe.result();
+        let flags = cqe.flags();
+        let result = if res >= 0 {
+            Ok(res as u32)
+        } else {
+            Err(io::Error::from_raw_os_error(-res))
+        };
+        CqeResult { result, flags }
+    }
 }
 
 impl<T, CqeType> Op<T, CqeType>
@@ -158,10 +185,10 @@ where
                 Poll::Pending
             }
             Lifecycle::Ignored(..) => unreachable!(),
-            Lifecycle::Completed(result, flags) => {
+            Lifecycle::Completed(cqe) => {
                 inner.ops.remove(me.index);
                 me.index = usize::MAX;
-                Poll::Ready(me.data.take().unwrap().complete(result, flags))
+                Poll::Ready(me.data.take().unwrap().complete(cqe))
             }
             Lifecycle::CompletionList(..) => {
                 unreachable!()
@@ -181,10 +208,7 @@ where
 
         let me = &mut *self;
         let mut inner = me.driver.borrow_mut();
-        let (lifecycle, completions) = inner
-            .ops
-            .get_mut(me.index)
-            .expect("invalid internal state");
+        let (lifecycle, completions) = inner.ops.get_mut(me.index).expect("invalid internal state");
 
         match mem::replace(lifecycle, Lifecycle::Submitted) {
             Lifecycle::Submitted => {
@@ -200,28 +224,31 @@ where
                 Poll::Pending
             }
             Lifecycle::Ignored(..) => unreachable!(),
-            Lifecycle::Completed(result, flags) => {
+            Lifecycle::Completed(cqe) => {
                 // This is possible. We may have previously polled a CompletionList,
                 // and the final CQE is enqueued as a Completed
                 inner.ops.remove(me.index);
                 me.index = usize::MAX;
-                Poll::Ready(me.data.take().unwrap().complete(result, flags))
+                Poll::Ready(me.data.take().unwrap().complete(cqe))
             }
             Lifecycle::CompletionList(indices) => {
                 let mut data = me.data.take().unwrap();
 
-                let last = indices.into_list(completions).skip_while(|cqe| {
-                    let more = io_uring::cqueue::more(cqe.1);
-                    if more {
-                        data.update(cqe);
-                    }
-                    more
-                }).next();
+                let last = indices
+                    .into_list(completions)
+                    .skip_while(|cqe| {
+                        let more = io_uring::cqueue::more(cqe.flags);
+                        if more {
+                            data.update(cqe);
+                        }
+                        more
+                    })
+                    .next();
 
-                if let Some((result, flags)) = last {
+                if let Some(cqe) = last {
                     inner.ops.remove(me.index);
                     me.index = usize::MAX;
-                    Poll::Ready(data.complete(result, flags))
+                    Poll::Ready(data.complete(cqe))
                 } else {
                     // We need more CQE's. Restore the op state
                     let _ = me.data.insert(data);
@@ -254,7 +281,7 @@ impl<T, CqeType> Drop for Op<T, CqeType> {
                 // Deallocate list entries, recording if the more CQE's are expected
                 let more = {
                     let mut list = indices.into_list(completions);
-                    io_uring::cqueue::more(list.peek_end().unwrap().1)
+                    io_uring::cqueue::more(list.peek_end().unwrap().flags)
                     // Dropping list dealloctes the list entries
                 };
                 if more {
@@ -270,22 +297,17 @@ impl<T, CqeType> Drop for Op<T, CqeType> {
 }
 
 impl Lifecycle {
-    pub(super) fn complete(
-        &mut self,
-        completions: &mut Slab<Completion>,
-        result: io::Result<u32>,
-        flags: u32,
-    ) -> bool {
+    pub(super) fn complete(&mut self, completions: &mut Slab<Completion>, cqe: CqeResult) -> bool {
         use std::mem;
 
         match mem::replace(self, Lifecycle::Submitted) {
             x @ Lifecycle::Submitted | x @ Lifecycle::Waiting(..) => {
-                if io_uring::cqueue::more(flags) {
-                    let mut list = CompletionIndices::new().into_list(completions);
-                    list.push((result, flags));
+                if io_uring::cqueue::more(cqe.flags) {
+                    let mut list = SlabListIndices::new().into_list(completions);
+                    list.push(cqe);
                     *self = Lifecycle::CompletionList(list.into_indices());
                 } else {
-                    *self = Lifecycle::Completed(result, flags);
+                    *self = Lifecycle::Completed(cqe);
                 }
                 if let Lifecycle::Waiting(waker) = x {
                     waker.wake();
@@ -294,7 +316,7 @@ impl Lifecycle {
             }
             lifecycle @ Lifecycle::Ignored(..) => {
                 // We must check if any more CQEs are expected before dropping
-                if io_uring::cqueue::more(flags) {
+                if io_uring::cqueue::more(cqe.flags) {
                     *self = lifecycle;
                     false
                 } else {
@@ -308,7 +330,7 @@ impl Lifecycle {
             }
             Lifecycle::CompletionList(indices) => {
                 let mut list = indices.into_list(completions);
-                list.push((result, flags));
+                list.push(cqe);
                 *self = Lifecycle::CompletionList(list.into_indices());
                 false
             }
@@ -334,10 +356,10 @@ mod test {
     impl Completable for Rc<()> {
         type Output = Completion;
 
-        fn complete(self, result: io::Result<u32>, flags: u32) -> Self::Output {
+        fn complete(self, cqe: CqeResult) -> Self::Output {
             Completion {
-                result,
-                flags,
+                result: cqe.result,
+                flags: cqe.flags,
                 data: self.clone(),
             }
         }
@@ -448,7 +470,11 @@ mod test {
         assert_eq!(2, Rc::strong_count(&data));
 
         assert_eq!(1, driver.num_operations());
-        driver.inner.borrow_mut().ops.complete(index, Ok(1), 0);
+        let cqe = CqeResult {
+            result: Ok(1),
+            flags: 0,
+        };
+        driver.inner.borrow_mut().ops.complete(index, cqe);
         assert_eq!(1, Rc::strong_count(&data));
         assert_eq!(0, driver.num_operations());
         release(driver);
@@ -470,7 +496,8 @@ mod test {
     }
 
     fn complete(op: &Op<Rc<()>>, result: io::Result<u32>) {
-        op.driver.borrow_mut().ops.complete(op.index, result, 0);
+        let cqe = CqeResult { result, flags: 0 };
+        op.driver.borrow_mut().ops.complete(op.index, cqe);
     }
 
     fn release(driver: crate::driver::Driver) {

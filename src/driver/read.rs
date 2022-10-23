@@ -2,9 +2,8 @@ use crate::buf::IoBufMut;
 use crate::driver::{Op, SharedFd};
 use crate::BufResult;
 
-use crate::driver::op::Completable;
+use crate::driver::op::{self, Completable};
 use std::io;
-use std::task::{Context, Poll};
 
 pub(crate) struct Read<T> {
     /// Holds a strong ref to the FD, preventing the file from being closed
@@ -35,19 +34,6 @@ impl<T: IoBufMut> Op<Read<T>> {
             },
         )
     }
-
-    pub(crate) async fn read(mut self) -> BufResult<usize, T> {
-        crate::future::poll_fn(move |cx| self.poll_read(cx)).await
-    }
-
-    pub(crate) fn poll_read(&mut self, cx: &mut Context<'_>) -> Poll<BufResult<usize, T>> {
-        use std::future::Future;
-        use std::pin::Pin;
-
-        let complete = ready!(Pin::new(self).poll(cx));
-
-        Poll::Ready(complete)
-    }
 }
 
 impl<T> Completable for Read<T>
@@ -56,9 +42,9 @@ where
 {
     type Output = BufResult<usize, T>;
 
-    fn complete(self, result: io::Result<u32>, _flags: u32) -> Self::Output {
+    fn complete(self, cqe: op::CqeResult) -> Self::Output {
         // Convert the operation result to `usize`
-        let res = result.map(|v| v as usize);
+        let res = cqe.result.map(|v| v as usize);
         // Recover the buffer
         let mut buf = self.buf;
 

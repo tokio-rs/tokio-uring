@@ -2,6 +2,7 @@ use crate::driver::Op;
 use crate::fs::File;
 
 use std::io;
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 
 /// Options and flags which can be used to configure how a file is opened.
@@ -62,6 +63,7 @@ pub struct OpenOptions {
     create: bool,
     create_new: bool,
     pub(crate) mode: libc::mode_t,
+    pub(crate) custom_flags: libc::c_int,
 }
 
 impl OpenOptions {
@@ -94,6 +96,7 @@ impl OpenOptions {
             create: false,
             create_new: false,
             mode: 0o666,
+            custom_flags: 0,
         }
     }
 
@@ -372,5 +375,17 @@ impl OpenOptions {
 impl Default for OpenOptions {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl OpenOptionsExt for OpenOptions {
+    fn mode(&mut self, mode: u32) -> &mut OpenOptions {
+        self.mode = mode;
+        self
+    }
+
+    fn custom_flags(&mut self, flags: i32) -> &mut OpenOptions {
+        self.custom_flags = flags;
+        self
     }
 }

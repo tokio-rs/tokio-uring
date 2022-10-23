@@ -4,7 +4,7 @@ use crate::fs::OpenOptions;
 
 use std::fmt;
 use std::io;
-use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
+use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 use std::path::Path;
 
 /// A reference to an open file on the filesystem.
@@ -120,6 +120,14 @@ impl File {
         File { fd }
     }
 
+    /// Converts a [`std::fs::File`][std] to a [`tokio_uring::fs::File`][file].
+    ///
+    /// [std]: std::fs::File
+    /// [file]: File
+    pub fn from_std(file: std::fs::File) -> File {
+        File::from_shared_fd(SharedFd::new(file.into_raw_fd()))
+    }
+
     /// Read some bytes at the specified offset from the file into the specified
     /// buffer, returning how many bytes were read.
     ///
@@ -168,7 +176,7 @@ impl File {
     pub async fn read_at<T: IoBufMut>(&self, buf: T, pos: u64) -> crate::BufResult<usize, T> {
         // Submit the read operation
         let op = Op::read_at(&self.fd, buf, pos).unwrap();
-        op.read().await
+        op.await
     }
 
     /// Read some bytes at the specified offset from the file into the specified
@@ -223,7 +231,7 @@ impl File {
     ) -> crate::BufResult<usize, Vec<T>> {
         // Submit the read operation
         let op = Op::readv_at(&self.fd, bufs, pos).unwrap();
-        op.readv().await
+        op.await
     }
 
     /// Write data from buffers into this file at the specified offset,
@@ -279,7 +287,7 @@ impl File {
         pos: u64,
     ) -> crate::BufResult<usize, Vec<T>> {
         let op = Op::writev_at(&self.fd, buf, pos).unwrap();
-        op.writev().await
+        op.await
     }
 
     /// Write a buffer into this file at the specified offset, returning how
@@ -330,7 +338,7 @@ impl File {
     /// [`Ok(n)`]: Ok
     pub async fn write_at<T: IoBuf>(&self, buf: T, pos: u64) -> crate::BufResult<usize, T> {
         let op = Op::write_at(&self.fd, buf, pos).unwrap();
-        op.write().await
+        op.await
     }
 
     /// Attempts to sync all OS-internal metadata to disk.
