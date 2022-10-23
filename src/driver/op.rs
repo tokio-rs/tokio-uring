@@ -234,16 +234,13 @@ where
             Lifecycle::CompletionList(indices) => {
                 let mut data = me.data.take().unwrap();
 
-                let last = indices
-                    .into_list(completions)
-                    .skip_while(|cqe| {
-                        let more = io_uring::cqueue::more(cqe.flags);
-                        if more {
-                            data.update(cqe);
-                        }
-                        more
-                    })
-                    .next();
+                let last = indices.into_list(completions).find(|cqe| {
+                    let more = io_uring::cqueue::more(cqe.flags);
+                    if more {
+                        data.update(cqe);
+                    }
+                    !more
+                });
 
                 if let Some(cqe) = last {
                     inner.ops.remove(me.index);
