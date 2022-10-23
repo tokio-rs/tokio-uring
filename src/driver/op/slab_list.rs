@@ -31,7 +31,6 @@ pub(crate) struct SlabListIndices {
 pub(crate) struct SlabListEntry<T> {
     entry: T,
     next: usize,
-    prev: usize,
 }
 
 impl<T> Deref for SlabListEntry<T> {
@@ -87,9 +86,7 @@ impl<'a, T> SlabList<'a, T> {
         self.slab
             .try_remove(self.index.start)
             .map(|SlabListEntry { next, entry, .. }| {
-                if next != usize::MAX {
-                    self.slab[next].prev = usize::MAX;
-                } else {
+                if next == usize::MAX {
                     self.index.end = usize::MAX;
                 }
                 self.index.start = next;
@@ -103,7 +100,6 @@ impl<'a, T> SlabList<'a, T> {
         let entry = SlabListEntry {
             entry,
             next: usize::MAX,
-            prev,
         };
         self.index.end = self.slab.insert(entry);
         self.slab[prev].next = self.index.end;
