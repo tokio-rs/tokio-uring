@@ -8,11 +8,19 @@ use std::task::{Context, Poll, Waker};
 
 use io_uring::{cqueue, squeue};
 
-mod completion;
-pub(crate) use completion::*;
+mod slab_list;
+
 use slab::Slab;
+use slab_list::{SlabListEntry, SlabListIndices};
 
 use crate::driver;
+
+/// A SlabList is used to hold unserved completions.
+///
+/// This is relevant to multi-completion Operations,
+/// which require an unknown number of CQE events to be
+/// captured before completion.
+pub(crate) type Completion = SlabListEntry<CqeResult>;
 
 /// In-flight operation
 pub(crate) struct Op<T: 'static, CqeType = SingleCQE> {
@@ -53,7 +61,7 @@ pub(crate) enum Lifecycle {
 
     /// One or more completion results have been recieved
     /// This holds the indices uniquely identifying the list within the slab
-    CompletionList(CompletionIndices),
+    SlabList(SlabListIndices),
 }
 
 /// A single CQE entry
@@ -174,7 +182,7 @@ where
                 me.index = usize::MAX;
                 Poll::Ready(me.data.take().unwrap().complete(cqe))
             }
-            Lifecycle::CompletionList(..) => {
+            Lifecycle::SlabList(..) => {
                 unreachable!()
             }
         }
@@ -198,7 +206,7 @@ impl<T, CqeType> Drop for Op<T, CqeType> {
             Lifecycle::Completed(..) => {
                 inner.ops.remove(self.index);
             }
-            Lifecycle::CompletionList(indices) => {
+            Lifecycle::SlabList(indices) => {
                 // Deallocate list entries, recording if the more CQE's are expected
                 let more = {
                     let mut list = indices.into_list(completions);
@@ -224,9 +232,9 @@ impl Lifecycle {
         match mem::replace(self, Lifecycle::Submitted) {
             x @ Lifecycle::Submitted | x @ Lifecycle::Waiting(..) => {
                 if io_uring::cqueue::more(cqe.flags) {
-                    let mut list = CompletionIndices::new().into_list(completions);
+                    let mut list = SlabListIndices::new().into_list(completions);
                     list.push(cqe);
-                    *self = Lifecycle::CompletionList(list.into_indices());
+                    *self = Lifecycle::SlabList(list.into_indices());
                 } else {
                     *self = Lifecycle::Completed(cqe);
                 }
@@ -249,10 +257,10 @@ impl Lifecycle {
                 // we shouldn't be receiving another.
                 unreachable!("invalid operation state")
             }
-            Lifecycle::CompletionList(indices) => {
+            Lifecycle::SlabList(indices) => {
                 let mut list = indices.into_list(completions);
                 list.push(cqe);
-                *self = Lifecycle::CompletionList(list.into_indices());
+                *self = Lifecycle::SlabList(list.into_indices());
                 false
             }
         }
