@@ -1,8 +1,7 @@
 use slab::Slab;
-use std::{
-    io,
-    ops::{Deref, DerefMut},
-};
+use std::ops::{Deref, DerefMut};
+
+use crate::driver::op::CqeResult;
 
 /// A linked list of CQE events
 pub(crate) struct CompletionList<'a> {
@@ -21,22 +20,22 @@ pub(crate) struct CompletionIndices {
 ///
 /// These are held in an indexed linked list
 pub(crate) struct Completion {
-    val: (io::Result<u32>, u32),
+    cqe: CqeResult,
     next: usize,
     prev: usize,
 }
 
 impl Deref for Completion {
-    type Target = (io::Result<u32>, u32);
+    type Target = CqeResult;
 
     fn deref(&self) -> &Self::Target {
-        &self.val
+        &self.cqe
     }
 }
 
 impl DerefMut for Completion {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.val
+        &mut self.cqe
     }
 }
 
@@ -65,35 +64,35 @@ impl<'a> CompletionList<'a> {
 
     /// Peek at the end of the list (most recently pushed)
     /// This leaves the list unchanged
-    pub(crate) fn peek_end(&mut self) -> Option<&(io::Result<u32>, u32)> {
+    pub(crate) fn peek_end(&mut self) -> Option<&CqeResult> {
         if self.index.end == usize::MAX {
             None
         } else {
-            Some(&self.completions[self.index.end].val)
+            Some(&self.completions[self.index.end].cqe)
         }
     }
 
     /// Pop from front of list
     #[allow(dead_code)]
-    pub(crate) fn pop(&mut self) -> Option<(io::Result<u32>, u32)> {
+    pub(crate) fn pop(&mut self) -> Option<CqeResult> {
         self.completions
             .try_remove(self.index.start)
-            .map(|Completion { next, val, .. }| {
+            .map(|Completion { next, cqe, .. }| {
                 if next != usize::MAX {
                     self.completions[next].prev = usize::MAX;
                 } else {
                     self.index.end = usize::MAX;
                 }
                 self.index.start = next;
-                val
+                cqe
             })
     }
 
     /// Push to the end of the list
-    pub(crate) fn push(&mut self, val: (io::Result<u32>, u32)) {
+    pub(crate) fn push(&mut self, cqe: CqeResult) {
         let prev = self.index.end;
         let completion = Completion {
-            val,
+            cqe,
             next: usize::MAX,
             prev,
         };

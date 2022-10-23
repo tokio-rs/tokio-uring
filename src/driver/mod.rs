@@ -36,7 +36,7 @@ mod write;
 
 mod writev;
 
-use io_uring::{cqueue, IoUring};
+use io_uring::IoUring;
 use scoped_tls::scoped_thread_local;
 use slab::Slab;
 use std::cell::RefCell;
@@ -119,7 +119,7 @@ impl Inner {
 
             let index = cqe.user_data() as _;
 
-            self.ops.complete(index, resultify(&cqe), cqe.flags());
+            self.ops.complete(index, cqe.into());
         }
     }
 
@@ -183,9 +183,9 @@ impl Ops {
         self.lifecycle.remove(index);
     }
 
-    fn complete(&mut self, index: usize, result: io::Result<u32>, flags: u32) {
+    fn complete(&mut self, index: usize, cqe: op::CqeResult) {
         let completions = &mut self.completions;
-        if self.lifecycle[index].complete(completions, result, flags) {
+        if self.lifecycle[index].complete(completions, cqe) {
             self.lifecycle.remove(index);
         }
     }
@@ -195,15 +195,5 @@ impl Drop for Ops {
     fn drop(&mut self) {
         assert!(self.lifecycle.is_empty());
         assert!(self.completions.is_empty());
-    }
-}
-
-fn resultify(cqe: &cqueue::Entry) -> io::Result<u32> {
-    let res = cqe.result();
-
-    if res >= 0 {
-        Ok(res as u32)
-    } else {
-        Err(io::Error::from_raw_os_error(-res))
     }
 }
