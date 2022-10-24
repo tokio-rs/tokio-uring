@@ -66,24 +66,16 @@ where
             let mut inner_ref = inner_rc.borrow_mut();
             let inner = &mut *inner_ref;
 
-            // If the submission queue is full, flush it to the kernel
-            if inner.uring.submission().is_full() {
-                inner.submit()?;
-            }
-
             // Create the operation
             let mut op = Op::new(data, inner, inner_rc);
 
             // Configure the SQE
             let sqe = f(op.data.as_mut().unwrap()).user_data(op.index as _);
 
-            {
-                let mut sq = inner.uring.submission();
-
-                // Push the new operation
-                if unsafe { sq.push(&sqe).is_err() } {
-                    unimplemented!("when is this hit?");
-                }
+            // Push the new operation
+            while unsafe { inner.uring.submission().push(&sqe).is_err() } {
+                // If the submission queue is full, flush it to the kernel
+                inner.submit()?;
             }
 
             Ok(op)
