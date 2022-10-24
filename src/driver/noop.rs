@@ -1,4 +1,7 @@
-use crate::driver::{op::{self, Completable}, Op};
+use crate::driver::{
+    op::{self, Completable},
+    Op,
+};
 use std::io;
 
 /// No operation. Just posts a completion event, nothing else.
