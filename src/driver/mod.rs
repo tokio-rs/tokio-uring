@@ -7,6 +7,9 @@ mod connect;
 
 mod fsync;
 
+mod noop;
+pub(crate) use noop::NoOp;
+
 mod op;
 pub(crate) use op::Op;
 
