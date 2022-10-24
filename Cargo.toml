@@ -26,9 +26,7 @@ socket2 = { version = "0.4.4", features = [ "all"] }
 bytes = { version = "1.0", optional = true }
 
 [dev-dependencies]
-bencher = "0.1.5"
 tempfile = "3.2.0"
-tokio = { version = "1.2", features = ["macros", "io-util"] }
 tokio-test = "0.4.2"
 
 [package.metadata.docs.rs]
