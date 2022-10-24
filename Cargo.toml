@@ -28,6 +28,19 @@ bytes = { version = "1.0", optional = true }
 [dev-dependencies]
 tempfile = "3.2.0"
 tokio-test = "0.4.2"
+iai = "0.1.1"
+futures = "0.3.25"
+criterion = "0.4.0"
 
 [package.metadata.docs.rs]
 all-features = true
+
+[[bench]]
+name = "lai_no_op"
+path = "benches/lai/no_op.rs"
+harness = false
+
+[[bench]]
+name = "criterion_no_op"
+path = "benches/criterion/no_op.rs"
+harness = false
