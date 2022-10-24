@@ -27,6 +27,14 @@ jobs:
     steps:
       - run: exit 0
 
+  bench:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install Rust
+        run: rustup update stable
+      - run: cargo bench --no-run
+
   check:
     runs-on: ubuntu-latest
     steps:
@@ -58,7 +66,6 @@ jobs:
       - name: Install Rust
         run: rustup update stable
       - run: cargo test --doc
-
 
   fmt:
     runs-on: ubuntu-latest
