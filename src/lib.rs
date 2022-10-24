@@ -262,3 +262,23 @@ impl Builder {
 /// }
 /// ```
 pub type BufResult<T, B> = (std::io::Result<T>, B);
+
+/// The simplest possible operation. Just posts a completion event, nothing else.
+///
+/// This has a place in benchmarking and sanity checking uring.
+///
+/// # Examples
+///
+/// ```no_run
+/// fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     tokio_uring::start(async {
+///         // Place a NoOp on the ring, and await completion event
+///         tokio_uring::no_op().await?;
+///         Ok(())
+///     })
+/// }
+/// ```
+pub async fn no_op() -> std::io::Result<()> {
+    let op = driver::Op::<driver::NoOp>::no_op().unwrap();
+    op.await
+}
