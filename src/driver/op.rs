@@ -175,7 +175,7 @@ where
                 Poll::Ready(me.data.take().unwrap().complete(cqe))
             }
             Lifecycle::CompletionList(..) => {
-                unreachable!()
+                unreachable!("No more flag set for SinglCQE")
             }
         }
     }
@@ -203,7 +203,7 @@ impl<T, CqeType> Drop for Op<T, CqeType> {
                 let more = {
                     let mut list = indices.into_list(completions);
                     io_uring::cqueue::more(list.peek_end().unwrap().flags)
-                    // Dropping list dealloctes the list entries
+                    // Dropping list deallocates the list entries
                 };
                 if more {
                     // If more are expected, we have to keep the op around
@@ -231,6 +231,8 @@ impl Lifecycle {
                     *self = Lifecycle::Completed(cqe);
                 }
                 if let Lifecycle::Waiting(waker) = x {
+                    // wake is called whenever we have more work.
+                    // Also possible would be to defer calling until cqe with !more flag set
                     waker.wake();
                 }
                 false
@@ -244,7 +246,10 @@ impl Lifecycle {
                     true
                 }
             }
+
             Lifecycle::Completed(..) => {
+                // Completions with more flag set go straight onto the slab,
+                // and are handled in Lifecycle::CompletionList.
                 // To construct Lifecycle::Completed, a CQE without MORE was received
                 // we shouldn't be receiving another.
                 unreachable!("invalid operation state")
