@@ -1,5 +1,5 @@
 use crate::buf::IoBuf;
-use crate::driver::op::Completable;
+use crate::driver::op::{self, Completable};
 use crate::driver::{Op, SharedFd};
 use crate::BufResult;
 use socket2::SockAddr;
@@ -62,9 +62,9 @@ where
 {
     type Output = BufResult<usize, T>;
 
-    fn complete(self, result: io::Result<u32>, _flags: u32) -> Self::Output {
+    fn complete(self, cqe: op::CqeResult) -> Self::Output {
         // Convert the operation result to `usize`
-        let res = result.map(|v| v as usize);
+        let res = cqe.result.map(|v| v as usize);
         // Recover the buffer
         let buf = self.buf;
 
