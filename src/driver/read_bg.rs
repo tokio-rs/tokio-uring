@@ -1,6 +1,6 @@
 use crate::{
     bufgroup::{self, BufX},
-    driver::{op::Completable, Op, SharedFd},
+    driver::{op, op::Completable, Op, SharedFd},
 };
 
 use io_uring::squeue;
@@ -55,8 +55,8 @@ where
 {
     type Output = BufX<G>;
 
-    fn complete(mut self, result: io::Result<u32>, flags: u32) -> Self::Output {
-        let res = result.unwrap();
+    fn complete(mut self, cqe: op::CqeResult) -> Self::Output {
+        let res = cqe.result.unwrap();
 
         // Take ownership of the buf_group so it can be given to the get_buf call.
         let buf_group = self.buf_group.take().unwrap();
@@ -65,7 +65,7 @@ where
         // The earlier version of the poll did.
         buf_group
             .clone()
-            .get_buf(res, flags, buf_group)
+            .get_buf(res, cqe.flags, buf_group)
             .expect("need to be able to get a buffer from the buf group")
     }
 }

@@ -102,7 +102,7 @@ impl Socket {
         Self::bind_internal(addr, libc::AF_UNIX.into(), socket_type.into())
     }
 
-    pub(crate) fn from_std(socket: std::net::UdpSocket) -> Socket {
+    pub(crate) fn from_std<T: IntoRawFd>(socket: T) -> Socket {
         let fd = SharedFd::new(socket.into_raw_fd());
         Self::from_shared_fd(fd)
     }
