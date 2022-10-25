@@ -1,7 +1,7 @@
 use crate::driver::{self, Op, SharedFd};
 use crate::fs::{File, OpenOptions};
 
-use crate::driver::op::Completable;
+use crate::driver::op::{self, Completable};
 use std::ffi::CString;
 use std::io;
 use std::path::Path;
@@ -40,7 +40,7 @@ impl Op<Open> {
 impl Completable for Open {
     type Output = io::Result<File>;
 
-    fn complete(self, result: io::Result<u32>, _flags: u32) -> Self::Output {
-        Ok(File::from_shared_fd(SharedFd::new(result? as _)))
+    fn complete(self, cqe: op::CqeResult) -> Self::Output {
+        Ok(File::from_shared_fd(SharedFd::new(cqe.result? as _)))
     }
 }

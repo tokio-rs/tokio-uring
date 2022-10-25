@@ -5,7 +5,7 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::task::{Context, Poll, Waker};
 
-use io_uring::squeue;
+use io_uring::{cqueue, squeue};
 
 use crate::driver;
 
@@ -23,7 +23,7 @@ pub(crate) struct Op<T: 'static> {
 
 pub(crate) trait Completable {
     type Output;
-    fn complete(self, result: io::Result<u32>, flags: u32) -> Self::Output;
+    fn complete(self, cqe: CqeResult) -> Self::Output;
 }
 
 pub(crate) enum Lifecycle {
@@ -37,8 +37,28 @@ pub(crate) enum Lifecycle {
     /// must be passed to the driver and held until the operation completes.
     Ignored(Box<dyn std::any::Any>),
 
-    /// The operation has completed.
-    Completed(io::Result<u32>, u32),
+    /// The operation has completed with a single cqe result
+    Completed(CqeResult),
+}
+
+/// A single CQE entry
+pub(crate) struct CqeResult {
+    pub(crate) result: io::Result<u32>,
+    #[allow(dead_code)]
+    pub(crate) flags: u32,
+}
+
+impl From<cqueue::Entry> for CqeResult {
+    fn from(cqe: cqueue::Entry) -> Self {
+        let res = cqe.result();
+        let flags = cqe.flags();
+        let result = if res >= 0 {
+            Ok(res as u32)
+        } else {
+            Err(io::Error::from_raw_os_error(-res))
+        };
+        CqeResult { result, flags }
+    }
 }
 
 impl<T> Op<T>
@@ -46,7 +66,7 @@ where
     T: Completable,
 {
     /// Create a new operation
-    fn new(data: T, inner: &mut driver::Inner, inner_rc: &Rc<RefCell<driver::Inner>>) -> Op<T> {
+    fn new(data: T, inner: &mut driver::Inner, inner_rc: &Rc<RefCell<driver::Inner>>) -> Self {
         Op {
             driver: inner_rc.clone(),
             index: inner.ops.insert(),
@@ -58,7 +78,7 @@ where
     ///
     /// `state` is stored during the operation tracking any state submitted to
     /// the kernel.
-    pub(super) fn submit_with<F>(data: T, f: F) -> io::Result<Op<T>>
+    pub(super) fn submit_with<F>(data: T, f: F) -> io::Result<Self>
     where
         F: FnOnce(&mut T) -> squeue::Entry,
     {
@@ -83,7 +103,7 @@ where
     }
 
     /// Try submitting an operation to uring
-    pub(super) fn try_submit_with<F>(data: T, f: F) -> io::Result<Op<T>>
+    pub(super) fn try_submit_with<F>(data: T, f: F) -> io::Result<Self>
     where
         F: FnOnce(&mut T) -> squeue::Entry,
     {
@@ -122,11 +142,10 @@ where
                 Poll::Pending
             }
             Lifecycle::Ignored(..) => unreachable!(),
-            Lifecycle::Completed(result, flags) => {
+            Lifecycle::Completed(cqe) => {
                 inner.ops.remove(me.index);
                 me.index = usize::MAX;
-
-                Poll::Ready(me.data.take().unwrap().complete(result, flags))
+                Poll::Ready(me.data.take().unwrap().complete(cqe))
             }
         }
     }
@@ -153,16 +172,16 @@ impl<T> Drop for Op<T> {
 }
 
 impl Lifecycle {
-    pub(super) fn complete(&mut self, result: io::Result<u32>, flags: u32) -> bool {
+    pub(super) fn complete(&mut self, cqe: CqeResult) -> bool {
         use std::mem;
 
         match mem::replace(self, Lifecycle::Submitted) {
             Lifecycle::Submitted => {
-                *self = Lifecycle::Completed(result, flags);
+                *self = Lifecycle::Completed(cqe);
                 false
             }
             Lifecycle::Waiting(waker) => {
-                *self = Lifecycle::Completed(result, flags);
+                *self = Lifecycle::Completed(cqe);
                 waker.wake();
                 false
             }
@@ -190,10 +209,10 @@ mod test {
     impl Completable for Rc<()> {
         type Output = Completion;
 
-        fn complete(self, result: io::Result<u32>, flags: u32) -> Self::Output {
+        fn complete(self, cqe: CqeResult) -> Self::Output {
             Completion {
-                result,
-                flags,
+                result: cqe.result,
+                flags: cqe.flags,
                 data: self.clone(),
             }
         }
@@ -304,7 +323,11 @@ mod test {
         assert_eq!(2, Rc::strong_count(&data));
 
         assert_eq!(1, driver.num_operations());
-        driver.inner.borrow_mut().ops.complete(index, Ok(1), 0);
+        let cqe = CqeResult {
+            result: Ok(1),
+            flags: 0,
+        };
+        driver.inner.borrow_mut().ops.complete(index, cqe);
         assert_eq!(1, Rc::strong_count(&data));
         assert_eq!(0, driver.num_operations());
         release(driver);
@@ -326,11 +349,12 @@ mod test {
     }
 
     fn complete(op: &Op<Rc<()>>, result: io::Result<u32>) {
-        op.driver.borrow_mut().ops.complete(op.index, result, 0);
+        let cqe = CqeResult { result, flags: 0 };
+        op.driver.borrow_mut().ops.complete(op.index, cqe);
     }
 
     fn release(driver: crate::driver::Driver) {
         // Clear ops, we aren't really doing any I/O
-        driver.inner.borrow_mut().ops.0.clear();
+        driver.inner.borrow_mut().ops.lifecycle.clear();
     }
 }

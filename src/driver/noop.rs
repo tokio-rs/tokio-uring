@@ -1,4 +1,7 @@
-use crate::driver::{op::Completable, Op};
+use crate::driver::{
+    op::{self, Completable},
+    Op,
+};
 use std::io;
 
 /// No operation. Just posts a completion event, nothing else.
@@ -17,8 +20,8 @@ impl Op<NoOp> {
 impl Completable for NoOp {
     type Output = io::Result<()>;
 
-    fn complete(self, _result: io::Result<u32>, _flags: u32) -> Self::Output {
-        Ok(())
+    fn complete(self, cqe: op::CqeResult) -> Self::Output {
+        cqe.result.map(|_| ())
     }
 }
 
