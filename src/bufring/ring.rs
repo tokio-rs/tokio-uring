@@ -73,7 +73,7 @@ impl Builder {
     /// The buffer group ID, `bgid`, is the id the kernel uses to identify the buffer group to use
     /// for a given read operation that has been placed into an sqe.
     ///
-    /// The caller is responsible for picking a bgid that does not comflict with other buffer
+    /// The caller is responsible for picking a bgid that does not conflict with other buffer
     /// groups that have been registered with the same uring interface.
     ///
     pub fn new(bgid: Bgid) -> Builder {
@@ -113,8 +113,7 @@ impl Builder {
 
     /// The alignment of the first buffer allocated.
     ///
-    /// Can be ommitted if not considered important.
-    /// TODO ommitted?
+    /// Can be omitted if not considered important.
     pub fn buf_align(mut self, buf_align: usize) -> Builder {
         self.buf_align = buf_align;
         self
