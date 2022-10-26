@@ -62,7 +62,7 @@ impl Runtime {
         let rt = tokio::runtime::Builder::new_current_thread()
             .on_thread_park(|| {
                 CONTEXT.with(|x| {
-                    let _ = x.with_driver(|d| d.uring.submit());
+                    let _ = x.with_driver_mut(|d| d.uring.submit());
                 });
             })
             .enable_all()
@@ -96,7 +96,7 @@ impl Runtime {
                 loop {
                     // Wait for read-readiness
                     let mut guard = driver.readable().await.unwrap();
-                    CONTEXT.with(|cx| cx.with_driver(|driver| driver.tick()));
+                    CONTEXT.with(|cx| cx.with_driver_mut(|driver| driver.tick()));
                     guard.clear_ready();
                 }
             }

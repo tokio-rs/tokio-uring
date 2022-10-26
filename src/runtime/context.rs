@@ -44,7 +44,7 @@ impl RuntimeContext {
     }
 
     /// Execute a function which requires mutable access to the driver.
-    pub(crate) fn with_driver<F, R>(&self, f: F) -> R
+    pub(crate) fn with_driver_mut<F, R>(&self, f: F) -> R
     where
         F: FnOnce(&mut Driver) -> R,
     {

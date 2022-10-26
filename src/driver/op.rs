@@ -83,7 +83,7 @@ where
         F: FnOnce(&mut T) -> squeue::Entry,
     {
         CONTEXT.with(|cx| {
-            cx.with_driver(|driver| {
+            cx.with_driver_mut(|driver| {
                 // Create the operation
                 let mut op = Op::new(data, driver);
 
@@ -126,7 +126,7 @@ where
         let me = &mut *self;
 
         CONTEXT.with(|runtime_context| {
-            runtime_context.with_driver(|driver| {
+            runtime_context.with_driver_mut(|driver| {
                 let lifecycle = driver
                     .ops
                     .get_mut(me.index)
@@ -161,7 +161,7 @@ where
 impl<T> Drop for Op<T> {
     fn drop(&mut self) {
         CONTEXT.with(|runtime_context| {
-            runtime_context.with_driver(|driver| {
+            runtime_context.with_driver_mut(|driver| {
                 let lifecycle = match driver.ops.get_mut(self.index) {
                     Some(lifecycle) => lifecycle,
                     None => return,
@@ -343,7 +343,7 @@ mod test {
             flags: 0,
         };
 
-        CONTEXT.with(|cx| cx.with_driver(|driver| driver.ops.complete(index, cqe)));
+        CONTEXT.with(|cx| cx.with_driver_mut(|driver| driver.ops.complete(index, cqe)));
 
         assert_eq!(1, Rc::strong_count(&data));
         assert_eq!(0, num_operations());
@@ -360,24 +360,24 @@ mod test {
         let op = CONTEXT.with(|cx| {
             cx.set_driver(driver);
 
-            cx.with_driver(|driver| Op::new(data.clone(), driver))
+            cx.with_driver_mut(|driver| Op::new(data.clone(), driver))
         });
 
         (op, data)
     }
 
     fn num_operations() -> usize {
-        CONTEXT.with(|cx| cx.with_driver(|driver| driver.num_operations()))
+        CONTEXT.with(|cx| cx.with_driver_mut(|driver| driver.num_operations()))
     }
 
     fn complete(op: &Op<Rc<()>>, result: io::Result<u32>) {
         let cqe = CqeResult { result, flags: 0 };
-        CONTEXT.with(|cx| cx.with_driver(|driver| driver.ops.complete(op.index, cqe)));
+        CONTEXT.with(|cx| cx.with_driver_mut(|driver| driver.ops.complete(op.index, cqe)));
     }
 
     fn release() {
         CONTEXT.with(|cx| {
-            cx.with_driver(|driver| driver.ops.lifecycle.clear());
+            cx.with_driver_mut(|driver| driver.ops.lifecycle.clear());
 
             cx.unset_driver();
         });
