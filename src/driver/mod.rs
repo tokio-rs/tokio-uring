@@ -68,11 +68,11 @@ impl Driver {
         })
     }
 
-    fn wait(&mut self) -> io::Result<usize> {
+    fn wait(&self) -> io::Result<usize> {
         self.uring.submit_and_wait(1)
     }
 
-    fn num_operations(&mut self) -> usize {
+    fn num_operations(&self) -> usize {
         self.ops.lifecycle.len()
     }
 
