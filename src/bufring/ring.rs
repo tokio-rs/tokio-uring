@@ -7,12 +7,13 @@
 
 use io_uring::types::io_uring_buf;
 use libc::__u64;
-use std::cell::{Cell, RefCell};
+use std::cell::Cell;
 use std::io;
 use std::rc::Rc;
 use std::sync::atomic::{self, AtomicU16};
 
 use crate::bufgroup::{self, Bgid, Bid, BufX};
+use crate::runtime::CONTEXT;
 
 /// TODO
 pub struct BufRing {
@@ -374,13 +375,15 @@ impl BufRing {
 
         // TODO move to separate public function so other buf_ring implementations
         // can register, and unregister, the same way.
-        let res = crate::driver::CURRENT.with(|x| {
-            RefCell::borrow_mut(x).uring.submitter().register_buf_ring(
-                self.ptr as _,
-                self.ring_entries(),
-                bgid,
-            )?;
-            Ok::<(), io::Error>(())
+        let res = CONTEXT.with(|cx| {
+            cx.with_driver_mut(|driver| {
+                driver.uring.submitter().register_buf_ring(
+                    self.ptr as _,
+                    self.ring_entries(),
+                    bgid,
+                )?;
+                Ok::<(), io::Error>(())
+            })
         });
         // println!("{}:{}: res {:?}", file!(), line!(), res);
 
@@ -436,11 +439,8 @@ impl BufRing {
 
         let bgid = self.bgid;
 
-        crate::driver::CURRENT.with(|x| {
-            RefCell::borrow_mut(x)
-                .uring
-                .submitter()
-                .unregister_buf_ring(bgid)
+        CONTEXT.with(|cx| {
+            cx.with_driver_mut(|driver| driver.uring.submitter().unregister_buf_ring(bgid))
         })
     }
 
