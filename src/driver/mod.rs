@@ -39,7 +39,7 @@ mod write;
 
 mod writev;
 
-use io_uring::{cqueue, IoUring};
+use io_uring::IoUring;
 use slab::Slab;
 use std::io;
 use std::os::unix::io::{AsRawFd, RawFd};
@@ -73,7 +73,7 @@ impl Driver {
     }
 
     fn num_operations(&mut self) -> usize {
-        self.ops.0.len()
+        self.ops.lifecycle.len()
     }
 
     pub(crate) fn tick(&mut self) {
