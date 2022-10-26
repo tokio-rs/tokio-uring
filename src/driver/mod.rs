@@ -41,20 +41,11 @@ mod write;
 mod writev;
 
 use io_uring::IoUring;
-use scoped_tls::scoped_thread_local;
 use slab::Slab;
-use std::cell::RefCell;
 use std::io;
 use std::os::unix::io::{AsRawFd, RawFd};
-use std::rc::Rc;
 
 pub(crate) struct Driver {
-    inner: Handle,
-}
-
-type Handle = Rc<RefCell<Inner>>;
-
-pub(crate) struct Inner {
     /// In-flight operations
     ops: Ops,
 
@@ -68,45 +59,25 @@ struct Ops {
     lifecycle: Slab<op::Lifecycle>,
 }
 
-scoped_thread_local!(pub(crate) static CURRENT: Rc<RefCell<Inner>>);
-
 impl Driver {
     pub(crate) fn new(b: &crate::Builder) -> io::Result<Driver> {
         let uring = b.urb.build(b.entries)?;
 
-        let inner = Rc::new(RefCell::new(Inner {
+        Ok(Driver {
             ops: Ops::new(),
             uring,
-        }));
-
-        Ok(Driver { inner })
-    }
-
-    /// Enter the driver context. This enables using uring types.
-    pub(crate) fn with<R>(&self, f: impl FnOnce() -> R) -> R {
-        CURRENT.set(&self.inner, f)
-    }
-
-    pub(crate) fn tick(&self) {
-        let mut inner = self.inner.borrow_mut();
-        inner.tick();
+        })
     }
 
     fn wait(&self) -> io::Result<usize> {
-        let mut inner = self.inner.borrow_mut();
-        let inner = &mut *inner;
-
-        inner.uring.submit_and_wait(1)
+        self.uring.submit_and_wait(1)
     }
 
     fn num_operations(&self) -> usize {
-        let inner = self.inner.borrow();
-        inner.ops.lifecycle.len()
+        self.ops.lifecycle.len()
     }
-}
 
-impl Inner {
-    fn tick(&mut self) {
+    pub(crate) fn tick(&mut self) {
         let mut cq = self.uring.completion();
         cq.sync();
 
@@ -144,7 +115,7 @@ impl Inner {
 
 impl AsRawFd for Driver {
     fn as_raw_fd(&self) -> RawFd {
-        self.inner.borrow().uring.as_raw_fd()
+        self.uring.as_raw_fd()
     }
 }
 
