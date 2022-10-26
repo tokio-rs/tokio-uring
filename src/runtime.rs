@@ -6,7 +6,8 @@ use std::io;
 use tokio::io::unix::AsyncFd;
 use tokio::task::LocalSet;
 
-pub(crate) struct Runtime {
+/// The Runtime executor
+pub struct Runtime {
     /// io-uring driver
     driver: AsyncFd<Driver>,
 
@@ -48,7 +49,8 @@ pub fn spawn<T: std::future::Future + 'static>(task: T) -> tokio::task::JoinHand
 }
 
 impl Runtime {
-    pub(crate) fn new(b: &crate::Builder) -> io::Result<Runtime> {
+    /// Create a new tokio_uring runtime on the current thread
+    pub fn new(b: &crate::Builder) -> io::Result<Runtime> {
         let rt = tokio::runtime::Builder::new_current_thread()
             .on_thread_park(|| {
                 CURRENT.with(|x| {
@@ -68,7 +70,8 @@ impl Runtime {
         Ok(Runtime { driver, local, rt })
     }
 
-    pub(crate) fn block_on<F>(&mut self, future: F) -> F::Output
+    /// Runs a future to completion on the current runtime
+    pub fn block_on<F>(&self, future: F) -> F::Output
     where
         F: Future,
     {

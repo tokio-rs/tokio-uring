@@ -1,6 +1,6 @@
 use crate::driver::Op;
 
-use crate::driver::op::Completable;
+use crate::driver::op::{self, Completable};
 use std::io;
 use std::os::unix::io::RawFd;
 
@@ -21,8 +21,8 @@ impl Op<Close> {
 impl Completable for Close {
     type Output = io::Result<()>;
 
-    fn complete(self, result: io::Result<u32>, _flags: u32) -> Self::Output {
-        let _ = result?;
+    fn complete(self, cqe: op::CqeResult) -> Self::Output {
+        let _ = cqe.result?;
 
         Ok(())
     }

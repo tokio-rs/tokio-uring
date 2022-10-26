@@ -1,4 +1,4 @@
-use crate::driver::op::Completable;
+use crate::driver::op::{self, Completable};
 use crate::{
     buf::IoBufMut,
     driver::{Op, SharedFd},
@@ -7,7 +7,6 @@ use crate::{
 use socket2::SockAddr;
 use std::{
     io::IoSliceMut,
-    task::{Context, Poll},
     {boxed::Box, io, net::SocketAddr},
 };
 
@@ -53,24 +52,6 @@ impl<T: IoBufMut> Op<RecvFrom<T>> {
             },
         )
     }
-
-    pub(crate) async fn recv(mut self) -> BufResult<(usize, SocketAddr), T> {
-        use crate::future::poll_fn;
-
-        poll_fn(move |cx| self.poll_recv_from(cx)).await
-    }
-
-    pub(crate) fn poll_recv_from(
-        &mut self,
-        cx: &mut Context<'_>,
-    ) -> Poll<BufResult<(usize, SocketAddr), T>> {
-        use std::future::Future;
-        use std::pin::Pin;
-
-        let complete = ready!(Pin::new(self).poll(cx));
-
-        Poll::Ready(complete)
-    }
 }
 
 impl<T> Completable for RecvFrom<T>
@@ -79,9 +60,9 @@ where
 {
     type Output = BufResult<(usize, SocketAddr), T>;
 
-    fn complete(self, result: io::Result<u32>, _flags: u32) -> Self::Output {
+    fn complete(self, cqe: op::CqeResult) -> Self::Output {
         // Convert the operation result to `usize`
-        let res = result.map(|v| v as usize);
+        let res = cqe.result.map(|v| v as usize);
         // Recover the buffer
         let mut buf = self.buf;
 

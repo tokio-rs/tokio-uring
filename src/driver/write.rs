@@ -1,13 +1,10 @@
-use crate::driver::op::Completable;
+use crate::driver::op::{self, Completable};
 use crate::{
     buf::IoBuf,
     driver::{Op, SharedFd},
     BufResult,
 };
-use std::{
-    io,
-    task::{Context, Poll},
-};
+use std::io;
 
 pub(crate) struct Write<T> {
     /// Holds a strong ref to the FD, preventing the file from being closed
@@ -38,20 +35,6 @@ impl<T: IoBuf> Op<Write<T>> {
             },
         )
     }
-
-    pub(crate) async fn write(mut self) -> BufResult<usize, T> {
-        use crate::future::poll_fn;
-
-        poll_fn(move |cx| self.poll_write(cx)).await
-    }
-
-    pub(crate) fn poll_write(&mut self, cx: &mut Context<'_>) -> Poll<BufResult<usize, T>> {
-        use std::future::Future;
-        use std::pin::Pin;
-
-        let complete = ready!(Pin::new(self).poll(cx));
-        Poll::Ready(complete)
-    }
 }
 
 impl<T> Completable for Write<T>
@@ -60,9 +43,9 @@ where
 {
     type Output = BufResult<usize, T>;
 
-    fn complete(self, result: io::Result<u32>, _flags: u32) -> Self::Output {
+    fn complete(self, cqe: op::CqeResult) -> Self::Output {
         // Convert the operation result to `usize`
-        let res = result.map(|v| v as usize);
+        let res = cqe.result.map(|v| v as usize);
         // Recover the buffer
         let buf = self.buf;
 

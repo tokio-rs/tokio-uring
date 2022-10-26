@@ -7,6 +7,9 @@ mod connect;
 
 mod fsync;
 
+mod noop;
+pub(crate) use noop::NoOp;
+
 mod op;
 pub(crate) use op::Op;
 
@@ -36,7 +39,7 @@ mod write;
 
 mod writev;
 
-use io_uring::{cqueue, IoUring};
+use io_uring::IoUring;
 use scoped_tls::scoped_thread_local;
 use slab::Slab;
 use std::cell::RefCell;
@@ -58,9 +61,11 @@ pub(crate) struct Inner {
     pub(crate) uring: IoUring,
 }
 
-// When dropping the driver, all in-flight operations must have completed. This
-// type wraps the slab and ensures that, on drop, the slab is empty.
-struct Ops(Slab<op::Lifecycle>);
+struct Ops {
+    // When dropping the driver, all in-flight operations must have completed. This
+    // type wraps the slab and ensures that, on drop, the slab is empty.
+    lifecycle: Slab<op::Lifecycle>,
+}
 
 scoped_thread_local!(pub(crate) static CURRENT: Rc<RefCell<Inner>>);
 
@@ -95,7 +100,7 @@ impl Driver {
 
     fn num_operations(&self) -> usize {
         let inner = self.inner.borrow();
-        inner.ops.0.len()
+        inner.ops.lifecycle.len()
     }
 }
 
@@ -114,7 +119,7 @@ impl Inner {
 
             let index = cqe.user_data() as _;
 
-            self.ops.complete(index, resultify(&cqe), cqe.flags());
+            self.ops.complete(index, cqe.into());
         }
     }
 
@@ -155,42 +160,34 @@ impl Drop for Driver {
 
 impl Ops {
     fn new() -> Ops {
-        Ops(Slab::with_capacity(64))
+        Ops {
+            lifecycle: Slab::with_capacity(64),
+        }
     }
 
     fn get_mut(&mut self, index: usize) -> Option<&mut op::Lifecycle> {
-        self.0.get_mut(index)
+        self.lifecycle.get_mut(index)
     }
 
     // Insert a new operation
     fn insert(&mut self) -> usize {
-        self.0.insert(op::Lifecycle::Submitted)
+        self.lifecycle.insert(op::Lifecycle::Submitted)
     }
 
     // Remove an operation
     fn remove(&mut self, index: usize) {
-        self.0.remove(index);
+        self.lifecycle.remove(index);
     }
 
-    fn complete(&mut self, index: usize, result: io::Result<u32>, flags: u32) {
-        if self.0[index].complete(result, flags) {
-            self.0.remove(index);
+    fn complete(&mut self, index: usize, cqe: op::CqeResult) {
+        if self.lifecycle[index].complete(cqe) {
+            self.lifecycle.remove(index);
         }
     }
 }
 
 impl Drop for Ops {
     fn drop(&mut self) {
-        assert!(self.0.is_empty());
-    }
-}
-
-fn resultify(cqe: &cqueue::Entry) -> io::Result<u32> {
-    let res = cqe.result();
-
-    if res >= 0 {
-        Ok(res as u32)
-    } else {
-        Err(io::Error::from_raw_os_error(-res))
+        assert!(self.lifecycle.is_empty());
     }
 }

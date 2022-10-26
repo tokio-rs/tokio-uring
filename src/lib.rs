@@ -79,6 +79,7 @@ pub mod fs;
 pub mod net;
 
 pub use runtime::spawn;
+pub use runtime::Runtime;
 
 use std::future::Future;
 
@@ -140,7 +141,7 @@ use std::future::Future;
 /// }
 /// ```
 pub fn start<F: Future>(future: F) -> F::Output {
-    let mut rt = runtime::Runtime::new(&builder()).unwrap();
+    let rt = runtime::Runtime::new(&builder()).unwrap();
     rt.block_on(future)
 }
 
@@ -225,7 +226,7 @@ impl Builder {
     /// }
     /// ```
     pub fn start<F: Future>(&self, future: F) -> F::Output {
-        let mut rt = runtime::Runtime::new(self).unwrap();
+        let rt = runtime::Runtime::new(self).unwrap();
         rt.block_on(future)
     }
 }
@@ -262,3 +263,23 @@ impl Builder {
 /// }
 /// ```
 pub type BufResult<T, B> = (std::io::Result<T>, B);
+
+/// The simplest possible operation. Just posts a completion event, nothing else.
+///
+/// This has a place in benchmarking and sanity checking uring.
+///
+/// # Examples
+///
+/// ```no_run
+/// fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     tokio_uring::start(async {
+///         // Place a NoOp on the ring, and await completion event
+///         tokio_uring::no_op().await?;
+///         Ok(())
+///     })
+/// }
+/// ```
+pub async fn no_op() -> std::io::Result<()> {
+    let op = driver::Op::<driver::NoOp>::no_op().unwrap();
+    op.await
+}
