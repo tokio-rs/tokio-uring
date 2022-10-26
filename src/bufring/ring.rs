@@ -5,7 +5,8 @@
 //! read will not fail. Only when they data becomes ready to read will they fail, if the buffer
 //! ring is still empty at that time.
 
-use io_uring::sys::{__u64, io_uring_buf};
+use io_uring::types::io_uring_buf;
+use libc::__u64;
 use std::cell::{Cell, RefCell};
 use std::io;
 use std::rc::Rc;
@@ -214,8 +215,9 @@ impl BufRing {
             return Err(io::Error::from(io::ErrorKind::InvalidInput));
         }
 
-        // entry_size is 64 bytes.
+        // entry_size is 16 bytes.
         let entry_size = std::mem::size_of::<io_uring_buf>() as usize;
+        assert_eq!(entry_size, 16); // Just being sure for now.
         let mut ring_size = entry_size * (ring_entries as usize);
         if trace {
             println!(
@@ -456,8 +458,7 @@ impl BufRing {
         // same BufRing but wrapped in Rc<RefCell<_>> so the wrapped buf_ring can be passed to the
         // outgoing BufX.
 
-        assert!(flags & io_uring::sys::IORING_CQE_F_BUFFER != 0);
-        let bid = (flags >> 16) as u16;
+        let bid = io_uring::cqueue::buffer_select(flags).unwrap();
 
         let len = res as usize;
 
