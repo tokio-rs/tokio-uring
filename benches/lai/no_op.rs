@@ -1,5 +1,5 @@
-use futures::stream::{self, StreamExt};
 use iai::black_box;
+use tokio::task::JoinSet;
 
 #[derive(Clone)]
 struct Options {
@@ -47,11 +47,16 @@ fn run_no_ops(opts: Options) -> Result<(), Box<dyn std::error::Error>> {
         .entries(opts.sq_size as _)
         .uring_builder(&ring_opts)
         .start(async move {
-            stream::iter(0..opts.iterations)
-                .for_each_concurrent(Some(opts.concurrency), |_| async move {
-                    tokio_uring::no_op().await.unwrap();
-                })
-                .await;
+            let mut js = JoinSet::new();
+
+            for _ in 0..opts.iterations {
+                js.spawn_local(tokio_uring::no_op());
+            }
+
+            while let Some(res) = js.join_next().await {
+                res.unwrap().unwrap();
+            }
+
             Ok(())
         })
 }
