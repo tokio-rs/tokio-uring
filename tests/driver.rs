@@ -1,4 +1,5 @@
 use tempfile::NamedTempFile;
+use tokio::task::JoinSet;
 
 use tokio_uring::{buf::IoBuf, fs::File};
 
@@ -88,6 +89,28 @@ fn too_many_submissions() {
             .await;
         }
     });
+}
+
+#[test]
+fn completion_overflow() {
+    let spawn_cnt = 100;
+    let squeue_entries = 2;
+    let cqueue_entries = 2 * squeue_entries;
+
+    tokio_uring::builder()
+        .entries(squeue_entries)
+        .uring_builder(tokio_uring::uring_builder().setup_cqsize(cqueue_entries))
+        .start(async move {
+            let mut js = JoinSet::new();
+
+            for _ in 0..spawn_cnt {
+                js.spawn_local(tokio_uring::no_op());
+            }
+
+            while let Some(res) = js.join_next().await {
+                res.unwrap().unwrap();
+            }
+        });
 }
 
 fn tempfile() -> NamedTempFile {
