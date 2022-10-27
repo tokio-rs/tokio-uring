@@ -73,6 +73,7 @@ macro_rules! syscall {
 mod future;
 mod driver;
 mod runtime;
+mod util;
 
 pub mod buf;
 pub mod fs;

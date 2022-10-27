@@ -40,20 +40,11 @@ mod write;
 mod writev;
 
 use io_uring::IoUring;
-use scoped_tls::scoped_thread_local;
 use slab::Slab;
-use std::cell::RefCell;
 use std::io;
 use std::os::unix::io::{AsRawFd, RawFd};
-use std::rc::Rc;
 
 pub(crate) struct Driver {
-    inner: Handle,
-}
-
-type Handle = Rc<RefCell<Inner>>;
-
-pub(crate) struct Inner {
     /// In-flight operations
     ops: Ops,
 
@@ -65,47 +56,30 @@ struct Ops {
     // When dropping the driver, all in-flight operations must have completed. This
     // type wraps the slab and ensures that, on drop, the slab is empty.
     lifecycle: Slab<op::Lifecycle>,
-}
 
-scoped_thread_local!(pub(crate) static CURRENT: Rc<RefCell<Inner>>);
+    /// Received but unserviced Op completions
+    completions: Slab<op::Completion>,
+}
 
 impl Driver {
     pub(crate) fn new(b: &crate::Builder) -> io::Result<Driver> {
         let uring = b.urb.build(b.entries)?;
 
-        let inner = Rc::new(RefCell::new(Inner {
+        Ok(Driver {
             ops: Ops::new(),
             uring,
-        }));
-
-        Ok(Driver { inner })
-    }
-
-    /// Enter the driver context. This enables using uring types.
-    pub(crate) fn with<R>(&self, f: impl FnOnce() -> R) -> R {
-        CURRENT.set(&self.inner, f)
-    }
-
-    pub(crate) fn tick(&self) {
-        let mut inner = self.inner.borrow_mut();
-        inner.tick();
+        })
     }
 
     fn wait(&self) -> io::Result<usize> {
-        let mut inner = self.inner.borrow_mut();
-        let inner = &mut *inner;
-
-        inner.uring.submit_and_wait(1)
+        self.uring.submit_and_wait(1)
     }
 
     fn num_operations(&self) -> usize {
-        let inner = self.inner.borrow();
-        inner.ops.lifecycle.len()
+        self.ops.lifecycle.len()
     }
-}
 
-impl Inner {
-    fn tick(&mut self) {
+    pub(crate) fn tick(&mut self) {
         let mut cq = self.uring.completion();
         cq.sync();
 
@@ -143,7 +117,7 @@ impl Inner {
 
 impl AsRawFd for Driver {
     fn as_raw_fd(&self) -> RawFd {
-        self.inner.borrow().uring.as_raw_fd()
+        self.uring.as_raw_fd()
     }
 }
 
@@ -162,11 +136,15 @@ impl Ops {
     fn new() -> Ops {
         Ops {
             lifecycle: Slab::with_capacity(64),
+            completions: Slab::with_capacity(64),
         }
     }
 
-    fn get_mut(&mut self, index: usize) -> Option<&mut op::Lifecycle> {
-        self.lifecycle.get_mut(index)
+    fn get_mut(&mut self, index: usize) -> Option<(&mut op::Lifecycle, &mut Slab<op::Completion>)> {
+        let completions = &mut self.completions;
+        self.lifecycle
+            .get_mut(index)
+            .map(|lifecycle| (lifecycle, completions))
     }
 
     // Insert a new operation
@@ -180,7 +158,8 @@ impl Ops {
     }
 
     fn complete(&mut self, index: usize, cqe: op::CqeResult) {
-        if self.lifecycle[index].complete(cqe) {
+        let completions = &mut self.completions;
+        if self.lifecycle[index].complete(completions, cqe) {
             self.lifecycle.remove(index);
         }
     }
@@ -189,5 +168,6 @@ impl Ops {
 impl Drop for Ops {
     fn drop(&mut self) {
         assert!(self.lifecycle.is_empty());
+        assert!(self.completions.is_empty());
     }
 }
