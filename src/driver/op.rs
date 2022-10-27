@@ -1,9 +1,7 @@
-use std::cell::RefCell;
 use std::future::Future;
 use std::io;
 use std::marker::PhantomData;
 use std::pin::Pin;
-use std::rc::Rc;
 use std::task::{Context, Poll, Waker};
 
 use io_uring::{cqueue, squeue};
@@ -14,6 +12,8 @@ use slab::Slab;
 use slab_list::{SlabListEntry, SlabListIndices};
 
 use crate::driver;
+use crate::runtime::CONTEXT;
+use crate::util::PhantomUnsendUnsync;
 
 /// A SlabList is used to hold unserved completions.
 ///
@@ -24,9 +24,6 @@ pub(crate) type Completion = SlabListEntry<CqeResult>;
 
 /// In-flight operation
 pub(crate) struct Op<T: 'static, CqeType = SingleCQE> {
-    // Driver running the operation
-    pub(super) driver: Rc<RefCell<driver::Inner>>,
-
     // Operation index in the slab
     pub(super) index: usize,
 
@@ -35,6 +32,9 @@ pub(crate) struct Op<T: 'static, CqeType = SingleCQE> {
 
     // CqeType marker
     _cqe_type: PhantomData<CqeType>,
+
+    // Make !Send + !Sync 
+    _phantom: PhantomUnsendUnsync,
 }
 
 /// A Marker for Ops which expect only a single completion event
@@ -88,12 +88,12 @@ where
     T: Completable,
 {
     /// Create a new operation
-    fn new(data: T, inner: &mut driver::Inner, inner_rc: &Rc<RefCell<driver::Inner>>) -> Self {
+    fn new(data: T, inner: &mut driver::Driver) -> Self {
         Op {
-            driver: inner_rc.clone(),
             index: inner.ops.insert(),
             data: Some(data),
             _cqe_type: PhantomData,
+            _phantom: PhantomData,
         }
     }
 
@@ -105,23 +105,22 @@ where
     where
         F: FnOnce(&mut T) -> squeue::Entry,
     {
-        driver::CURRENT.with(|inner_rc| {
-            let mut inner_ref = inner_rc.borrow_mut();
-            let inner = &mut *inner_ref;
+        CONTEXT.with(|cx| {
+            cx.with_driver_mut(|driver| {
+                // Create the operation
+                let mut op = Op::new(data, driver);
 
-            // Create the operation
-            let mut op = Op::new(data, inner, inner_rc);
+                // Configure the SQE
+                let sqe = f(op.data.as_mut().unwrap()).user_data(op.index as _);
 
-            // Configure the SQE
-            let sqe = f(op.data.as_mut().unwrap()).user_data(op.index as _);
+                // Push the new operation
+                while unsafe { driver.uring.submission().push(&sqe).is_err() } {
+                    // If the submission queue is full, flush it to the kernel
+                    driver.submit()?;
+                }
 
-            // Push the new operation
-            while unsafe { inner.uring.submission().push(&sqe).is_err() } {
-                // If the submission queue is full, flush it to the kernel
-                inner.submit()?;
-            }
-
-            Ok(op)
+                Ok(op)
+            })
         })
     }
 
@@ -130,7 +129,7 @@ where
     where
         F: FnOnce(&mut T) -> squeue::Entry,
     {
-        if driver::CURRENT.is_set() {
+        if CONTEXT.with(|cx| cx.is_set()) {
             Op::submit_with(data, f)
         } else {
             Err(io::ErrorKind::Other.into())
@@ -148,36 +147,40 @@ where
         use std::mem;
 
         let me = &mut *self;
-        let mut inner = me.driver.borrow_mut();
-        let lifecycle = inner
-            .ops
-            .get_mut(me.index)
-            .expect("invalid internal state")
-            .0;
 
-        match mem::replace(lifecycle, Lifecycle::Submitted) {
-            Lifecycle::Submitted => {
-                *lifecycle = Lifecycle::Waiting(cx.waker().clone());
-                Poll::Pending
-            }
-            Lifecycle::Waiting(waker) if !waker.will_wake(cx.waker()) => {
-                *lifecycle = Lifecycle::Waiting(cx.waker().clone());
-                Poll::Pending
-            }
-            Lifecycle::Waiting(waker) => {
-                *lifecycle = Lifecycle::Waiting(waker);
-                Poll::Pending
-            }
-            Lifecycle::Ignored(..) => unreachable!(),
-            Lifecycle::Completed(cqe) => {
-                inner.ops.remove(me.index);
-                me.index = usize::MAX;
-                Poll::Ready(me.data.take().unwrap().complete(cqe))
-            }
-            Lifecycle::CompletionList(..) => {
-                unreachable!("No more flag set for SinglCQE")
-            }
-        }
+        CONTEXT.with(|runtime_context| {
+            runtime_context.with_driver_mut(|driver| {
+                let (lifecycle, _) = driver
+                    .ops
+                    .get_mut(me.index)
+                    .expect("invalid internal state");
+
+
+                match mem::replace(lifecycle, Lifecycle::Submitted) {
+                    Lifecycle::Submitted => {
+                        *lifecycle = Lifecycle::Waiting(cx.waker().clone());
+                        Poll::Pending
+                    }
+                    Lifecycle::Waiting(waker) if !waker.will_wake(cx.waker()) => {
+                        *lifecycle = Lifecycle::Waiting(cx.waker().clone());
+                        Poll::Pending
+                    }
+                    Lifecycle::Waiting(waker) => {
+                        *lifecycle = Lifecycle::Waiting(waker);
+                        Poll::Pending
+                    }
+                    Lifecycle::Ignored(..) => unreachable!(),
+                    Lifecycle::Completed(cqe) => {
+                        driver.ops.remove(me.index);
+                        me.index = usize::MAX;
+                        Poll::Ready(me.data.take().unwrap().complete(cqe))
+                    }
+                    Lifecycle::CompletionList(..) => {
+                        unreachable!("No more flag set for SinglCQE")
+                    }
+                }
+            })
+        })
     }
 }
 
@@ -185,35 +188,39 @@ impl<T, CqeType> Drop for Op<T, CqeType> {
     fn drop(&mut self) {
         use std::mem;
 
-        let mut inner = self.driver.borrow_mut();
-        let (lifecycle, completions) = match inner.ops.get_mut(self.index) {
-            Some(val) => val,
-            None => return,
-        };
-
-        match mem::replace(lifecycle, Lifecycle::Submitted) {
-            Lifecycle::Submitted | Lifecycle::Waiting(_) => {
-                *lifecycle = Lifecycle::Ignored(Box::new(self.data.take()));
-            }
-            Lifecycle::Completed(..) => {
-                inner.ops.remove(self.index);
-            }
-            Lifecycle::CompletionList(indices) => {
-                // Deallocate list entries, recording if the more CQE's are expected
-                let more = {
-                    let mut list = indices.into_list(completions);
-                    io_uring::cqueue::more(list.peek_end().unwrap().flags)
-                    // Dropping list deallocates the list entries
+        CONTEXT.with(|runtime_context| {
+            runtime_context.with_driver_mut(|driver| {
+                let (lifecycle, completions) = match driver.ops.get_mut(self.index) {
+                    Some(val) => val,
+                    None => return,
                 };
-                if more {
-                    // If more are expected, we have to keep the op around
-                    *lifecycle = Lifecycle::Ignored(Box::new(self.data.take()));
-                } else {
-                    inner.ops.remove(self.index);
+
+
+                match mem::replace(lifecycle, Lifecycle::Submitted) {
+                    Lifecycle::Submitted | Lifecycle::Waiting(_) => {
+                        *lifecycle = Lifecycle::Ignored(Box::new(self.data.take()));
+                    }
+                    Lifecycle::Completed(..) => {
+                        driver.ops.remove(self.index);
+                    }
+                    Lifecycle::CompletionList(indices) => {
+                        // Deallocate list entries, recording if the more CQE's are expected
+                        let more = {
+                            let mut list = indices.into_list(completions);
+                            io_uring::cqueue::more(list.peek_end().unwrap().flags)
+                            // Dropping list deallocates the list entries
+                        };
+                        if more {
+                            // If more are expected, we have to keep the op around
+                            *lifecycle = Lifecycle::Ignored(Box::new(self.data.take()));
+                        } else {
+                            driver.ops.remove(self.index);
+                        }
+                    }
+                    Lifecycle::Ignored(..) => unreachable!(),
                 }
-            }
-            Lifecycle::Ignored(..) => unreachable!(),
-        }
+            })
+        })
     }
 }
 
@@ -293,24 +300,24 @@ mod test {
 
     #[test]
     fn op_stays_in_slab_on_drop() {
-        let (op, driver, data) = init();
+        let (op, data) = init();
         drop(op);
 
         assert_eq!(2, Rc::strong_count(&data));
 
-        assert_eq!(1, driver.num_operations());
-        release(driver);
+        assert_eq!(1, num_operations());
+        release();
     }
 
     #[test]
     fn poll_op_once() {
-        let (op, driver, data) = init();
+        let (op, data) = init();
         let mut op = task::spawn(op);
         assert_pending!(op.poll());
         assert_eq!(2, Rc::strong_count(&data));
 
         complete(&op, Ok(1));
-        assert_eq!(1, driver.num_operations());
+        assert_eq!(1, num_operations());
         assert_eq!(2, Rc::strong_count(&data));
 
         assert!(op.is_woken());
@@ -327,54 +334,58 @@ mod test {
         assert_eq!(1, Rc::strong_count(&data));
 
         drop(op);
-        assert_eq!(0, driver.num_operations());
+        assert_eq!(0, num_operations());
 
-        release(driver);
+        release();
     }
 
     #[test]
     fn poll_op_twice() {
-        let (op, driver, ..) = init();
-        let mut op = task::spawn(op);
-        assert_pending!(op.poll());
-        assert_pending!(op.poll());
+        {
+            let (op, ..) = init();
+            let mut op = task::spawn(op);
+            assert_pending!(op.poll());
+            assert_pending!(op.poll());
 
-        complete(&op, Ok(1));
+            complete(&op, Ok(1));
 
-        assert!(op.is_woken());
-        let Completion { result, flags, .. } = assert_ready!(op.poll());
-        assert_eq!(1, result.unwrap());
-        assert_eq!(0, flags);
+            assert!(op.is_woken());
+            let Completion { result, flags, .. } = assert_ready!(op.poll());
+            assert_eq!(1, result.unwrap());
+            assert_eq!(0, flags);
+        }
 
-        release(driver);
+        release();
     }
 
     #[test]
     fn poll_change_task() {
-        let (op, driver, ..) = init();
-        let mut op = task::spawn(op);
-        assert_pending!(op.poll());
+        {
+            let (op, ..) = init();
+            let mut op = task::spawn(op);
+            assert_pending!(op.poll());
 
-        let op = op.into_inner();
-        let mut op = task::spawn(op);
-        assert_pending!(op.poll());
+            let op = op.into_inner();
+            let mut op = task::spawn(op);
+            assert_pending!(op.poll());
 
-        complete(&op, Ok(1));
+            complete(&op, Ok(1));
 
-        assert!(op.is_woken());
-        let Completion { result, flags, .. } = assert_ready!(op.poll());
-        assert_eq!(1, result.unwrap());
-        assert_eq!(0, flags);
+            assert!(op.is_woken());
+            let Completion { result, flags, .. } = assert_ready!(op.poll());
+            assert_eq!(1, result.unwrap());
+            assert_eq!(0, flags);
+        }
 
-        release(driver);
+        release();
     }
 
     #[test]
     fn complete_before_poll() {
-        let (op, driver, data) = init();
+        let (op, data) = init();
         let mut op = task::spawn(op);
         complete(&op, Ok(1));
-        assert_eq!(1, driver.num_operations());
+        assert_eq!(1, num_operations());
         assert_eq!(2, Rc::strong_count(&data));
 
         let Completion { result, flags, .. } = assert_ready!(op.poll());
@@ -382,53 +393,66 @@ mod test {
         assert_eq!(0, flags);
 
         drop(op);
-        assert_eq!(0, driver.num_operations());
+        assert_eq!(0, num_operations());
 
-        release(driver);
+        release();
     }
 
     #[test]
     fn complete_after_drop() {
-        let (op, driver, data) = init();
+        let (op, data) = init();
         let index = op.index;
         drop(op);
 
         assert_eq!(2, Rc::strong_count(&data));
 
-        assert_eq!(1, driver.num_operations());
+        assert_eq!(1, num_operations());
+
         let cqe = CqeResult {
             result: Ok(1),
             flags: 0,
         };
-        driver.inner.borrow_mut().ops.complete(index, cqe);
+
+        CONTEXT.with(|cx| cx.with_driver_mut(|driver| driver.ops.complete(index, cqe)));
+
         assert_eq!(1, Rc::strong_count(&data));
-        assert_eq!(0, driver.num_operations());
-        release(driver);
+        assert_eq!(0, num_operations());
+
+        release();
     }
 
-    fn init() -> (Op<Rc<()>>, crate::driver::Driver, Rc<()>) {
+    fn init() -> (Op<Rc<()>>, Rc<()>) {
         use crate::driver::Driver;
 
         let driver = Driver::new(&crate::builder()).unwrap();
-        let handle = driver.inner.clone();
         let data = Rc::new(());
 
-        let op = {
-            let mut inner = handle.borrow_mut();
-            Op::new(data.clone(), &mut inner, &handle)
-        };
+        let op = CONTEXT.with(|cx| {
+            cx.set_driver(driver);
 
-        (op, driver, data)
+            cx.with_driver_mut(|driver| Op::new(data.clone(), driver))
+        });
+
+        (op, data)
+    }
+
+    fn num_operations() -> usize {
+        CONTEXT.with(|cx| cx.with_driver_mut(|driver| driver.num_operations()))
     }
 
     fn complete(op: &Op<Rc<()>>, result: io::Result<u32>) {
         let cqe = CqeResult { result, flags: 0 };
-        op.driver.borrow_mut().ops.complete(op.index, cqe);
+        CONTEXT.with(|cx| cx.with_driver_mut(|driver| driver.ops.complete(op.index, cqe)));
     }
 
-    fn release(driver: crate::driver::Driver) {
-        // Clear ops, we aren't really doing any I/O
-        driver.inner.borrow_mut().ops.lifecycle.clear();
-        driver.inner.borrow_mut().ops.completions.clear();
+    fn release() {
+        CONTEXT.with(|cx| {
+            cx.with_driver_mut(|driver| {
+                driver.ops.lifecycle.clear();
+                driver.ops.completions.clear();
+            });
+
+            cx.unset_driver();
+        });
     }
 }

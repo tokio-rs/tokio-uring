@@ -73,12 +73,14 @@ macro_rules! syscall {
 mod future;
 mod driver;
 mod runtime;
+mod util;
 
 pub mod buf;
 pub mod fs;
 pub mod net;
 
 pub use runtime::spawn;
+pub use runtime::Runtime;
 
 use std::future::Future;
 
@@ -140,7 +142,7 @@ use std::future::Future;
 /// }
 /// ```
 pub fn start<F: Future>(future: F) -> F::Output {
-    let mut rt = runtime::Runtime::new(&builder()).unwrap();
+    let rt = runtime::Runtime::new(&builder()).unwrap();
     rt.block_on(future)
 }
 
@@ -225,7 +227,7 @@ impl Builder {
     /// }
     /// ```
     pub fn start<F: Future>(&self, future: F) -> F::Output {
-        let mut rt = runtime::Runtime::new(self).unwrap();
+        let rt = runtime::Runtime::new(self).unwrap();
         rt.block_on(future)
     }
 }
