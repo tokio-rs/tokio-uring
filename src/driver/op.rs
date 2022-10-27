@@ -33,7 +33,7 @@ pub(crate) struct Op<T: 'static, CqeType = SingleCQE> {
     // CqeType marker
     _cqe_type: PhantomData<CqeType>,
 
-    // Make !Send + !Sync 
+    // Make !Send + !Sync
     _phantom: PhantomUnsendUnsync,
 }
 
@@ -155,7 +155,6 @@ where
                     .get_mut(me.index)
                     .expect("invalid internal state");
 
-
                 match mem::replace(lifecycle, Lifecycle::Submitted) {
                     Lifecycle::Submitted => {
                         *lifecycle = Lifecycle::Waiting(cx.waker().clone());
@@ -176,7 +175,7 @@ where
                         Poll::Ready(me.data.take().unwrap().complete(cqe))
                     }
                     Lifecycle::CompletionList(..) => {
-                        unreachable!("No more flag set for SinglCQE")
+                        unreachable!("No `more` flag set for SingleCQE")
                     }
                 }
             })
@@ -184,17 +183,24 @@ where
     }
 }
 
+/// The operation may have pending cqe's not yet processed.
+/// To manage this, the lifecycle associated with the Op may if required
+/// be placed in LifeCycle::Ignored state to handle cqe's which arrive after
+/// the Op has been dropped.
 impl<T, CqeType> Drop for Op<T, CqeType> {
     fn drop(&mut self) {
         use std::mem;
 
         CONTEXT.with(|runtime_context| {
             runtime_context.with_driver_mut(|driver| {
+                // Get the Op Lifecycle state from the driver
                 let (lifecycle, completions) = match driver.ops.get_mut(self.index) {
                     Some(val) => val,
-                    None => return,
+                    None => {
+                        // Op dropped after the driver
+                        return;
+                    }
                 };
-
 
                 match mem::replace(lifecycle, Lifecycle::Submitted) {
                     Lifecycle::Submitted | Lifecycle::Waiting(_) => {
@@ -204,7 +210,7 @@ impl<T, CqeType> Drop for Op<T, CqeType> {
                         driver.ops.remove(self.index);
                     }
                     Lifecycle::CompletionList(indices) => {
-                        // Deallocate list entries, recording if the more CQE's are expected
+                        // Deallocate list entries, recording if more CQE's are expected
                         let more = {
                             let mut list = indices.into_list(completions);
                             io_uring::cqueue::more(list.peek_end().unwrap().flags)
@@ -238,18 +244,21 @@ impl Lifecycle {
                     *self = Lifecycle::Completed(cqe);
                 }
                 if let Lifecycle::Waiting(waker) = x {
-                    // wake is called whenever we have more work.
-                    // Also possible would be to defer calling until cqe with !more flag set
+                    // waker is woken to notify cqe has arrived
+                    // Note: Maybe defer calling until cqe with !`more` flag set?
                     waker.wake();
                 }
                 false
             }
+
             lifecycle @ Lifecycle::Ignored(..) => {
-                // We must check if any more CQEs are expected before dropping
                 if io_uring::cqueue::more(cqe.flags) {
+                    // Not yet complete. The Op has been dropped, so we can drop the CQE
+                    // but we must keep the lifecycle alive until no more CQE's expected
                     *self = lifecycle;
                     false
                 } else {
+                    // This Op has completed, we can drop
                     true
                 }
             }
@@ -257,11 +266,14 @@ impl Lifecycle {
             Lifecycle::Completed(..) => {
                 // Completions with more flag set go straight onto the slab,
                 // and are handled in Lifecycle::CompletionList.
-                // To construct Lifecycle::Completed, a CQE without MORE was received
+                // To construct Lifecycle::Completed, a CQE with `more` flag unset was received
                 // we shouldn't be receiving another.
                 unreachable!("invalid operation state")
             }
+
             Lifecycle::CompletionList(indices) => {
+                // A completion list may contain CQE's with and without `more` flag set.
+                // Only the final one may have `more` unset, although we don't check.
                 let mut list = indices.into_list(completions);
                 list.push(cqe);
                 *self = Lifecycle::CompletionList(list.into_indices());
