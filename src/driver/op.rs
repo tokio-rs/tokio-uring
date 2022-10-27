@@ -226,7 +226,7 @@ where
                     Lifecycle::Ignored(..) => unreachable!(),
                     Lifecycle::Completed(cqe) => {
                         // This is possible. We may have previously polled a CompletionList,
-                        // and the final CQE is enqueued as a Completed
+                        // and the final CQE registered as Completed
                         driver.ops.remove(me.index);
                         me.index = usize::MAX;
                         Poll::Ready(me.data.take().unwrap().complete(cqe))
@@ -234,6 +234,8 @@ where
                     Lifecycle::CompletionList(indices) => {
                         let mut data = me.data.take().unwrap();
 
+                        // Traverse the CqeResult list, calling update on the Op on all Cqe's flagged `more`
+                        // If the final Cqe is present, return it in an Option
                         let last = indices.into_list(completions).find(|cqe| {
                             let more = io_uring::cqueue::more(cqe.flags);
                             if more {
