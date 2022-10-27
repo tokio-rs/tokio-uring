@@ -191,7 +191,6 @@ where
     }
 }
 
-       
 impl<T> Future for Op<T, MultiCQEFuture>
 where
     T: Unpin + 'static + Completable + Updateable,
