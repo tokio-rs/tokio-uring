@@ -72,7 +72,7 @@ impl Runtime {
             })
             .on_thread_unpark(|| {
                 CONTEXT.with(|x| {
-                    let _ = x.with_driver_mut(|d| {
+                    x.with_driver_mut(|d| {
                         // Dispatch completions to wake tasks based on any completed ops.
                         // this is an optimization to try and avoid the whole "give the io driver
                         // a dedicated task" thing
