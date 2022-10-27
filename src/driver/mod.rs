@@ -80,20 +80,30 @@ impl Driver {
     }
 
     pub(crate) fn tick(&mut self) {
-        let mut cq = self.uring.completion();
-        cq.sync();
+        loop {
+            let mut cq = self.uring.completion();
 
-        for cqe in cq {
-            if cqe.user_data() == u64::MAX {
-                // Result of the cancellation action. There isn't anything we
-                // need to do here. We must wait for the CQE for the operation
-                // that was canceled.
-                continue;
+            cq.sync();
+
+            // if the cqueue is full, we are experiencing overflow and need to keep looping
+            let should_continue = cq.is_full();
+
+            for cqe in cq {
+                if cqe.user_data() == u64::MAX {
+                    // Result of the cancellation action. There isn't anything we
+                    // need to do here. We must wait for the CQE for the operation
+                    // that was canceled.
+                    continue;
+                }
+
+                let index = cqe.user_data() as _;
+
+                self.ops.complete(index, cqe.into());
             }
 
-            let index = cqe.user_data() as _;
-
-            self.ops.complete(index, cqe.into());
+            if !should_continue {
+                break;
+            }
         }
     }
 

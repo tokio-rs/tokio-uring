@@ -62,7 +62,22 @@ impl Runtime {
         let rt = tokio::runtime::Builder::new_current_thread()
             .on_thread_park(|| {
                 CONTEXT.with(|x| {
-                    let _ = x.with_driver_mut(|d| d.uring.submit());
+                    let _ = x.with_driver_mut(|d| {
+                        // optimization: we can potentially avoid an epoll_wait call if we try to
+                        // dispatch completions before we park on epoll
+                        d.tick();
+                        d.submit()
+                    });
+                });
+            })
+            .on_thread_unpark(|| {
+                CONTEXT.with(|x| {
+                    x.with_driver_mut(|d| {
+                        // Dispatch completions to wake tasks based on any completed ops.
+                        // this is an optimization to try and avoid the whole "give the io driver
+                        // a dedicated task" thing
+                        d.tick();
+                    });
                 });
             })
             .enable_all()
@@ -106,11 +121,10 @@ impl Runtime {
 
         self.local.spawn_local(drive);
 
-        self.rt
-            .block_on(self.local.run_until(crate::future::poll_fn(|cx| {
-                // assert!(drive.as_mut().poll(cx).is_pending());
-                future.as_mut().poll(cx)
-            })))
+        self.rt.block_on(
+            self.local
+                .run_until(crate::future::poll_fn(|cx| future.as_mut().poll(cx))),
+        )
     }
 }
 
