@@ -46,7 +46,7 @@ impl Socket {
 
     pub async fn writev<T: IoBuf>(&self, buf: Vec<T>) -> crate::BufResult<usize, Vec<T>> {
         let op = Op::writev_at(&self.fd, buf, 0).unwrap();
-        op.writev().await
+        op.await
     }
 
     pub(crate) async fn send_to<T: IoBuf>(
