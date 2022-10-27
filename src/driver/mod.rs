@@ -56,6 +56,9 @@ struct Ops {
     // When dropping the driver, all in-flight operations must have completed. This
     // type wraps the slab and ensures that, on drop, the slab is empty.
     lifecycle: Slab<op::Lifecycle>,
+
+    /// Received but unserviced Op completions
+    completions: Slab<op::Completion>,
 }
 
 impl Driver {
@@ -133,11 +136,15 @@ impl Ops {
     fn new() -> Ops {
         Ops {
             lifecycle: Slab::with_capacity(64),
+            completions: Slab::with_capacity(64),
         }
     }
 
-    fn get_mut(&mut self, index: usize) -> Option<&mut op::Lifecycle> {
-        self.lifecycle.get_mut(index)
+    fn get_mut(&mut self, index: usize) -> Option<(&mut op::Lifecycle, &mut Slab<op::Completion>)> {
+        let completions = &mut self.completions;
+        self.lifecycle
+            .get_mut(index)
+            .map(|lifecycle| (lifecycle, completions))
     }
 
     // Insert a new operation
@@ -151,7 +158,8 @@ impl Ops {
     }
 
     fn complete(&mut self, index: usize, cqe: op::CqeResult) {
-        if self.lifecycle[index].complete(cqe) {
+        let completions = &mut self.completions;
+        if self.lifecycle[index].complete(completions, cqe) {
             self.lifecycle.remove(index);
         }
     }
@@ -160,5 +168,6 @@ impl Ops {
 impl Drop for Ops {
     fn drop(&mut self) {
         assert!(self.lifecycle.is_empty());
+        assert!(self.completions.is_empty());
     }
 }
