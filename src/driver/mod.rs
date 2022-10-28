@@ -1,5 +1,8 @@
 mod accept;
 
+mod buffers;
+pub(crate) use buffers::{register_buffers, unregister_buffers, Buffers};
+
 mod close;
 pub(crate) use close::Close;
 
@@ -24,9 +27,6 @@ mod read_fixed;
 mod recv_from;
 
 mod rename_at;
-
-mod register;
-pub(crate) use register::{register_buffers, unregister_buffers, Buffers};
 
 mod send_to;
 
