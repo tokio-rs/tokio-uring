@@ -72,7 +72,7 @@ fn unregister_invalidates_checked_out_buffers() {
 
         // The checked out handle keeps the buffer allocation alive.
         // Meanwhile, we replace buffer registration in the kernel:
-        buffers.unregister().unwrap(); // hmm, what's up with the 1s blocking time?
+        buffers.unregister().unwrap();
         let buffers = BufRegistry::new([Vec::with_capacity(1024)]);
         buffers.register().unwrap();
 
