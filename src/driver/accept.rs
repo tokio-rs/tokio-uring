@@ -1,4 +1,4 @@
-use crate::driver::op::Completable;
+use crate::driver::op::{self, Completable};
 use crate::driver::{Op, SharedFd, Socket};
 use std::net::SocketAddr;
 use std::{boxed::Box, io};
@@ -37,8 +37,8 @@ impl Op<Accept> {
 impl Completable for Accept {
     type Output = io::Result<(Socket, Option<SocketAddr>)>;
 
-    fn complete(self, result: io::Result<u32>, _flags: u32) -> Self::Output {
-        let fd = result?;
+    fn complete(self, cqe: op::CqeResult) -> Self::Output {
+        let fd = cqe.result?;
         let fd = SharedFd::new(fd as i32);
         let socket = Socket { fd };
         let (_, addr) = unsafe {

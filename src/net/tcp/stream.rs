@@ -50,6 +50,21 @@ impl TcpStream {
         Ok(tcp_stream)
     }
 
+    /// Creates new `TcpStream` from a previously bound `std::net::TcpStream`.
+    ///
+    /// This function is intended to be used to wrap a TCP stream from the
+    /// standard library in the tokio-uring equivalent. The conversion assumes nothing
+    /// about the underlying socket; it is left up to the user to decide what socket
+    /// options are appropriate for their use case.
+    ///
+    /// This can be used in conjunction with socket2's `Socket` interface to
+    /// configure a socket before it's handed off, such as setting options like
+    /// `reuse_address` or binding to multiple addresses.
+    pub fn from_std(socket: std::net::TcpStream) -> Self {
+        let inner = Socket::from_std(socket);
+        Self { inner }
+    }
+
     pub(crate) fn from_socket(inner: Socket) -> Self {
         Self { inner }
     }
@@ -149,12 +164,39 @@ impl TcpStream {
         (Ok(()), buf)
     }
 
+    /// Write data from buffers into this socket returning how many bytes were
+    /// written.
+    ///
+    /// This function will attempt to write the entire contents of `bufs`, but
+    /// the entire write may not succeed, or the write may also generate an
+    /// error. The bytes will be written starting at the specified offset.
+    ///
+    /// # Return
+    ///
+    /// The method returns the operation result and the same array of buffers
+    /// passed in as an argument. A return value of `0` typically means that the
+    /// underlying socket is no longer able to accept bytes and will likely not
+    /// be able to in the future as well, or that the buffer provided is empty.
+    ///
+    /// # Errors
+    ///
+    /// Each call to `write` may generate an I/O error indicating that the
+    /// operation could not be completed. If an error is returned then no bytes
+    /// in the buffer were written to this writer.
+    ///
+    /// It is **not** considered an error if the entire buffer could not be
+    /// written to this writer.
+    ///
+    /// [`Ok(n)`]: Ok
+    pub async fn writev<T: IoBuf>(&self, buf: Vec<T>) -> crate::BufResult<usize, Vec<T>> {
+        self.inner.writev(buf).await
+    }
+
     /// Shuts down the read, write, or both halves of this connection.
     ///
     /// This function will cause all pending and future I/O on the specified portions to return
     /// immediately with an appropriate value.
     pub fn shutdown(&self, how: std::net::Shutdown) -> io::Result<()> {
-        // TODO same method for unix stream for consistency.
         self.inner.shutdown(how)
     }
 }
