@@ -24,6 +24,15 @@ pub struct Runtime {
 
     /// Tokio runtime, always current-thread
     rt: tokio::runtime::Runtime,
+
+    /// This is here for drop order reasons.
+    ///
+    /// We can't unset the driver in the runtime drop method, because the inner runtime needs to
+    /// be dropped first so that there are no tasks running.
+    ///
+    /// The rust drop order rules guarantee that the inner runtime will be dropped first, and
+    /// this last.
+    _driver_guard: RuntimeContextGuard,
 }
 
 /// Spawns a new asynchronous task, returning a [`JoinHandle`] for it.
@@ -80,6 +89,7 @@ impl Runtime {
             uring_fd: driver_fd,
             local,
             rt,
+            _driver_guard: RuntimeContextGuard,
         })
     }
 
@@ -114,7 +124,9 @@ impl Runtime {
     }
 }
 
-impl Drop for Runtime {
+struct RuntimeContextGuard;
+
+impl Drop for RuntimeContextGuard {
     fn drop(&mut self) {
         CONTEXT.with(|rc| rc.unset_driver())
     }
