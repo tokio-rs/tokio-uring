@@ -1,6 +1,5 @@
 use crate::driver::Driver;
 
-use libc::servent;
 use std::future::Future;
 use std::io;
 use std::mem::ManuallyDrop;
