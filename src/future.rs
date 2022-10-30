@@ -16,7 +16,7 @@ pub(crate) struct PollFn<F> {
     f: F,
 }
 
-impl<F> Unpin for PollFn<F> {}
+impl<F: Unpin> Unpin for PollFn<F> {}
 
 pub(crate) fn poll_fn<T, F>(f: F) -> PollFn<F>
 where
@@ -31,7 +31,8 @@ where
 {
     type Output = T;
 
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<T> {
-        (self.f)(cx)
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<T> {
+        // SAFETY: We are not moving out of the pinned field.
+        (unsafe { &mut self.get_unchecked_mut().f })(cx)
     }
 }
