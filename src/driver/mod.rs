@@ -128,7 +128,7 @@ impl Drop for Driver {
         while self.num_operations() > 0 {
             // If waiting fails, ignore the error. The wait will be attempted
             // again on the next loop.
-            let _ = self.wait().unwrap();
+            let _ = self.wait();
             self.tick();
         }
     }
