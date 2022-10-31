@@ -77,7 +77,6 @@ impl<'a, T> SlabList<'a, T> {
     }
 
     /// Pop from front of list
-    #[allow(dead_code)]
     pub(crate) fn pop(&mut self) -> Option<T> {
         self.slab
             .try_remove(self.index.start)

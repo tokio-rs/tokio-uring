@@ -46,11 +46,14 @@ pub(crate) struct MultiCQEFuture;
 
 pub(crate) trait Completable {
     type Output;
+    /// `complete` will be called for cqe's do not have the `more` flag set
     fn complete(self, cqe: CqeResult) -> Self::Output;
 }
 
 pub(crate) trait Updateable: Completable {
-    fn update(&mut self, cqe: &CqeResult);
+    /// Update will be called for cqe's which have the `more` flag set.
+    /// The Op should update any internal state as required.
+    fn update(&mut self, cqe: CqeResult);
 }
 
 pub(crate) enum Lifecycle {
@@ -232,26 +235,29 @@ where
                     }
                     Lifecycle::CompletionList(indices) => {
                         let mut data = me.data.take().unwrap();
-
-                        // Traverse the CqeResult list, calling update on the Op on all Cqe's flagged `more`
-                        // If the final Cqe is present, return it in an Option
-                        let last = indices.into_list(completions).find(|cqe| {
-                            let more = io_uring::cqueue::more(cqe.flags);
-                            if more {
+                        let mut status = Poll::Pending;
+                        // Consume the CqeResult list, calling update on the Op on all Cqe's flagged `more`
+                        // If the final Cqe is present, clean up and return Poll::Ready
+                        for cqe in indices.into_list(completions) {
+                            if io_uring::cqueue::more(cqe.flags) {
                                 data.update(cqe);
+                            } else {
+                                status = Poll::Ready(cqe);
+                                break;
                             }
-                            !more
-                        });
-
-                        if let Some(cqe) = last {
-                            driver.ops.remove(me.index);
-                            me.index = usize::MAX;
-                            Poll::Ready(data.complete(cqe))
-                        } else {
-                            // We need more CQE's. Restore the op state
-                            let _ = me.data.insert(data);
-                            *lifecycle = Lifecycle::Waiting(cx.waker().clone());
-                            Poll::Pending
+                        }
+                        match status {
+                            Poll::Pending => {
+                                // We need more CQE's. Restore the op state
+                                let _ = me.data.insert(data);
+                                *lifecycle = Lifecycle::Waiting(cx.waker().clone());
+                                Poll::Pending
+                            }
+                            Poll::Ready(cqe) => {
+                                me.index = usize::MAX;
+                                driver.ops.remove(me.index);
+                                Poll::Ready(data.complete(cqe))
+                            }
                         }
                     }
                 }

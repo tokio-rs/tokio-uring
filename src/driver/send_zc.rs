@@ -4,10 +4,7 @@ use crate::{
     driver::{Op, SharedFd},
     BufResult,
 };
-use std::{
-    io,
-    task::{Context, Poll},
-};
+use std::io;
 
 pub(crate) struct SendZc<T> {
     /// Holds a strong ref to the FD, preventing the file from being closed
@@ -40,20 +37,6 @@ impl<T: IoBuf> Op<SendZc<T>> {
             },
         )
     }
-
-    pub(crate) async fn send(mut self) -> BufResult<usize, T> {
-        use crate::future::poll_fn;
-
-        poll_fn(move |cx| self.poll_send(cx)).await
-    }
-
-    pub(crate) fn poll_send(&mut self, cx: &mut Context<'_>) -> Poll<BufResult<usize, T>> {
-        use std::future::Future;
-        use std::pin::Pin;
-
-        let complete = ready!(Pin::new(self).poll(cx));
-        Poll::Ready(complete)
-    }
 }
 
 impl<T> Completable for SendZc<T>
@@ -75,7 +58,7 @@ impl<T> Updateable for SendZc<T>
 where
     T: IoBuf,
 {
-    fn update(&mut self, cqe: &op::CqeResult) {
+    fn update(&mut self, cqe: op::CqeResult) {
         // uring send_zc promises there will be no error on CQE's marked more
         self.bytes += *cqe.result.as_ref().unwrap() as usize;
     }
