@@ -31,9 +31,9 @@ use std::{io, net::SocketAddr};
 ///
 ///     tx.write(b"test" as &'static [u8]).await.0.unwrap();
 ///
-///     let (_, buf) = rx.read(vec![0; 4]).await;
+///     let (_, slice) = rx.read(vec![0; 4]).await;
 ///
-///     assert_eq!(buf, b"test");
+///     assert_eq!(slice.to_vec(), b"test");
 /// });
 /// ```
 pub struct TcpListener {

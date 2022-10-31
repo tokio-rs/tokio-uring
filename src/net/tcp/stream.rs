@@ -103,6 +103,7 @@ impl TcpStream {
     /// use std::net::SocketAddr;
     /// use tokio_uring::net::TcpListener;
     /// use tokio_uring::buf::IoBuf;
+    /// use tokio_uring::buf::IntoSlice;
     ///
     /// let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
     ///
@@ -117,14 +118,13 @@ impl TcpStream {
     ///             let mut n = 0;
     ///             let mut buf = vec![0u8; 4096];
     ///             loop {
-    ///                 let (result, nbuf) = stream.read(buf).await;
-    ///                 buf = nbuf;
+    ///                 let (result, slice) = stream.read(buf).await;
     ///                 let read = result.unwrap();
     ///                 if read == 0 {
     ///                     break;
     ///                 }
     ///
-    ///                 let (res, slice) = stream.write_all(buf.slice(..read)).await;
+    ///                 let (res, slice) = stream.write_all(slice.slice(..read)).await;
     ///                 let _ = res.unwrap();
     ///                 buf = slice.into_inner();
     ///                 n += read;
@@ -135,10 +135,11 @@ impl TcpStream {
     /// ```
     ///
     /// [`write`]: Self::write
-    pub async fn write_all<T: IoBuf>(&self, mut buf: T) -> crate::BufResult<(), T> {
-        let mut n = 0;
-        while n < buf.bytes_init() {
-            let res = self.write(buf.slice(n..)).await;
+    pub async fn write_all<T: IntoSlice>(&self, buf: T) -> crate::BufResult<(), Slice<T::Buf>> {
+        let mut buf = buf.into_full_slice();
+        let (in_begin, in_end) = (buf.begin(), buf.end());
+        while buf.len() > 0 {
+            let res = self.write(buf).await;
             match res {
                 (Ok(0), slice) => {
                     return (
@@ -146,12 +147,11 @@ impl TcpStream {
                             std::io::ErrorKind::WriteZero,
                             "failed to write whole buffer",
                         )),
-                        slice.into_inner(),
+                        slice.into_inner().slice(in_begin..in_end),
                     )
                 }
-                (Ok(m), slice) => {
-                    n += m;
-                    buf = slice.into_inner();
+                (Ok(n), slice) => {
+                    buf = slice.slice(n..);
                 }
 
                 // This match on an EINTR error is not performed because this
@@ -161,11 +161,11 @@ impl TcpStream {
                 // (Err(ref e), slice) if e.kind() == std::io::ErrorKind::Interrupted => {
                 //     buf = slice.into_inner();
                 // },
-                (Err(e), slice) => return (Err(e), slice.into_inner()),
+                (Err(e), slice) => return (Err(e), slice.into_inner().slice(in_begin..in_end)),
             }
         }
 
-        (Ok(()), buf)
+        (Ok(()), buf.into_inner().slice(in_begin..in_end))
     }
 
     /// Write data from buffers into this socket returning how many bytes were

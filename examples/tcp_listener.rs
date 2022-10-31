@@ -1,5 +1,6 @@
 use std::{env, net::SocketAddr};
 
+use tokio_uring::buf::IntoSlice;
 use tokio_uring::net::TcpListener;
 
 fn main() {
@@ -22,22 +23,19 @@ fn main() {
             tokio_uring::spawn(async move {
                 // implement ping-pong loop
 
-                use tokio_uring::buf::IoBuf; // for slice()
-
                 println!("{} connected", socket_addr);
                 let mut n = 0;
 
                 let mut buf = vec![0u8; 4096];
                 loop {
-                    let (result, nbuf) = stream.read(buf).await;
-                    buf = nbuf;
+                    let (result, slice) = stream.read(buf).await;
                     let read = result.unwrap();
                     if read == 0 {
                         println!("{} closed, {} total ping-ponged", socket_addr, n);
                         break;
                     }
 
-                    let (res, slice) = stream.write_all(buf.slice(..read)).await;
+                    let (res, slice) = stream.write_all(slice.slice(..read)).await;
                     let _ = res.unwrap();
                     buf = slice.into_inner();
                     println!("{} all {} bytes ping-ponged", socket_addr, read);

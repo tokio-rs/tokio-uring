@@ -227,6 +227,11 @@ impl<T: IoBufMut> Slice<T> {
     /// If the specified `pos` is greater than the value previously returned
     /// by [`Slice::bytes_init`], it becomes the new value as returned by
     /// `Slice::bytes_init`.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that all bytes starting at `stable_mut_ptr()` up
+    /// to `self.begin()` + `pos` are initialized and owned by the buffer.
     pub unsafe fn set_init(&mut self, pos: usize) {
         self.buf.set_init(self.begin + pos);
     }
