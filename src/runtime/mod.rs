@@ -2,6 +2,7 @@ use crate::driver::Driver;
 
 use std::future::Future;
 use std::io;
+use std::mem::ManuallyDrop;
 use std::os::unix::io::{AsRawFd, RawFd};
 use tokio::io::unix::AsyncFd;
 use tokio::task::LocalSet;
@@ -20,10 +21,10 @@ pub struct Runtime {
     uring_fd: RawFd,
 
     /// LocalSet for !Send tasks
-    local: LocalSet,
+    local: ManuallyDrop<LocalSet>,
 
     /// Tokio runtime, always current-thread
-    rt: tokio::runtime::Runtime,
+    rt: ManuallyDrop<tokio::runtime::Runtime>,
 }
 
 /// Spawns a new asynchronous task, returning a [`JoinHandle`] for it.
@@ -68,7 +69,9 @@ impl Runtime {
             .enable_all()
             .build()?;
 
-        let local = LocalSet::new();
+        let rt = ManuallyDrop::new(rt);
+
+        let local = ManuallyDrop::new(LocalSet::new());
 
         let driver = Driver::new(b)?;
 
@@ -116,6 +119,14 @@ impl Runtime {
 
 impl Drop for Runtime {
     fn drop(&mut self) {
+        // drop tasks
+        unsafe {
+            ManuallyDrop::drop(&mut self.local);
+            ManuallyDrop::drop(&mut self.rt);
+        }
+
+        // once tasks are dropped, we can unset the driver
+        // this will block until all completions are received
         CONTEXT.with(|rc| rc.unset_driver())
     }
 }
