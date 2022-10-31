@@ -1,10 +1,10 @@
-use crate::buf::{IntoSlice, IoBufMut, Slice};
+use crate::buf::{IntoSlice, IoBuf, IoBufMut, Slice};
 use crate::driver::{Op, SharedFd};
 use crate::fs::OpenOptions;
 
 use std::fmt;
 use std::io;
-use std::os::unix::io::{AsRawFd, RawFd};
+use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 use std::path::Path;
 
 /// A reference to an open file on the filesystem.
@@ -120,6 +120,14 @@ impl File {
         File { fd }
     }
 
+    /// Converts a [`std::fs::File`][std] to a [`tokio_uring::fs::File`][file].
+    ///
+    /// [std]: std::fs::File
+    /// [file]: File
+    pub fn from_std(file: std::fs::File) -> File {
+        File::from_shared_fd(SharedFd::new(file.into_raw_fd()))
+    }
+
     /// Read some bytes at the specified offset from the file into the specified
     /// buffer, returning how many bytes were read.
     ///
@@ -172,7 +180,118 @@ impl File {
     {
         // Submit the read operation
         let op = Op::read_at(&self.fd, buf.into_full_slice(), pos).unwrap();
-        op.read().await
+        op.await
+    }
+
+    /// Read some bytes at the specified offset from the file into the specified
+    /// array of buffers, returning how many bytes were read.
+    ///
+    /// # Return
+    ///
+    /// The method returns the operation result and the same array of buffers
+    /// passed as an argument.
+    ///
+    /// If the method returns [`Ok(n)`], then the read was successful. A nonzero
+    /// `n` value indicates that the buffers have been filled with `n` bytes of
+    /// data from the file. If `n` is `0`, then one of the following happened:
+    ///
+    /// 1. The specified offset is the end of the file.
+    /// 2. The buffers specified were 0 bytes in length.
+    ///
+    /// It is not an error if the returned value `n` is smaller than the buffer
+    /// size, even when the file contains enough data to fill the buffer.
+    ///
+    /// # Errors
+    ///
+    /// If this function encounters any form of I/O or other error, an error
+    /// variant will be returned. The buffer is returned on error.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use tokio_uring::fs::File;
+    ///
+    /// fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ///     tokio_uring::start(async {
+    ///         let f = File::open("foo.txt").await?;
+    ///         let buffers = vec![Vec::<u8>::with_capacity(10), Vec::<u8>::with_capacity(10)];
+    ///
+    ///         // Read up to 20 bytes
+    ///         let (res, buffer) = f.readv_at(buffers, 0).await;
+    ///         let n = res?;
+    ///
+    ///         println!("Read {} bytes", n);
+    ///
+    ///         // Close the file
+    ///         f.close().await?;
+    ///         Ok(())
+    ///     })
+    /// }
+    /// ```
+    pub async fn readv_at<T: IoBufMut>(
+        &self,
+        bufs: Vec<T>,
+        pos: u64,
+    ) -> crate::BufResult<usize, Vec<T>> {
+        // Submit the read operation
+        let op = Op::readv_at(&self.fd, bufs, pos).unwrap();
+        op.await
+    }
+
+    /// Write data from buffers into this file at the specified offset,
+    /// returning how many bytes were written.
+    ///
+    /// This function will attempt to write the entire contents of `bufs`, but
+    /// the entire write may not succeed, or the write may also generate an
+    /// error. The bytes will be written starting at the specified offset.
+    ///
+    /// # Return
+    ///
+    /// The method returns the operation result and the same array of buffers passed
+    /// in as an argument. A return value of `0` typically means that the
+    /// underlying file is no longer able to accept bytes and will likely not be
+    /// able to in the future as well, or that the buffer provided is empty.
+    ///
+    /// # Errors
+    ///
+    /// Each call to `write` may generate an I/O error indicating that the
+    /// operation could not be completed. If an error is returned then no bytes
+    /// in the buffer were written to this writer.
+    ///
+    /// It is **not** considered an error if the entire buffer could not be
+    /// written to this writer.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use tokio_uring::fs::File;
+    ///
+    /// fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ///     tokio_uring::start(async {
+    ///         let file = File::create("foo.txt").await?;
+    ///
+    ///         // Writes some prefix of the byte string, not necessarily all of it.
+    ///         let bufs = vec!["some".to_owned().into_bytes(), " bytes".to_owned().into_bytes()];
+    ///         let (res, _) = file.writev_at(bufs, 0).await;
+    ///         let n = res?;
+    ///
+    ///         println!("wrote {} bytes", n);
+    ///
+    ///         // Close the file
+    ///         file.close().await?;
+    ///         Ok(())
+    ///     })
+    /// }
+    /// ```
+    ///
+    /// [`Ok(n)`]: Ok
+    pub async fn writev_at<T: IoBuf>(
+        &self,
+        buf: Vec<T>,
+        pos: u64,
+    ) -> crate::BufResult<usize, Vec<T>> {
+        let op = Op::writev_at(&self.fd, buf, pos).unwrap();
+        op.await
     }
 
     /// Write a buffer into this file at the specified offset, returning how
@@ -227,7 +346,7 @@ impl File {
         pos: u64,
     ) -> crate::BufResult<usize, Slice<T::Buf>> {
         let op = Op::write_at(&self.fd, buf.into_full_slice(), pos).unwrap();
-        op.write().await
+        op.await
     }
 
     /// Attempts to sync all OS-internal metadata to disk.
@@ -259,11 +378,7 @@ impl File {
     /// }
     /// ```
     pub async fn sync_all(&self) -> io::Result<()> {
-        let op = Op::fsync(&self.fd).unwrap();
-        let completion = op.await;
-
-        completion.result?;
-        Ok(())
+        Op::fsync(&self.fd)?.await
     }
 
     /// Attempts to sync file data to disk.
@@ -300,11 +415,7 @@ impl File {
     /// }
     /// ```
     pub async fn sync_data(&self) -> io::Result<()> {
-        let op = Op::datasync(&self.fd).unwrap();
-        let completion = op.await;
-
-        completion.result?;
-        Ok(())
+        Op::datasync(&self.fd)?.await
     }
 
     /// Closes the file.
@@ -338,6 +449,12 @@ impl File {
     }
 }
 
+impl FromRawFd for File {
+    unsafe fn from_raw_fd(fd: RawFd) -> Self {
+        File::from_shared_fd(SharedFd::new(fd))
+    }
+}
+
 impl AsRawFd for File {
     fn as_raw_fd(&self) -> RawFd {
         self.fd.raw_fd()
@@ -368,5 +485,27 @@ impl fmt::Debug for File {
 /// }
 /// ```
 pub async fn remove_file<P: AsRef<Path>>(path: P) -> io::Result<()> {
-    Op::unlink_file(path.as_ref())?.await.result.map(|_| ())
+    Op::unlink_file(path.as_ref())?.await
+}
+
+/// Renames a file or directory to a new name, replacing the original file if
+/// `to` already exists.
+///
+/// This will not work if the new name is on a different mount point.
+///
+/// # Example
+///
+/// ```no_run
+/// use tokio_uring::fs::rename;
+///
+/// fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     tokio_uring::start(async {
+///         rename("a.txt", "b.txt").await?; // Rename a.txt to b.txt
+///         Ok::<(), std::io::Error>(())
+///     })?;
+///     Ok(())
+/// }
+/// ```
+pub async fn rename(from: impl AsRef<Path>, to: impl AsRef<Path>) -> io::Result<()> {
+    Op::rename_at(from.as_ref(), to.as_ref(), 0)?.await
 }

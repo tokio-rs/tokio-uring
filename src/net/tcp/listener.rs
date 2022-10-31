@@ -13,23 +13,28 @@ use std::{io, net::SocketAddr};
 /// use tokio_uring::net::TcpListener;
 /// use tokio_uring::net::TcpStream;
 ///
-/// fn main() {
-///     let listener = TcpListener::bind("127.0.0.1:2345".parse().unwrap()).unwrap();
+/// let listener = TcpListener::bind("127.0.0.1:2345".parse().unwrap()).unwrap();
 ///
-///     tokio_uring::start(async move {
-///         let tx_fut = TcpStream::connect("127.0.0.1:2345".parse().unwrap());
+/// tokio_uring::start(async move {
+///     let (tx_ch, rx_ch) = tokio::sync::oneshot::channel();
 ///
-///         let rx_fut = listener.accept();
-///
-///         let (tx, (rx, _)) = tokio::try_join!(tx_fut, rx_fut).unwrap();
-///
-///         tx.write(b"test" as &'static [u8]).await.0.unwrap();
-///
-///         let (_, buf) = rx.read(vec![0; 4]).await;
-///
-///         assert_eq!(buf.into_inner(), b"test");
+///     tokio_uring::spawn(async move {
+///         let (rx, _) = listener.accept().await.unwrap();
+///         if let Err(_) = tx_ch.send(rx) {
+///             panic!("The receiver dropped");
+///         }
 ///     });
-/// }
+///     tokio::task::yield_now().await; // Ensure the listener.accept().await has been kicked off.
+///
+///     let tx = TcpStream::connect("127.0.0.1:2345".parse().unwrap()).await.unwrap();
+///     let rx = rx_ch.await.expect("The spawned task expected to send a TcpStream");
+///
+///     tx.write(b"test" as &'static [u8]).await.0.unwrap();
+///
+///     let (_, buf) = rx.read(vec![0; 4]).await;
+///
+///     assert_eq!(buf, b"test");
+/// });
 /// ```
 pub struct TcpListener {
     inner: Socket,
@@ -42,13 +47,39 @@ impl TcpListener {
     ///
     /// Binding with a port number of 0 will request that the OS assigns a port
     /// to this listener.
-    ///
-    /// In the future, the port allocated can be queried via a (blocking) `local_addr`
-    /// method.
     pub fn bind(addr: SocketAddr) -> io::Result<Self> {
         let socket = Socket::bind(addr, libc::SOCK_STREAM)?;
         socket.listen(1024)?;
-        return Ok(TcpListener { inner: socket });
+        Ok(TcpListener { inner: socket })
+    }
+
+    /// Returns the local address that this listener is bound to.
+    ///
+    /// This can be useful, for example, when binding to port 0 to
+    /// figure out which port was actually bound.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+    /// use tokio_uring::net::TcpListener;
+    ///
+    /// let listener = TcpListener::bind("127.0.0.1:8080".parse().unwrap()).unwrap();
+    ///
+    /// let addr = listener.local_addr().expect("Couldn't get local address");
+    /// assert_eq!(addr, SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 8080)));
+    /// ```
+    pub fn local_addr(&self) -> io::Result<SocketAddr> {
+        use std::os::unix::io::{AsRawFd, FromRawFd};
+
+        let fd = self.inner.as_raw_fd();
+        // SAFETY: Our fd is the handle the kernel has given us for a TcpListener.
+        // Create a std::net::TcpListener long enough to call its local_addr method
+        // and then forget it so the socket is not closed here.
+        let l = unsafe { std::net::TcpListener::from_raw_fd(fd) };
+        let local_addr = l.local_addr();
+        std::mem::forget(l);
+        local_addr
     }
 
     /// Accepts a new incoming connection from this listener.

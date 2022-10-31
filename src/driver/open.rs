@@ -1,6 +1,7 @@
-use crate::driver::{self, Op};
-use crate::fs::OpenOptions;
+use crate::driver::{self, Op, SharedFd};
+use crate::fs::{File, OpenOptions};
 
+use crate::driver::op::{self, Completable};
 use std::ffi::CString;
 use std::io;
 use std::path::Path;
@@ -17,7 +18,10 @@ impl Op<Open> {
     pub(crate) fn open(path: &Path, options: &OpenOptions) -> io::Result<Op<Open>> {
         use io_uring::{opcode, types};
         let path = driver::util::cstr(path)?;
-        let flags = libc::O_CLOEXEC | options.access_mode()? | options.creation_mode()?;
+        let flags = libc::O_CLOEXEC
+            | options.access_mode()?
+            | options.creation_mode()?
+            | (options.custom_flags & !libc::O_ACCMODE);
 
         Op::submit_with(Open { path, flags }, |open| {
             // Get a reference to the memory. The string will be held by the
@@ -30,5 +34,13 @@ impl Op<Open> {
                 .mode(options.mode)
                 .build()
         })
+    }
+}
+
+impl Completable for Open {
+    type Output = io::Result<File>;
+
+    fn complete(self, cqe: op::CqeResult) -> Self::Output {
+        Ok(File::from_shared_fd(SharedFd::new(cqe.result? as _)))
     }
 }

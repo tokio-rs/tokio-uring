@@ -1,5 +1,5 @@
 use crate::{
-    buf::{IntoSlice, IoBufMut, Slice},
+    buf::{IntoSlice, IoBuf, IoBufMut, Slice},
     driver::{Op, SharedFd},
 };
 use std::{
@@ -12,7 +12,7 @@ use std::{
 #[derive(Clone)]
 pub(crate) struct Socket {
     /// Open file descriptor
-    fd: SharedFd,
+    pub(crate) fd: SharedFd,
 }
 
 pub(crate) fn get_domain(socket_addr: SocketAddr) -> libc::c_int {
@@ -44,7 +44,12 @@ impl Socket {
         buf: T,
     ) -> crate::BufResult<usize, Slice<T::Buf>> {
         let op = Op::write_at(&self.fd, buf.into_full_slice(), 0).unwrap();
-        op.write().await
+        op.await
+    }
+
+    pub async fn writev<T: IoBuf>(&self, buf: Vec<T>) -> crate::BufResult<usize, Vec<T>> {
+        let op = Op::writev_at(&self.fd, buf, 0).unwrap();
+        op.await
     }
 
     pub(crate) async fn send_to<T: IntoSlice>(
@@ -53,7 +58,7 @@ impl Socket {
         socket_addr: SocketAddr,
     ) -> crate::BufResult<usize, Slice<T::Buf>> {
         let op = Op::send_to(&self.fd, buf.into_full_slice(), socket_addr).unwrap();
-        op.send().await
+        op.await
     }
 
     pub(crate) async fn read<T>(&self, buf: T) -> crate::BufResult<usize, Slice<T::Buf>>
@@ -62,7 +67,7 @@ impl Socket {
         T::Buf: IoBufMut,
     {
         let op = Op::read_at(&self.fd, buf.into_full_slice(), 0).unwrap();
-        op.read().await
+        op.await
     }
 
     pub(crate) async fn recv_from<T>(
@@ -74,31 +79,17 @@ impl Socket {
         T::Buf: IoBufMut,
     {
         let op = Op::recv_from(&self.fd, buf.into_full_slice()).unwrap();
-        op.recv().await
+        op.await
     }
 
     pub(crate) async fn accept(&self) -> io::Result<(Socket, Option<SocketAddr>)> {
         let op = Op::accept(&self.fd)?;
-        let completion = op.await;
-        let fd = completion.result?;
-        let fd = SharedFd::new(fd as i32);
-        let data = completion.data;
-        let socket = Socket { fd };
-        let (_, addr) = unsafe {
-            socket2::SockAddr::init(move |addr_storage, len| {
-                *addr_storage = data.socketaddr.0.to_owned();
-                *len = data.socketaddr.1;
-                Ok(())
-            })?
-        };
-        Ok((socket, addr.as_socket()))
+        op.await
     }
 
     pub(crate) async fn connect(&self, socket_addr: socket2::SockAddr) -> io::Result<()> {
         let op = Op::connect(&self.fd, socket_addr)?;
-        let completion = op.await;
-        completion.result?;
-        Ok(())
+        op.await
     }
 
     pub(crate) fn bind(socket_addr: SocketAddr, socket_type: libc::c_int) -> io::Result<Socket> {
@@ -117,13 +108,21 @@ impl Socket {
         Self::bind_internal(addr, libc::AF_UNIX.into(), socket_type.into())
     }
 
+    pub(crate) fn from_std<T: IntoRawFd>(socket: T) -> Socket {
+        let fd = SharedFd::new(socket.into_raw_fd());
+        Self::from_shared_fd(fd)
+    }
+
+    pub(crate) fn from_shared_fd(fd: SharedFd) -> Socket {
+        Self { fd }
+    }
+
     fn bind_internal(
         socket_addr: socket2::SockAddr,
         domain: socket2::Domain,
         socket_type: socket2::Type,
     ) -> io::Result<Socket> {
         let sys_listener = socket2::Socket::new(domain, socket_type, None)?;
-        let addr = socket2::SockAddr::from(socket_addr);
 
         sys_listener.set_reuse_port(true)?;
         sys_listener.set_reuse_address(true)?;
@@ -132,7 +131,7 @@ impl Socket {
         // sys_listener.set_send_buffer_size(send_buf_size)?;
         // sys_listener.set_recv_buffer_size(recv_buf_size)?;
 
-        sys_listener.bind(&addr)?;
+        sys_listener.bind(&socket_addr)?;
 
         let fd = SharedFd::new(sys_listener.into_raw_fd());
 
@@ -142,6 +141,24 @@ impl Socket {
     pub(crate) fn listen(&self, backlog: libc::c_int) -> io::Result<()> {
         syscall!(listen(self.as_raw_fd(), backlog))?;
         Ok(())
+    }
+
+    /// Shuts down the read, write, or both halves of this connection.
+    ///
+    /// This function will cause all pending and future I/O on the specified portions to return
+    /// immediately with an appropriate value.
+    pub fn shutdown(&self, how: std::net::Shutdown) -> io::Result<()> {
+        use std::os::unix::io::FromRawFd;
+
+        let fd = self.as_raw_fd();
+        // SAFETY: Our fd is the handle the kernel has given us for a socket,
+        // TCP or Unix, Listener or Stream, so it is a valid file descriptor/socket.
+        // Create a socket2::Socket long enough to call its shutdown method
+        // and then forget it so the socket is not otherwise dropped here.
+        let s = unsafe { socket2::Socket::from_raw_fd(fd) };
+        let result = s.shutdown(how);
+        std::mem::forget(s);
+        result
     }
 }
 

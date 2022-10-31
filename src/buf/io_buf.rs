@@ -10,7 +10,7 @@
 /// API: [`slice()`]. The method takes ownership of the buffer and returns a
 /// `Slice<Self>` type that tracks the requested range.
 ///
-/// # Implementation notes
+/// # Safety
 ///
 /// Buffers passed to `io-uring` operations must reference a stable memory
 /// region. While the runtime holds ownership to a buffer, the pointer returned

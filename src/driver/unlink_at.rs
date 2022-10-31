@@ -1,5 +1,6 @@
 use crate::driver::{self, Op};
 
+use crate::driver::op::{self, Completable};
 use std::ffi::CString;
 use std::io;
 use std::path::Path;
@@ -35,5 +36,13 @@ impl Op<Unlink> {
                 .flags(flags)
                 .build()
         })
+    }
+}
+
+impl Completable for Unlink {
+    type Output = io::Result<()>;
+
+    fn complete(self, cqe: op::CqeResult) -> Self::Output {
+        cqe.result.map(|_| ())
     }
 }

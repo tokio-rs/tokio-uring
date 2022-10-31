@@ -2,8 +2,8 @@ use crate::buf::{IoBufMut, Slice};
 use crate::driver::{Op, SharedFd};
 use crate::BufResult;
 
+use crate::driver::op::{self, Completable};
 use std::io;
-use std::task::{Context, Poll};
 
 pub(crate) struct Read<T> {
     /// Holds a strong ref to the FD, preventing the file from being closed
@@ -34,21 +34,19 @@ impl<T: IoBufMut> Op<Read<T>> {
             },
         )
     }
+}
 
-    pub(crate) async fn read(mut self) -> BufResult<usize, Slice<T>> {
-        crate::future::poll_fn(move |cx| self.poll_read(cx)).await
-    }
+impl<T> Completable for Read<T>
+where
+    T: IoBufMut,
+{
+    type Output = BufResult<usize, Slice<T>>;
 
-    pub(crate) fn poll_read(&mut self, cx: &mut Context<'_>) -> Poll<BufResult<usize, Slice<T>>> {
-        use std::future::Future;
-        use std::pin::Pin;
-
-        let complete = ready!(Pin::new(self).poll(cx));
-
+    fn complete(self, cqe: op::CqeResult) -> Self::Output {
         // Convert the operation result to `usize`
-        let res = complete.result.map(|v| v as usize);
+        let res = cqe.result.map(|v| v as usize);
         // Recover the buffer
-        let mut buf = complete.data.buf;
+        let mut buf = self.buf;
 
         // If the operation was successful, advance the initialized cursor.
         if let Ok(n) = res {
@@ -58,6 +56,6 @@ impl<T: IoBufMut> Op<Read<T>> {
             }
         }
 
-        Poll::Ready((res, buf))
+        (res, buf)
     }
 }

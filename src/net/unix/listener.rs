@@ -13,25 +13,31 @@ use std::{io, path::Path};
 /// use tokio_uring::net::UnixListener;
 /// use tokio_uring::net::UnixStream;
 ///
-/// fn main() {
-///     let sock_file = "/tmp/tokio-uring-unix-test.sock";
-///     let listener = UnixListener::bind(&sock_file).unwrap();
+/// let sock_file = "/tmp/tokio-uring-unix-test.sock";
+/// let listener = UnixListener::bind(&sock_file).unwrap();
 ///
-///     tokio_uring::start(async move {
-///         let tx_fut = UnixStream::connect(&sock_file);
+/// tokio_uring::start(async move {
+///     let (tx_ch, rx_ch) = tokio::sync::oneshot::channel();
 ///
-///         let rx_fut = listener.accept();
-///
-///         let (tx, rx) = tokio::try_join!(tx_fut, rx_fut).unwrap();
-///
-///         tx.write(b"test" as &'static [u8]).await.0.unwrap();
-///
-///         let (_, buf) = rx.read(vec![0; 4]).await;
-///
-///         assert_eq!(buf.into_inner(), b"test");
+///     tokio_uring::spawn(async move {
+///         let rx = listener.accept().await.unwrap();
+///         if let Err(_) = tx_ch.send(rx) {
+///             panic!("The receiver dropped");
+///         }
 ///     });
-///     std::fs::remove_file(&sock_file);
-/// }
+///     tokio::task::yield_now().await; // Ensure the listener.accept().await has been kicked off.
+///
+///     let tx = UnixStream::connect(&sock_file).await.unwrap();
+///     let rx = rx_ch.await.expect("The spawned task expected to send a UnixStream");
+///
+///     tx.write(b"test" as &'static [u8]).await.0.unwrap();
+///
+///     let (_, buf) = rx.read(vec![0; 4]).await;
+///
+///     assert_eq!(buf, b"test");
+/// });
+///
+/// std::fs::remove_file(&sock_file).unwrap();
 /// ```
 pub struct UnixListener {
     inner: Socket,
@@ -44,6 +50,35 @@ impl UnixListener {
         let socket = Socket::bind_unix(path, libc::SOCK_STREAM)?;
         socket.listen(1024)?;
         Ok(UnixListener { inner: socket })
+    }
+
+    /// Returns the local address that this listener is bound to.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use tokio_uring::net::UnixListener;
+    /// use std::path::Path;
+    ///
+    /// let sock_file = "/tmp/tokio-uring-unix-test.sock";
+    /// let listener = UnixListener::bind(&sock_file).unwrap();
+    ///
+    /// let addr = listener.local_addr().expect("Couldn't get local address");
+    /// assert_eq!(addr.as_pathname(), Some(Path::new(sock_file)));
+    ///
+    /// std::fs::remove_file(&sock_file).unwrap();
+    /// ```
+    pub fn local_addr(&self) -> io::Result<std::os::unix::net::SocketAddr> {
+        use std::os::unix::io::{AsRawFd, FromRawFd};
+
+        let fd = self.inner.as_raw_fd();
+        // SAFETY: Our fd is the handle the kernel has given us for a UnixListener.
+        // Create a std::net::UnixListener long enough to call its local_addr method
+        // and then forget it so the socket is not closed here.
+        let l = unsafe { std::os::unix::net::UnixListener::from_raw_fd(fd) };
+        let local_addr = l.local_addr();
+        std::mem::forget(l);
+        local_addr
     }
 
     /// Accepts a new incoming connection from this listener.

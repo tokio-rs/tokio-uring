@@ -1,9 +1,13 @@
 use crate::{
     buf::{IntoSlice, IoBufMut, Slice},
-    driver::Socket,
+    driver::{SharedFd, Socket},
 };
 use socket2::SockAddr;
-use std::{io, net::SocketAddr};
+use std::{
+    io,
+    net::SocketAddr,
+    os::unix::prelude::{AsRawFd, FromRawFd, RawFd},
+};
 
 /// A UDP socket.
 ///
@@ -92,6 +96,64 @@ impl UdpSocket {
         Ok(UdpSocket { inner: socket })
     }
 
+    /// Creates new `UdpSocket` from a previously bound `std::net::UdpSocket`.
+    ///
+    /// This function is intended to be used to wrap a UDP socket from the
+    /// standard library in the tokio-uring equivalent. The conversion assumes nothing
+    /// about the underlying socket; it is left up to the user to decide what socket
+    /// options are appropriate for their use case.
+    ///
+    /// This can be used in conjunction with socket2's `Socket` interface to
+    /// configure a socket before it's handed off, such as setting options like
+    /// `reuse_address` or binding to multiple addresses.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use socket2::{Protocol, Socket, Type};
+    /// use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+    /// use tokio_uring::net::UdpSocket;
+    ///
+    /// fn main() -> std::io::Result<()> {
+    ///     tokio_uring::start(async {
+    ///         let std_addr: SocketAddr = "127.0.0.1:2401".parse().unwrap();
+    ///         let second_addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();
+    ///         let sock = Socket::new(socket2::Domain::IPV4, Type::DGRAM, Some(Protocol::UDP))?;
+    ///         sock.set_reuse_port(true)?;
+    ///         sock.set_nonblocking(true)?;
+    ///         sock.bind(&std_addr.into())?;
+    ///
+    ///         let std_socket = UdpSocket::from_std(sock.into());
+    ///         let other_socket = UdpSocket::bind(second_addr).await?;
+    ///
+    ///         let buf = vec![0; 32];
+    ///
+    ///         // write data
+    ///         let (result, _) = std_socket
+    ///             .send_to(b"hello world".as_slice(), second_addr)
+    ///             .await;
+    ///         result.unwrap();
+    ///
+    ///         // read data
+    ///         let (result, buf) = other_socket.recv_from(buf).await;
+    ///         let (n_bytes, addr) = result.unwrap();
+    ///
+    ///         assert_eq!(addr, std_addr);
+    ///         assert_eq!(b"hello world", &buf[..n_bytes]);
+    ///
+    ///         Ok(())
+    ///     })
+    /// }
+    /// ```
+    pub fn from_std(socket: std::net::UdpSocket) -> Self {
+        let inner = Socket::from_std(socket);
+        Self { inner }
+    }
+
+    pub(crate) fn from_socket(inner: Socket) -> Self {
+        Self { inner }
+    }
+
     /// Connects this UDP socket to a remote address, allowing the `write` and
     /// `read` syscalls to be used to send data and also applies filters to only
     /// receive data from the specified address.
@@ -137,5 +199,25 @@ impl UdpSocket {
     /// quantity of data written.
     pub async fn write<T: IntoSlice>(&self, buf: T) -> crate::BufResult<usize, Slice<T::Buf>> {
         self.inner.write(buf).await
+    }
+
+    /// Shuts down the read, write, or both halves of this connection.
+    ///
+    /// This function will cause all pending and future I/O on the specified portions to return
+    /// immediately with an appropriate value.
+    pub fn shutdown(&self, how: std::net::Shutdown) -> io::Result<()> {
+        self.inner.shutdown(how)
+    }
+}
+
+impl FromRawFd for UdpSocket {
+    unsafe fn from_raw_fd(fd: RawFd) -> Self {
+        UdpSocket::from_socket(Socket::from_shared_fd(SharedFd::new(fd)))
+    }
+}
+
+impl AsRawFd for UdpSocket {
+    fn as_raw_fd(&self) -> RawFd {
+        self.inner.as_raw_fd()
     }
 }

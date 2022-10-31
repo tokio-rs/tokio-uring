@@ -1,5 +1,6 @@
 use crate::driver::Op;
 
+use crate::driver::op::{self, Completable};
 use std::io;
 use std::os::unix::io::RawFd;
 
@@ -14,5 +15,15 @@ impl Op<Close> {
         Op::try_submit_with(Close { fd }, |close| {
             opcode::Close::new(types::Fd(close.fd)).build()
         })
+    }
+}
+
+impl Completable for Close {
+    type Output = io::Result<()>;
+
+    fn complete(self, cqe: op::CqeResult) -> Self::Output {
+        let _ = cqe.result?;
+
+        Ok(())
     }
 }

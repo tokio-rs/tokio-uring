@@ -1,12 +1,10 @@
+use crate::driver::op::{self, Completable};
 use crate::{
     buf::{IoBuf, Slice},
     driver::{Op, SharedFd},
     BufResult,
 };
-use std::{
-    io,
-    task::{Context, Poll},
-};
+use std::io;
 
 pub(crate) struct Write<T> {
     /// Holds a strong ref to the FD, preventing the file from being closed
@@ -38,18 +36,20 @@ impl<T: IoBuf> Op<Write<T>> {
             },
         )
     }
+}
 
-    pub(crate) async fn write(mut self) -> BufResult<usize, Slice<T>> {
-        use crate::future::poll_fn;
+impl<T> Completable for Write<T>
+where
+    T: IoBuf,
+{
+    type Output = BufResult<usize, Slice<T>>;
 
-        poll_fn(move |cx| self.poll_write(cx)).await
-    }
+    fn complete(self, cqe: op::CqeResult) -> Self::Output {
+        // Convert the operation result to `usize`
+        let res = cqe.result.map(|v| v as usize);
+        // Recover the buffer
+        let buf = self.buf;
 
-    pub(crate) fn poll_write(&mut self, cx: &mut Context<'_>) -> Poll<BufResult<usize, Slice<T>>> {
-        use std::future::Future;
-        use std::pin::Pin;
-
-        let complete = ready!(Pin::new(self).poll(cx));
-        Poll::Ready((complete.result.map(|v| v as _), complete.data.buf))
+        (res, buf)
     }
 }

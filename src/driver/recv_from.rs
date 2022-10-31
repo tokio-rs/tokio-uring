@@ -1,3 +1,4 @@
+use crate::driver::op::{self, Completable};
 use crate::{
     buf::{IoBufMut, Slice},
     driver::{Op, SharedFd},
@@ -6,7 +7,6 @@ use crate::{
 use socket2::SockAddr;
 use std::{
     io::IoSliceMut,
-    task::{Context, Poll},
     {boxed::Box, io, net::SocketAddr},
 };
 
@@ -52,38 +52,33 @@ impl<T: IoBufMut> Op<RecvFrom<T>> {
             },
         )
     }
+}
 
-    pub(crate) async fn recv(mut self) -> BufResult<(usize, SocketAddr), Slice<T>> {
-        use crate::future::poll_fn;
+impl<T> Completable for RecvFrom<T>
+where
+    T: IoBufMut,
+{
+    type Output = BufResult<(usize, SocketAddr), Slice<T>>;
 
-        poll_fn(move |cx| self.poll_recv_from(cx)).await
-    }
-
-    pub(crate) fn poll_recv_from(
-        &mut self,
-        cx: &mut Context<'_>,
-    ) -> Poll<BufResult<(usize, SocketAddr), Slice<T>>> {
-        use std::future::Future;
-        use std::pin::Pin;
-
-        let complete = ready!(Pin::new(self).poll(cx));
-
+    fn complete(self, cqe: op::CqeResult) -> Self::Output {
+        // Convert the operation result to `usize`
+        let res = cqe.result.map(|v| v as usize);
         // Recover the buffer
-        let mut buf = complete.data.buf;
+        let mut buf = self.buf;
 
-        let result = match complete.result {
-            Ok(v) => {
-                let v = v as usize;
-                let socket_addr: Option<SocketAddr> = (*complete.data.socket_addr).as_socket();
-                // If the operation was successful, advance the initialized cursor.
-                // Safety: the kernel wrote `v` bytes to the buffer.
-                unsafe {
-                    buf.set_init(v);
-                }
-                Ok((v, socket_addr.unwrap()))
+        let socket_addr = (*self.socket_addr).as_socket();
+
+        let res = res.map(|n| {
+            let socket_addr: SocketAddr = socket_addr.unwrap();
+
+            // Safety: the kernel wrote `n` bytes to the buffer.
+            unsafe {
+                buf.set_init(n);
             }
-            Err(e) => Err(e),
-        };
-        Poll::Ready((result, buf))
+
+            (n, socket_addr)
+        });
+
+        (res, buf)
     }
 }
