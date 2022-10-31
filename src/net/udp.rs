@@ -177,6 +177,16 @@ impl UdpSocket {
 
     /// Sends data on the socket. Will attempt to do so without intermediate copies.
     /// On success, returns the number of bytes written.
+    ///
+    /// See the linux [kernel docs](https://www.kernel.org/doc/html/latest/networking/msg_zerocopy.html)
+    /// for a discussion on when this might be appropriate. In particular:
+    ///
+    /// > Copy avoidance is not a free lunch. As implemented, with page pinning,
+    /// > it replaces per byte copy cost with page accounting and completion
+    /// > notification overhead. As a result, zero copy is generally only effective
+    /// > at writes over around 10 KB.
+    ///
+    /// Note: Using fixed buffers [#54](https://github.com/tokio-rs/tokio-uring/pull/54), avoids the page-pinning overhead
     pub async fn send_zc<T: IoBuf>(&self, buf: T) -> crate::BufResult<usize, T> {
         self.inner.send_zc(buf).await
     }

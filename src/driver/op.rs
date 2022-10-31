@@ -254,8 +254,8 @@ where
                                 Poll::Pending
                             }
                             Poll::Ready(cqe) => {
-                                me.index = usize::MAX;
                                 driver.ops.remove(me.index);
+                                me.index = usize::MAX;
                                 Poll::Ready(data.complete(cqe))
                             }
                         }
