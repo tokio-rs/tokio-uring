@@ -188,36 +188,24 @@ impl<T: IoBufMut> ops::DerefMut for Slice<T> {
 
 impl<T: IoBuf> Slice<T> {
     /// Returns a raw pointer to the vector’s buffer at the slice offset.
-    ///
-    /// This method is to be used by the `tokio-uring` runtime and it is not
-    /// expected for users to call it directly.
-    pub fn stable_ptr(&self) -> *const u8 {
+    pub(crate) fn stable_ptr(&self) -> *const u8 {
         super::deref(&self.buf)[self.begin..].as_ptr()
     }
 
     /// Number of initialized bytes, counted from the slice's beginning.
-    ///
-    /// This method is to be used by the `tokio-uring` runtime and it is not
-    /// expected for users to call it directly.
-    pub fn bytes_init(&self) -> usize {
+    pub(crate) fn bytes_init(&self) -> usize {
         ops::Deref::deref(self).len()
     }
 
     /// Total size of the slice view, including uninitialized memory, if any.
-    ///
-    /// This method is to be used by the `tokio-uring` runtime and it is not
-    /// expected for users to call it directly.
-    pub fn bytes_total(&self) -> usize {
+    pub(crate) fn bytes_total(&self) -> usize {
         self.end - self.begin
     }
 }
 
 impl<T: IoBufMut> Slice<T> {
     /// Returns a raw mutable pointer to the vector’s buffer at the slice offset.
-    ///
-    /// This method is to be used by the `tokio-uring` runtime and it is not
-    /// expected for users to call it directly.
-    pub fn stable_mut_ptr(&mut self) -> *mut u8 {
+    pub(crate) fn stable_mut_ptr(&mut self) -> *mut u8 {
         super::deref_mut(&mut self.buf)[self.begin..].as_mut_ptr()
     }
 
@@ -232,7 +220,7 @@ impl<T: IoBufMut> Slice<T> {
     ///
     /// The caller must ensure that all bytes starting at `stable_mut_ptr()` up
     /// to `self.begin()` + `pos` are initialized and owned by the buffer.
-    pub unsafe fn set_init(&mut self, pos: usize) {
+    pub(crate) unsafe fn set_init(&mut self, pos: usize) {
         self.buf.set_init(self.begin + pos);
     }
 }
@@ -307,5 +295,30 @@ impl<T: IoBuf> IntoSlice for Slice<T> {
 
     fn into_full_slice(self) -> Slice<T> {
         self
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::IntoSlice;
+    use std::mem;
+
+    #[test]
+    fn can_deref_slice_into_uninit_buf() {
+        let buf = Vec::with_capacity(10).slice(..);
+        let _ = buf.stable_ptr();
+        assert_eq!(buf.bytes_init(), 0);
+        assert_eq!(buf.bytes_total(), 10);
+        assert!(buf[..].is_empty());
+
+        let mut v = Vec::with_capacity(10);
+        v.push(42);
+        let mut buf = v.slice(..);
+        let _ = buf.stable_mut_ptr();
+        assert_eq!(buf.bytes_init(), 1);
+        assert_eq!(buf.bytes_total(), 10);
+        assert_eq!(mem::replace(&mut buf[0], 0), 42);
+        buf.copy_from_slice(&[43]);
+        assert_eq!(&buf[..], &[43]);
     }
 }

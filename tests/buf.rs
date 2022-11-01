@@ -1,6 +1,5 @@
 use tokio_uring::buf::{IntoSlice, IoBuf, IoBufMut, Slice};
 
-use std::mem;
 use std::ops::RangeBounds;
 use std::slice::SliceIndex;
 
@@ -191,23 +190,4 @@ where
 test_slice! {
     vec => Vec::from(DATA);
     slice => DATA;
-}
-
-#[test]
-fn can_deref_slice_into_uninit_buf() {
-    let buf = Vec::with_capacity(10).slice(..);
-    let _ = buf.stable_ptr();
-    assert_eq!(buf.bytes_init(), 0);
-    assert_eq!(buf.bytes_total(), 10);
-    assert!(buf[..].is_empty());
-
-    let mut v = Vec::with_capacity(10);
-    v.push(42);
-    let mut buf = v.slice(..);
-    let _ = buf.stable_mut_ptr();
-    assert_eq!(buf.bytes_init(), 1);
-    assert_eq!(buf.bytes_total(), 10);
-    assert_eq!(mem::replace(&mut buf[0], 0), 42);
-    buf.copy_from_slice(&[43]);
-    assert_eq!(&buf[..], &[43]);
 }
