@@ -77,6 +77,12 @@ impl Driver {
         self.uring.submit_and_wait(1)
     }
 
+    // only used in tests rn
+    #[allow(unused)]
+    fn num_operations(&self) -> usize {
+        self.ops.lifecycle.len()
+    }
+
     pub(crate) fn tick(&mut self) {
         let mut cq = self.uring.completion();
         cq.sync();
