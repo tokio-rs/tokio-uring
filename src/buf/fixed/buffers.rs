@@ -1,15 +1,10 @@
-use crate::runtime::CONTEXT;
-
 use libc::{iovec, UIO_MAXIOV};
-use std::cell::RefCell;
 use std::cmp;
-use std::io;
 use std::mem;
 use std::ptr;
-use std::rc::Rc;
 use std::slice;
 
-pub(crate) struct Buffers {
+pub(crate) struct FixedBuffers {
     raw_vecs: ptr::NonNull<iovec>,
     buf_states: Vec<BufState>,
     orig_cap: usize,
@@ -20,7 +15,7 @@ enum BufState {
     CheckedOut,
 }
 
-impl Buffers {
+impl FixedBuffers {
     pub(crate) fn new(bufs: impl Iterator<Item = Vec<u8>>) -> Self {
         let bufs = bufs.take(cmp::min(UIO_MAXIOV as usize, 65_536));
         let (size_hint, _) = bufs.size_hint();
@@ -40,7 +35,7 @@ impl Buffers {
         let raw_vecs = unsafe { ptr::NonNull::new_unchecked(iovecs.as_mut_ptr()) };
         let orig_cap = iovecs.capacity();
         mem::forget(iovecs);
-        Buffers {
+        FixedBuffers {
             raw_vecs,
             buf_states,
             orig_cap,
@@ -74,14 +69,14 @@ impl Buffers {
         *state = BufState::Free { init_len };
     }
 
-    fn iovecs(&self) -> &[iovec] {
+    pub(crate) fn iovecs(&self) -> &[iovec] {
         // Safety: the raw_vecs pointer is valid for the lifetime of self,
         // the slice length is valid by construction.
         unsafe { slice::from_raw_parts(self.raw_vecs.as_ptr(), self.buf_states.len()) }
     }
 }
 
-impl Drop for Buffers {
+impl Drop for FixedBuffers {
     fn drop(&mut self) {
         let iovecs = unsafe {
             Vec::from_raw_parts(self.raw_vecs.as_ptr(), self.buf_states.len(), self.orig_cap)
@@ -98,35 +93,4 @@ impl Drop for Buffers {
             }
         }
     }
-}
-
-pub(crate) fn register_buffers(buffers: &Rc<RefCell<Buffers>>) -> io::Result<()> {
-    CONTEXT.with(|cx| {
-        cx.with_driver_mut(|driver| {
-            driver
-                .uring
-                .submitter()
-                .register_buffers(buffers.borrow().iovecs())?;
-            driver.buffers = Some(Rc::clone(buffers));
-            Ok(())
-        })
-    })
-}
-
-pub(crate) fn unregister_buffers(buffers: &Rc<RefCell<Buffers>>) -> io::Result<()> {
-    CONTEXT.with(|cx| {
-        cx.with_driver_mut(|driver| {
-            if let Some(currently_registered) = &driver.buffers {
-                if Rc::ptr_eq(buffers, currently_registered) {
-                    driver.uring.submitter().unregister_buffers()?;
-                    driver.buffers = None;
-                    return Ok(());
-                }
-            }
-            Err(io::Error::new(
-                io::ErrorKind::Other,
-                "not currently registered",
-            ))
-        })
-    })
 }

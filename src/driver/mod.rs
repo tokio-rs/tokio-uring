@@ -1,7 +1,7 @@
 mod accept;
 
-mod buffers;
-pub(crate) use buffers::{register_buffers, unregister_buffers, Buffers};
+mod register_buffers;
+pub(crate) use register_buffers::{register_buffers, unregister_buffers};
 
 mod close;
 pub(crate) use close::Close;
@@ -46,6 +46,8 @@ mod write_fixed;
 
 mod writev;
 
+use crate::buf::fixed::FixedBuffers;
+
 use io_uring::IoUring;
 use slab::Slab;
 use std::cell::RefCell;
@@ -61,7 +63,7 @@ pub(crate) struct Driver {
     pub(crate) uring: IoUring,
 
     /// Reference to the currently registered buffers
-    buffers: Option<Rc<RefCell<Buffers>>>,
+    fixed_buffers: Option<Rc<RefCell<FixedBuffers>>>,
 }
 
 struct Ops {
@@ -80,7 +82,7 @@ impl Driver {
         Ok(Driver {
             ops: Ops::new(),
             uring,
-            buffers: None,
+            fixed_buffers: None,
         })
     }
 

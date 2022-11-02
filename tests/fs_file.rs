@@ -6,7 +6,7 @@ use std::{
 
 use tempfile::NamedTempFile;
 
-use tokio_uring::buf::fixed::BufRegistry;
+use tokio_uring::buf::fixed::FixedBufRegistry;
 use tokio_uring::buf::{IoBuf, IoBufMut};
 use tokio_uring::fs::File;
 
@@ -196,7 +196,7 @@ fn read_fixed() {
         let mut tempfile = tempfile();
         tempfile.write_all(HELLO).unwrap();
 
-        let buffers = BufRegistry::new([Vec::with_capacity(6), Vec::with_capacity(1024)]);
+        let buffers = FixedBufRegistry::new([Vec::with_capacity(6), Vec::with_capacity(1024)]);
         buffers.register().unwrap();
 
         let file = File::open(tempfile.path()).await.unwrap();
@@ -226,7 +226,7 @@ fn write_fixed() {
 
         let file = File::create(tempfile.path()).await.unwrap();
 
-        let buffers = BufRegistry::new([Vec::with_capacity(6), Vec::with_capacity(1024)]);
+        let buffers = FixedBufRegistry::new([Vec::with_capacity(6), Vec::with_capacity(1024)]);
         buffers.register().unwrap();
 
         let fixed_buf = buffers.check_out(0).unwrap();
