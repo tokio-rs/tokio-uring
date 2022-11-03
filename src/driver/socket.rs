@@ -1,5 +1,5 @@
 use crate::{
-    buf::{IntoSlice, IoBuf, IoBufMut, Slice},
+    buf::{IoBuf, IoBufMut, Slice},
     driver::{Op, SharedFd},
 };
 use std::{
@@ -39,11 +39,11 @@ impl Socket {
         Ok(Socket { fd })
     }
 
-    pub(crate) async fn write<T: IntoSlice>(
+    pub(crate) async fn write<T: IoBuf>(
         &self,
-        buf: T,
-    ) -> crate::BufResult<usize, Slice<T::Buf>> {
-        let op = Op::write_at(&self.fd, buf.into_full_slice(), 0).unwrap();
+        buf: impl Into<Slice<T>>,
+    ) -> crate::BufResult<usize, Slice<T>> {
+        let op = Op::write_at(&self.fd, buf.into(), 0).unwrap();
         op.await
     }
 
@@ -52,33 +52,28 @@ impl Socket {
         op.await
     }
 
-    pub(crate) async fn send_to<T: IntoSlice>(
+    pub(crate) async fn send_to<T: IoBuf>(
         &self,
-        buf: T,
+        buf: impl Into<Slice<T>>,
         socket_addr: SocketAddr,
-    ) -> crate::BufResult<usize, Slice<T::Buf>> {
-        let op = Op::send_to(&self.fd, buf.into_full_slice(), socket_addr).unwrap();
+    ) -> crate::BufResult<usize, Slice<T>> {
+        let op = Op::send_to(&self.fd, buf.into(), socket_addr).unwrap();
         op.await
     }
 
-    pub(crate) async fn read<T>(&self, buf: T) -> crate::BufResult<usize, Slice<T::Buf>>
-    where
-        T: IntoSlice,
-        T::Buf: IoBufMut,
-    {
-        let op = Op::read_at(&self.fd, buf.into_full_slice(), 0).unwrap();
-        op.await
-    }
-
-    pub(crate) async fn recv_from<T>(
+    pub(crate) async fn read<T: IoBufMut>(
         &self,
-        buf: T,
-    ) -> crate::BufResult<(usize, SocketAddr), Slice<T::Buf>>
-    where
-        T: IntoSlice,
-        T::Buf: IoBufMut,
-    {
-        let op = Op::recv_from(&self.fd, buf.into_full_slice()).unwrap();
+        buf: impl Into<Slice<T>>,
+    ) -> crate::BufResult<usize, Slice<T>> {
+        let op = Op::read_at(&self.fd, buf.into(), 0).unwrap();
+        op.await
+    }
+
+    pub(crate) async fn recv_from<T: IoBufMut>(
+        &self,
+        buf: impl Into<Slice<T>>,
+    ) -> crate::BufResult<(usize, SocketAddr), Slice<T>> {
+        let op = Op::recv_from(&self.fd, buf.into()).unwrap();
         op.await
     }
 

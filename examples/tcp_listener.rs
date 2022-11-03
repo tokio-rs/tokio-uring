@@ -1,6 +1,5 @@
 use std::{env, net::SocketAddr};
 
-use tokio_uring::buf::IntoSlice;
 use tokio_uring::net::TcpListener;
 
 fn main() {

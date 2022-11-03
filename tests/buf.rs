@@ -1,4 +1,4 @@
-use tokio_uring::buf::{IntoSlice, IoBuf, IoBufMut, Slice};
+use tokio_uring::buf::{IoBuf, IoBufMut, Slice};
 
 use std::ops::RangeBounds;
 use std::slice::SliceIndex;

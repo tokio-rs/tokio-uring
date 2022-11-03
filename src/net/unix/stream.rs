@@ -1,5 +1,5 @@
 use crate::{
-    buf::{IntoSlice, IoBuf, IoBufMut, Slice},
+    buf::{IoBuf, IoBufMut, Slice},
     driver::{SharedFd, Socket},
 };
 use socket2::SockAddr;
@@ -73,17 +73,19 @@ impl UnixStream {
 
     /// Read some data from the stream into the buffer, returning the original buffer and
     /// quantity of data read.
-    pub async fn read<T>(&self, buf: T) -> crate::BufResult<usize, Slice<T::Buf>>
-    where
-        T: IntoSlice,
-        T::Buf: IoBufMut,
-    {
+    pub async fn read<T: IoBufMut>(
+        &self,
+        buf: impl Into<Slice<T>>,
+    ) -> crate::BufResult<usize, Slice<T>> {
         self.inner.read(buf).await
     }
 
     /// Write some data to the stream from the buffer, returning the original buffer and
     /// quantity of data written.
-    pub async fn write<T: IntoSlice>(&self, buf: T) -> crate::BufResult<usize, Slice<T::Buf>> {
+    pub async fn write<T: IoBuf>(
+        &self,
+        buf: impl Into<Slice<T>>,
+    ) -> crate::BufResult<usize, Slice<T>> {
         self.inner.write(buf).await
     }
 
@@ -100,9 +102,12 @@ impl UnixStream {
     /// This function will return the first error that [`write`] returns.
     ///
     /// [`write`]: Self::write
-    pub async fn write_all<T: IntoSlice>(&self, buf: T) -> crate::BufResult<(), Slice<T::Buf>> {
+    pub async fn write_all<T: IoBuf>(
+        &self,
+        buf: impl Into<Slice<T>>,
+    ) -> crate::BufResult<(), Slice<T>> {
         // This function is copied from the TcpStream impl.
-        let mut buf = buf.into_full_slice();
+        let mut buf = buf.into();
         let (in_begin, in_end) = (buf.begin(), buf.end());
         while buf.len() > 0 {
             let res = self.write(buf).await;

@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::{
-    buf::{IntoSlice, IoBuf, IoBufMut, Slice},
+    buf::{IoBuf, IoBufMut, Slice},
     driver::{SharedFd, Socket},
 };
 
@@ -71,17 +71,19 @@ impl TcpStream {
 
     /// Read some data from the stream into the buffer, returning the original buffer and
     /// quantity of data read.
-    pub async fn read<T>(&self, buf: T) -> crate::BufResult<usize, Slice<T::Buf>>
-    where
-        T: IntoSlice,
-        T::Buf: IoBufMut,
-    {
+    pub async fn read<T: IoBufMut>(
+        &self,
+        buf: impl Into<Slice<T>>,
+    ) -> crate::BufResult<usize, Slice<T>> {
         self.inner.read(buf).await
     }
 
     /// Write some data to the stream from the buffer, returning the original buffer and
     /// quantity of data written.
-    pub async fn write<T: IntoSlice>(&self, buf: T) -> crate::BufResult<usize, Slice<T::Buf>> {
+    pub async fn write<T: IoBuf>(
+        &self,
+        buf: impl Into<Slice<T>>,
+    ) -> crate::BufResult<usize, Slice<T>> {
         self.inner.write(buf).await
     }
 
@@ -103,7 +105,6 @@ impl TcpStream {
     /// use std::net::SocketAddr;
     /// use tokio_uring::net::TcpListener;
     /// use tokio_uring::buf::IoBuf;
-    /// use tokio_uring::buf::IntoSlice;
     ///
     /// let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
     ///
@@ -135,8 +136,11 @@ impl TcpStream {
     /// ```
     ///
     /// [`write`]: Self::write
-    pub async fn write_all<T: IntoSlice>(&self, buf: T) -> crate::BufResult<(), Slice<T::Buf>> {
-        let mut buf = buf.into_full_slice();
+    pub async fn write_all<T: IoBuf>(
+        &self,
+        buf: impl Into<Slice<T>>,
+    ) -> crate::BufResult<(), Slice<T>> {
+        let mut buf = buf.into();
         let (in_begin, in_end) = (buf.begin(), buf.end());
         while buf.len() > 0 {
             let res = self.write(buf).await;

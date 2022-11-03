@@ -9,14 +9,14 @@ use std::ops;
 /// This type is useful for performing io-uring read and write operations using
 /// a subset of a buffer.
 ///
-/// Slices are created using [`IntoSlice::slice`].
+/// Slices are created using [`IoBuf::slice`] or [`Slice::slice`]
 ///
 /// # Examples
 ///
 /// Creating a slice
 ///
 /// ```
-/// use tokio_uring::buf::IntoSlice;
+/// use tokio_uring::buf::IoBuf;
 ///
 /// let buf = b"hello world".to_vec();
 /// let slice = buf.slice(..5);
@@ -29,52 +29,8 @@ pub struct Slice<T> {
     end: usize,
 }
 
-/// Slicing for I/O buffers.
-///
-/// This trait provides a uniform way to produce owned slices and sub-slices
-/// of buffers used in `io-uring` operations.
-/// Because buffers are passed by ownership to the runtime, Rust's slice API
-/// (`&buf[..]`) cannot be used. Instead, `tokio-uring` provides an owned slice
-/// API: [`slice()`]. The method takes ownership of the buffer and returns a
-/// [`Slice`] type that tracks the requested index range. The `Slice` type
-/// itself implements this trait, converting to another `Slice` with the
-/// specified sub-range.
-///
-/// [`slice()`]: Self::slice
-pub trait IntoSlice: Sized {
-    /// The buffer type underlying the produced slices.
-    type Buf: IoBuf;
-
-    /// Returns a view of the buffer with the specified range.
-    /// The effective range bounds are computed against the potentially offset
-    /// buffer view that this method is called on, which may itself be a slice.
-    ///
-    /// This method is similar to Rust's slicing (`&buf[..]`), but takes
-    /// ownership of the buffer.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use tokio_uring::buf::IntoSlice;
-    ///
-    /// let buf = b"hello world".to_vec();
-    /// buf.slice(5..10);
-    /// ```
-    fn slice(self, range: impl ops::RangeBounds<usize>) -> Slice<Self::Buf>;
-
-    /// Converts the buffer into a [`Slice`] covering its full extent.
-    ///
-    /// This method is used internally by the `io-uring` operations and the
-    /// end user does not need to call it directly.
-    /// The implementation should be equivalent to `self.slice(..)`, but
-    /// can be optimized by skipping range checks.
-    fn into_full_slice(self) -> Slice<Self::Buf> {
-        self.slice(..)
-    }
-}
-
 impl<T> Slice<T> {
-    fn new(buf: T, begin: usize, end: usize) -> Slice<T> {
+    pub(crate) fn new(buf: T, begin: usize, end: usize) -> Slice<T> {
         Slice { buf, begin, end }
     }
 
@@ -83,7 +39,7 @@ impl<T> Slice<T> {
     /// # Examples
     ///
     /// ```
-    /// use tokio_uring::buf::IntoSlice;
+    /// use tokio_uring::buf::IoBuf;
     ///
     /// let buf = b"hello world".to_vec();
     /// let slice = buf.slice(1..5);
@@ -99,7 +55,7 @@ impl<T> Slice<T> {
     /// # Examples
     ///
     /// ```
-    /// use tokio_uring::buf::IntoSlice;
+    /// use tokio_uring::buf::IoBuf;
     ///
     /// let buf = b"hello world".to_vec();
     /// let slice = buf.slice(1..5);
@@ -117,7 +73,7 @@ impl<T> Slice<T> {
     /// # Examples
     ///
     /// ```
-    /// use tokio_uring::buf::IntoSlice;
+    /// use tokio_uring::buf::IoBuf;
     ///
     /// let buf = b"hello world".to_vec();
     /// let slice = buf.slice(..5);
@@ -136,7 +92,7 @@ impl<T> Slice<T> {
     /// # Examples
     ///
     /// ```
-    /// use tokio_uring::buf::IntoSlice;
+    /// use tokio_uring::buf::IoBuf;
     ///
     /// let buf = b"hello world".to_vec();
     /// let mut slice = buf.slice(..5);
@@ -155,7 +111,7 @@ impl<T> Slice<T> {
     /// # Examples
     ///
     /// ```
-    /// use tokio_uring::buf::IntoSlice;
+    /// use tokio_uring::buf::IoBuf;
     ///
     /// let buf = b"hello world".to_vec();
     /// let slice = buf.slice(..5);
@@ -165,6 +121,55 @@ impl<T> Slice<T> {
     /// ```
     pub fn into_inner(self) -> T {
         self.buf
+    }
+}
+
+impl<T: IoBuf> Slice<T> {
+    /// Returns a sub-slice with the specified range.
+    /// The effective range bounds are computed against the potentially offset
+    /// buffer slice that this method is called on.
+    ///
+    /// This method is similar to Rust's slicing (`&buf[..]`), but takes
+    /// ownership of the buffer.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use tokio_uring::buf::IoBuf;
+    ///
+    /// let buf = b"hello world".to_vec();
+    /// let slice = buf.slice(3..);
+    /// assert_eq!(&slice.slice(..2)[..], b"lo");
+    /// ```
+    pub fn slice(self, range: impl ops::RangeBounds<usize>) -> Slice<T> {
+        use core::ops::Bound;
+
+        let begin = match range.start_bound() {
+            Bound::Included(&n) => self.begin.checked_add(n).expect("out of range"),
+            Bound::Excluded(&n) => self
+                .begin
+                .checked_add(n)
+                .and_then(|x| x.checked_add(1))
+                .expect("out of range"),
+            Bound::Unbounded => self.begin,
+        };
+
+        assert!(begin <= self.end);
+
+        let end = match range.end_bound() {
+            Bound::Included(&n) => self
+                .begin
+                .checked_add(n)
+                .and_then(|x| x.checked_add(1))
+                .expect("out of range"),
+            Bound::Excluded(&n) => self.begin.checked_add(n).expect("out of range"),
+            Bound::Unbounded => self.end,
+        };
+
+        assert!(end <= self.end);
+        assert!(begin <= self.buf.bytes_init());
+
+        Slice::new(self.buf, begin, end)
     }
 }
 
@@ -225,82 +230,16 @@ impl<T: IoBufMut> Slice<T> {
     }
 }
 
-impl<T: IoBuf> IntoSlice for T {
-    type Buf = T;
-
-    fn slice(self, range: impl ops::RangeBounds<usize>) -> Slice<T> {
-        use core::ops::Bound;
-
-        let begin = match range.start_bound() {
-            Bound::Included(&n) => n,
-            Bound::Excluded(&n) => n.checked_add(1).expect("out of range"),
-            Bound::Unbounded => 0,
-        };
-
-        let bytes_total = self.bytes_total();
-
-        assert!(begin <= bytes_total);
-
-        let end = match range.end_bound() {
-            Bound::Included(&n) => n.checked_add(1).expect("out of range"),
-            Bound::Excluded(&n) => n,
-            Bound::Unbounded => bytes_total,
-        };
-
-        assert!(end <= bytes_total);
-        assert!(begin <= self.bytes_init());
-
-        Slice::new(self, begin, end)
-    }
-
-    fn into_full_slice(self) -> Slice<T> {
-        let end = self.bytes_total();
-        Slice::new(self, 0, end)
-    }
-}
-
-impl<T: IoBuf> IntoSlice for Slice<T> {
-    type Buf = T;
-
-    fn slice(self, range: impl ops::RangeBounds<usize>) -> Slice<T> {
-        use core::ops::Bound;
-
-        let begin = match range.start_bound() {
-            Bound::Included(&n) => self.begin.checked_add(n).expect("out of range"),
-            Bound::Excluded(&n) => self
-                .begin
-                .checked_add(n)
-                .and_then(|x| x.checked_add(1))
-                .expect("out of range"),
-            Bound::Unbounded => self.begin,
-        };
-
-        assert!(begin <= self.end);
-
-        let end = match range.end_bound() {
-            Bound::Included(&n) => self
-                .begin
-                .checked_add(n)
-                .and_then(|x| x.checked_add(1))
-                .expect("out of range"),
-            Bound::Excluded(&n) => self.begin.checked_add(n).expect("out of range"),
-            Bound::Unbounded => self.end,
-        };
-
-        assert!(end <= self.end);
-        assert!(begin <= self.buf.bytes_init());
-
-        Slice::new(self.buf, begin, end)
-    }
-
-    fn into_full_slice(self) -> Slice<T> {
-        self
+impl<T: IoBuf> From<T> for Slice<T> {
+    fn from(buf: T) -> Self {
+        let end = buf.bytes_total();
+        Slice::new(buf, 0, end)
     }
 }
 
 #[cfg(test)]
 mod test {
-    use super::IntoSlice;
+    use crate::buf::IoBuf;
     use std::mem;
 
     #[test]

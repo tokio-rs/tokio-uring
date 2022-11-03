@@ -1,5 +1,5 @@
 use crate::{
-    buf::{IntoSlice, IoBufMut, Slice},
+    buf::{IoBuf, IoBufMut, Slice},
     driver::{SharedFd, Socket},
 };
 use socket2::SockAddr;
@@ -167,37 +167,38 @@ impl UdpSocket {
 
     /// Sends data on the socket to the given address. On success, returns the
     /// number of bytes written.
-    pub async fn send_to<T: IntoSlice>(
+    pub async fn send_to<T: IoBuf>(
         &self,
-        buf: T,
+        buf: impl Into<Slice<T>>,
         socket_addr: SocketAddr,
-    ) -> crate::BufResult<usize, Slice<T::Buf>> {
+    ) -> crate::BufResult<usize, Slice<T>> {
         self.inner.send_to(buf, socket_addr).await
     }
 
     /// Receives a single datagram message on the socket. On success, returns
     /// the number of bytes read and the origin.
-    pub async fn recv_from<T>(&self, buf: T) -> crate::BufResult<(usize, SocketAddr), Slice<T::Buf>>
-    where
-        T: IntoSlice,
-        T::Buf: IoBufMut,
-    {
+    pub async fn recv_from<T: IoBufMut>(
+        &self,
+        buf: impl Into<Slice<T>>,
+    ) -> crate::BufResult<(usize, SocketAddr), Slice<T>> {
         self.inner.recv_from(buf).await
     }
 
     /// Read a packet of data from the socket into the buffer, returning the original buffer and
     /// quantity of data read.
-    pub async fn read<T>(&self, buf: T) -> crate::BufResult<usize, Slice<T::Buf>>
-    where
-        T: IntoSlice,
-        T::Buf: IoBufMut,
-    {
+    pub async fn read<T: IoBufMut>(
+        &self,
+        buf: impl Into<Slice<T>>,
+    ) -> crate::BufResult<usize, Slice<T>> {
         self.inner.read(buf).await
     }
 
     /// Write some data to the socket from the buffer, returning the original buffer and
     /// quantity of data written.
-    pub async fn write<T: IntoSlice>(&self, buf: T) -> crate::BufResult<usize, Slice<T::Buf>> {
+    pub async fn write<T: IoBuf>(
+        &self,
+        buf: impl Into<Slice<T>>,
+    ) -> crate::BufResult<usize, Slice<T>> {
         self.inner.write(buf).await
     }
 
