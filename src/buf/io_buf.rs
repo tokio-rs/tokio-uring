@@ -5,7 +5,8 @@ use std::ops;
 /// An `io-uring` compatible buffer.
 ///
 /// The `IoBuf` trait is implemented by buffer types that can be passed to
-/// io-uring operations. Users will not need to use this trait directly.
+/// io-uring operations. Users will not need to use this trait directly, except
+/// for the [`slice`] method.
 ///
 /// # Slicing
 ///
