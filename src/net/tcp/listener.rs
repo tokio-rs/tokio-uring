@@ -33,7 +33,7 @@ use std::{io, net::SocketAddr};
 ///
 ///     let (_, slice) = rx.read(vec![0; 4]).await;
 ///
-///     assert_eq!(slice.to_vec(), b"test");
+///     assert_eq!(&slice[..], b"test");
 /// });
 /// ```
 pub struct TcpListener {
