@@ -9,7 +9,11 @@ use std::ops;
 /// This type is useful for performing io-uring read and write operations using
 /// a subset of a buffer.
 ///
-/// Slices are created using [`IoBuf::slice`] or [`Slice::slice`]
+/// Slices are created using [`IoBuf::slice`] or [`Slice::slice`]. Also, any
+/// buffer implementing [`IoBuf`] can be converted into a `Slice` covering
+/// its full contents with the standard `From`/`Into` conversion. This is
+/// used in generic parameters of I/O operation methods, which can take both
+/// plain buffer objects as well as slices.
 ///
 /// # Examples
 ///
@@ -128,6 +132,7 @@ impl<T: IoBuf> Slice<T> {
     /// Returns a sub-slice with the specified range.
     /// The effective range bounds are computed against the potentially offset
     /// buffer slice that this method is called on.
+    /// The underlying buffer of `self` is moved into the returned sub-slice.
     ///
     /// This method is similar to Rust's slicing (`&buf[..]`), but takes
     /// ownership of the buffer.
@@ -138,8 +143,10 @@ impl<T: IoBuf> Slice<T> {
     /// use tokio_uring::buf::IoBuf;
     ///
     /// let buf = b"hello world".to_vec();
-    /// let slice = buf.slice(3..);
-    /// assert_eq!(&slice.slice(..2)[..], b"lo");
+    /// let slice = buf.slice(3..).slice(..2);
+    /// assert_eq!(&slice[..], b"lo");
+    /// let buf = slice.into_inner();
+    /// assert_eq!(buf, b"hello world");
     /// ```
     pub fn slice(self, range: impl ops::RangeBounds<usize>) -> Slice<T> {
         use core::ops::Bound;

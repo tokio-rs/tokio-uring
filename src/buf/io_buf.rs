@@ -12,7 +12,7 @@ use std::ops;
 ///
 /// Because buffers are passed by ownership to the runtime, Rust's slice API
 /// (`&buf[..]`) cannot be used. Instead, `tokio-uring` provides an owned slice
-/// API: [`slice()`]. The method takes ownership of the buffer and returns a
+/// API: [`slice`]. The method takes ownership of the buffer and returns a
 /// `Slice<Self>` type that tracks the requested range.
 ///
 /// # Safety
@@ -21,7 +21,7 @@ use std::ops;
 /// region. While the runtime holds ownership to a buffer, the pointer returned
 /// by `stable_ptr` must remain valid even if the `IoBuf` value is moved.
 ///
-/// [`slice()`]: IoBuf::slice
+/// [`slice`]: IoBuf::slice
 pub unsafe trait IoBuf: Unpin + 'static {
     /// Returns a raw pointer to the vector’s buffer.
     ///
