@@ -196,14 +196,23 @@ impl Drop for Driver {
             }
             // Cycles are either all ignored or complete
             // If there is at least one Ignored still to process, call wait
-            if let Some(Lifecycle::Ignored(..)) = self.ops.lifecycle.get(id) {
-                // If waiting fails, ignore the error. The wait will be attempted
-                // again on the next loop.
-                let _ = self.wait();
-                self.tick();
-            } else {
-                id += 1;
-            };
+            match self.ops.lifecycle.get(id) {
+                Some(Lifecycle::Ignored(..)) => {
+                    // If waiting fails, ignore the error. The wait will be attempted
+                    // again on the next loop.
+                    let _ = self.wait();
+                    self.tick();
+                }
+
+                Some(_) => {
+                    let _ = self.ops.lifecycle.remove(id);
+                    id += 1;
+                }
+
+                None => {
+                    id += 1;
+                }
+            }
         }
     }
 }
