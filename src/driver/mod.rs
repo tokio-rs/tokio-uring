@@ -145,10 +145,39 @@ impl Drop for Driver {
 
         // pre-determine what to cancel
         let mut cancellable_ops = Vec::new();
-        for (id, cycle) in self.ops.lifecycle.iter() {
-            // don't cancel completed items
-            if !matches!(cycle, Lifecycle::Completed(_)) {
-                cancellable_ops.push(id);
+
+        let Ops {
+            lifecycle,
+            completions,
+        } = &mut self.ops;
+
+        for (id, cycle) in lifecycle.iter_mut() {
+            match cycle {
+                Lifecycle::Completed(_) => {
+                    // don't cancel completed items
+                }
+
+                Lifecycle::CompletionList(indices) => {
+                    let mut list = indices.clone().into_list(completions);
+                    if io_uring::cqueue::more(list.peek_end().unwrap().flags) {
+                        // If the completion list is not finished,
+                        // mark for cancellation, and mark the lifecycle as ignored
+                        cancellable_ops.push(id);
+                        *cycle = Lifecycle::Ignored(Box::new(()));
+                        // Dropping the list here deallocates the unconsumed cqe slab entries
+                    } else {
+                        // This op is complete. Replace with a null Completed entry
+                        *cycle = Lifecycle::Completed(op::CqeResult {
+                            result: Ok(0),
+                            flags: 0,
+                        });
+                    }
+                }
+
+                _ => {
+                    // All other states need cancelling
+                    cancellable_ops.push(id)
+                }
             }
         }
 
@@ -166,8 +195,6 @@ impl Drop for Driver {
             }
         }
 
-        // TODO: add a way to know if a multishot op is done sending completions
-        // SAFETY: this is currently unsound for multishot ops
         while !self
             .ops
             .lifecycle
