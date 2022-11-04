@@ -47,7 +47,8 @@ mod write_fixed;
 mod writev;
 
 use crate::buf::fixed::FixedBuffers;
-
+use crate::driver::op::Lifecycle;
+use io_uring::opcode::AsyncCancel;
 use io_uring::IoUring;
 use slab::Slab;
 use std::cell::RefCell;
@@ -90,6 +91,8 @@ impl Driver {
         self.uring.submit_and_wait(1)
     }
 
+    // only used in tests rn
+    #[allow(unused)]
     fn num_operations(&self) -> usize {
         self.ops.lifecycle.len()
     }
@@ -122,9 +125,10 @@ impl Driver {
                 Err(ref e) if e.raw_os_error() == Some(libc::EBUSY) => {
                     self.tick();
                 }
-                Err(e) => {
+                Err(e) if e.raw_os_error() != Some(libc::EINTR) => {
                     return Err(e);
                 }
+                _ => continue,
             }
         }
     }
@@ -136,9 +140,54 @@ impl AsRawFd for Driver {
     }
 }
 
+/// Drop the driver, cancelling any in-progress ops and waiting for them to terminate.
+///
+/// This first cancels all ops and then waits for them to be moved to the completed lifecycle phase.
+///
+/// It is possible for this to be run without previously dropping the runtime, but this should only
+/// be possible in the case of [`std::process::exit`].
+///
+/// This depends on us knowing when ops are completed and done firing.
+/// When multishot ops are added (support exists but none are implemented), a way to know if such
+/// an op is finished MUST be added, otherwise our shutdown process is unsound.
 impl Drop for Driver {
     fn drop(&mut self) {
-        while self.num_operations() > 0 {
+        // get all ops in flight for cancellation
+        while !self.uring.submission().is_empty() {
+            self.submit().expect("Internal error when dropping driver");
+        }
+
+        // pre-determine what to cancel
+        let mut cancellable_ops = Vec::new();
+        for (id, cycle) in self.ops.lifecycle.iter() {
+            // don't cancel completed items
+            if !matches!(cycle, Lifecycle::Completed(_)) {
+                cancellable_ops.push(id);
+            }
+        }
+
+        // cancel all ops
+        for id in cancellable_ops {
+            unsafe {
+                while self
+                    .uring
+                    .submission()
+                    .push(&AsyncCancel::new(id as u64).build().user_data(u64::MAX))
+                    .is_err()
+                {
+                    self.submit().expect("Internal error when dropping driver");
+                }
+            }
+        }
+
+        // TODO: add a way to know if a multishot op is done sending completions
+        // SAFETY: this is currently unsound for multishot ops
+        while !self
+            .ops
+            .lifecycle
+            .iter()
+            .all(|(_, cycle)| matches!(cycle, Lifecycle::Completed(_)))
+        {
             // If waiting fails, ignore the error. The wait will be attempted
             // again on the next loop.
             let _ = self.wait();
@@ -182,7 +231,9 @@ impl Ops {
 
 impl Drop for Ops {
     fn drop(&mut self) {
-        assert!(self.lifecycle.is_empty());
-        assert!(self.completions.is_empty());
+        assert!(self
+            .lifecycle
+            .iter()
+            .all(|(_, cycle)| matches!(cycle, Lifecycle::Completed(_))))
     }
 }
