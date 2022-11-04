@@ -23,6 +23,14 @@ pub struct FixedBuf {
 impl Drop for FixedBuf {
     fn drop(&mut self) {
         let mut registry = self.registry.borrow_mut();
+        debug_assert_eq!(
+            registry.iovecs()[self.index as usize].iov_base as *const u8,
+            self.buf.as_ptr()
+        );
+        debug_assert_eq!(
+            registry.iovecs()[self.index as usize].iov_len,
+            self.buf.capacity()
+        );
         registry.check_in(self.index as usize, self.buf.len());
     }
 }
