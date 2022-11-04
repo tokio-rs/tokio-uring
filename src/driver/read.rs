@@ -3,7 +3,7 @@ use crate::driver::{Op, SharedFd};
 use crate::BufResult;
 
 use crate::driver::op::{self, Completable};
-use std::io;
+
 
 pub(crate) struct Read<T> {
     /// Holds a strong ref to the FD, preventing the file from being closed

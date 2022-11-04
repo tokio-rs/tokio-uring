@@ -4,7 +4,7 @@ use crate::BufResult;
 
 use crate::driver::op::{self, Completable};
 use libc::iovec;
-use std::io;
+
 
 pub(crate) struct Readv<T> {
     /// Holds a strong ref to the FD, preventing the file from being closed

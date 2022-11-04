@@ -11,7 +11,7 @@ mod slab_list;
 use slab::Slab;
 use slab_list::{SlabListEntry, SlabListIndices};
 
-use crate::driver;
+
 use crate::runtime::CONTEXT;
 use crate::util::PhantomUnsendUnsync;
 
@@ -93,7 +93,7 @@ where
     /// Create a new operation
     fn new(data: T, index: usize) -> Self {
         Op {
-            index: index,
+            index,
             data: Some(data),
             _cqe_type: PhantomData,
             _phantom: PhantomData,
@@ -118,7 +118,7 @@ where
 
                 // Create a pending entry for Op
                 // Create the operation
-                let mut op = Op::new(data, entry.key());
+                let op = Op::new(data, entry.key());
                 entry.insert(Lifecycle::Pending(sqe));
 
                 op

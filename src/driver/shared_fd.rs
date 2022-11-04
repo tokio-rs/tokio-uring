@@ -63,7 +63,7 @@ impl SharedFd {
             inner.submit_close_op();
         }
 
-        if let Err(e) = self.inner.closed().await {
+        if let Err(_e) = self.inner.closed().await {
             // Submitting the operation failed, we fall back on a
             // synchronous `close`. This is safe as, at this point, we
             // guarantee all in-flight operations have completed. The most
