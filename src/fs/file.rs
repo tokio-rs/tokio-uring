@@ -292,10 +292,10 @@ impl File {
     }
 
     /// Like [`read_at`], but using a pre-mapped buffer
-    /// registered with [`BufRegistry`].
+    /// registered with [`FixedBufRegistry`].
     ///
     /// [`read_at`]: Self::read_at
-    /// [`BufRegistry`]: crate::buf::fixed::BufRegistry
+    /// [`FixedBufRegistry`]: crate::buf::fixed::FixedBufRegistry
     ///
     /// # Errors
     ///
@@ -308,12 +308,12 @@ impl File {
     /// ```no_run
     ///# fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// use tokio_uring::fs::File;
-    /// use tokio_uring::buf::fixed::BufRegistry;
+    /// use tokio_uring::buf::fixed::FixedBufRegistry;
     /// use tokio_uring::buf::IoBuf;
     /// use std::iter;
     ///
     /// tokio_uring::start(async {
-    ///     let registry = BufRegistry::new(iter::repeat(vec![0; 10]).take(10));
+    ///     let registry = FixedBufRegistry::new(iter::repeat(vec![0; 10]).take(10));
     ///     registry.register()?;
     ///
     ///     let f = File::open("foo.txt").await?;
@@ -393,10 +393,10 @@ impl File {
     }
 
     /// Like [`write_at`], but using a pre-mapped buffer
-    /// registered with [`BufRegistry`].
+    /// registered with [`FixedBufRegistry`].
     ///
     /// [`write_at`]: Self::write_at
-    /// [`BufRegistry`]: crate::buf::fixed::BufRegistry
+    /// [`FixedBufRegistry`]: crate::buf::fixed::FixedBufRegistry
     ///
     /// # Errors
     ///
@@ -409,11 +409,11 @@ impl File {
     /// ```no_run
     ///# fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// use tokio_uring::fs::File;
-    /// use tokio_uring::buf::fixed::BufRegistry;
+    /// use tokio_uring::buf::fixed::FixedBufRegistry;
     /// use tokio_uring::buf::IoBuf;
     ///
     /// tokio_uring::start(async {
-    ///     let registry = BufRegistry::new([b"some bytes".to_vec()]);
+    ///     let registry = FixedBufRegistry::new([b"some bytes".to_vec()]);
     ///     registry.register()?;
     ///
     ///     let file = File::create("foo.txt").await?;

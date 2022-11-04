@@ -4,7 +4,7 @@
 //! the `tokio-uring` runtime. Operations like [`File::read_fixed_at`][rfa] and
 //! [`File::write_fixed_at`][wfa] make use of buffers pre-mapped by
 //! the kernel to reduce per-I/O overhead.
-//! The [`BufRegistry::register`] method is used to register a collection of
+//! The [`FixedBufRegistry::register`] method is used to register a collection of
 //! buffers with the kernel; it must be called before any of the [`FixedBuf`]
 //! handles to the collection's buffers can be used with I/O operations.
 //!

@@ -9,7 +9,7 @@ use std::rc::Rc;
 /// A unique handle to a memory buffer that can be pre-registered with
 /// the kernel for `io-uring` operations.
 ///
-/// `FixedBuf` handles can be obtained from a [`BufRegistry`] collection.
+/// `FixedBuf` handles can be obtained from a [`FixedBufRegistry`] collection.
 /// For each buffer, only a single `FixedBuf` handle can be either used by the
 /// application code or owned by an I/O operation at any given time,
 /// thus avoiding data races between `io-uring` operations in flight and
