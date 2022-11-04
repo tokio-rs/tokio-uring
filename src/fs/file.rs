@@ -175,7 +175,7 @@ impl File {
     /// ```
     pub async fn read_at<T: IoBufMut>(&self, buf: T, pos: u64) -> crate::BufResult<usize, T> {
         // Submit the read operation
-        let op = Op::read_at(&self.fd, buf, pos).unwrap();
+        let op = Op::read_at(&self.fd, buf, pos);
         op.await
     }
 
@@ -230,7 +230,7 @@ impl File {
         pos: u64,
     ) -> crate::BufResult<usize, Vec<T>> {
         // Submit the read operation
-        let op = Op::readv_at(&self.fd, bufs, pos).unwrap();
+        let op = Op::readv_at(&self.fd, bufs, pos);
         op.await
     }
 
@@ -286,7 +286,7 @@ impl File {
         buf: Vec<T>,
         pos: u64,
     ) -> crate::BufResult<usize, Vec<T>> {
-        let op = Op::writev_at(&self.fd, buf, pos).unwrap();
+        let op = Op::writev_at(&self.fd, buf, pos);
         op.await
     }
 
@@ -337,7 +337,7 @@ impl File {
     ///
     /// [`Ok(n)`]: Ok
     pub async fn write_at<T: IoBuf>(&self, buf: T, pos: u64) -> crate::BufResult<usize, T> {
-        let op = Op::write_at(&self.fd, buf, pos).unwrap();
+        let op = Op::write_at(&self.fd, buf, pos);
         op.await
     }
 
@@ -370,7 +370,7 @@ impl File {
     /// }
     /// ```
     pub async fn sync_all(&self) -> io::Result<()> {
-        Op::fsync(&self.fd)?.await
+        Op::fsync(&self.fd).await
     }
 
     /// Attempts to sync file data to disk.
@@ -407,7 +407,7 @@ impl File {
     /// }
     /// ```
     pub async fn sync_data(&self) -> io::Result<()> {
-        Op::datasync(&self.fd)?.await
+        Op::datasync(&self.fd).await
     }
 
     /// Closes the file.

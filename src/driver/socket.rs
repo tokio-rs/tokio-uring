@@ -40,12 +40,12 @@ impl Socket {
     }
 
     pub(crate) async fn write<T: IoBuf>(&self, buf: T) -> crate::BufResult<usize, T> {
-        let op = Op::write_at(&self.fd, buf, 0).unwrap();
+        let op = Op::write_at(&self.fd, buf, 0);
         op.await
     }
 
     pub async fn writev<T: IoBuf>(&self, buf: Vec<T>) -> crate::BufResult<usize, Vec<T>> {
-        let op = Op::writev_at(&self.fd, buf, 0).unwrap();
+        let op = Op::writev_at(&self.fd, buf, 0);
         op.await
     }
 
@@ -54,12 +54,12 @@ impl Socket {
         buf: T,
         socket_addr: SocketAddr,
     ) -> crate::BufResult<usize, T> {
-        let op = Op::send_to(&self.fd, buf, socket_addr).unwrap();
+        let op = Op::send_to(&self.fd, buf, socket_addr);
         op.await
     }
 
     pub(crate) async fn read<T: IoBufMut>(&self, buf: T) -> crate::BufResult<usize, T> {
-        let op = Op::read_at(&self.fd, buf, 0).unwrap();
+        let op = Op::read_at(&self.fd, buf, 0);
         op.await
     }
 
@@ -72,12 +72,12 @@ impl Socket {
     }
 
     pub(crate) async fn accept(&self) -> io::Result<(Socket, Option<SocketAddr>)> {
-        let op = Op::accept(&self.fd)?;
+        let op = Op::accept(&self.fd);
         op.await
     }
 
     pub(crate) async fn connect(&self, socket_addr: socket2::SockAddr) -> io::Result<()> {
-        let op = Op::connect(&self.fd, socket_addr)?;
+        let op = Op::connect(&self.fd, socket_addr);
         op.await
     }
 

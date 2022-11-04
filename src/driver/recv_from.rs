@@ -35,7 +35,7 @@ impl<T: IoBufMut> Op<RecvFrom<T>> {
         msghdr.msg_name = socket_addr.as_ptr() as *mut libc::c_void;
         msghdr.msg_namelen = socket_addr.len();
 
-        Op::submit_with(
+        Ok(Op::submit_with(
             RecvFrom {
                 fd: fd.clone(),
                 buf,
@@ -50,7 +50,7 @@ impl<T: IoBufMut> Op<RecvFrom<T>> {
                 )
                 .build()
             },
-        )
+        ))
     }
 }
 

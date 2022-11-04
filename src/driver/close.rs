@@ -9,10 +9,10 @@ pub(crate) struct Close {
 }
 
 impl Op<Close> {
-    pub(crate) fn close(fd: RawFd) -> io::Result<Op<Close>> {
+    pub(crate) fn close(fd: RawFd) -> Op<Close> {
         use io_uring::{opcode, types};
 
-        Op::try_submit_with(Close { fd }, |close| {
+        Op::submit_with(Close { fd }, |close| {
             opcode::Close::new(types::Fd(close.fd)).build()
         })
     }

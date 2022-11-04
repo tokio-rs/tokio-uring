@@ -4,7 +4,6 @@ use crate::{
     driver::{Op, SharedFd},
     BufResult,
 };
-use std::io;
 
 pub(crate) struct Write<T> {
     /// Holds a strong ref to the FD, preventing the file from being closed
@@ -16,7 +15,7 @@ pub(crate) struct Write<T> {
 }
 
 impl<T: IoBuf> Op<Write<T>> {
-    pub(crate) fn write_at(fd: &SharedFd, buf: T, offset: u64) -> io::Result<Op<Write<T>>> {
+    pub(crate) fn write_at(fd: &SharedFd, buf: T, offset: u64) -> Op<Write<T>> {
         use io_uring::{opcode, types};
 
         Op::submit_with(

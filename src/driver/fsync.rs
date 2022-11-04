@@ -10,13 +10,13 @@ pub(crate) struct Fsync {
 }
 
 impl Op<Fsync> {
-    pub(crate) fn fsync(fd: &SharedFd) -> io::Result<Op<Fsync>> {
+    pub(crate) fn fsync(fd: &SharedFd) -> Op<Fsync> {
         Op::submit_with(Fsync { fd: fd.clone() }, |fsync| {
             opcode::Fsync::new(types::Fd(fsync.fd.raw_fd())).build()
         })
     }
 
-    pub(crate) fn datasync(fd: &SharedFd) -> io::Result<Op<Fsync>> {
+    pub(crate) fn datasync(fd: &SharedFd) -> Op<Fsync> {
         Op::submit_with(Fsync { fd: fd.clone() }, |fsync| {
             opcode::Fsync::new(types::Fd(fsync.fd.raw_fd()))
                 .flags(types::FsyncFlags::DATASYNC)

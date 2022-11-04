@@ -4,7 +4,7 @@ use crate::driver::{Op, SharedFd};
 use crate::BufResult;
 use socket2::SockAddr;
 use std::io::IoSlice;
-use std::{boxed::Box, io, net::SocketAddr};
+use std::{boxed::Box, net::SocketAddr};
 
 pub(crate) struct SendTo<T> {
     #[allow(dead_code)]
@@ -22,7 +22,7 @@ impl<T: IoBuf> Op<SendTo<T>> {
         fd: &SharedFd,
         buf: T,
         socket_addr: SocketAddr,
-    ) -> io::Result<Op<SendTo<T>>> {
+    ) -> Op<SendTo<T>> {
         use io_uring::{opcode, types};
 
         let io_slices = vec![IoSlice::new(unsafe {

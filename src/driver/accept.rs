@@ -9,7 +9,7 @@ pub(crate) struct Accept {
 }
 
 impl Op<Accept> {
-    pub(crate) fn accept(fd: &SharedFd) -> io::Result<Op<Accept>> {
+    pub(crate) fn accept(fd: &SharedFd) -> Op<Accept> {
         use io_uring::{opcode, types};
 
         let socketaddr = Box::new((

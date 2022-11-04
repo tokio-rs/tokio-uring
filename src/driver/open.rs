@@ -23,7 +23,7 @@ impl Op<Open> {
             | options.creation_mode()?
             | (options.custom_flags & !libc::O_ACCMODE);
 
-        Op::submit_with(Open { path, flags }, |open| {
+        Ok(Op::submit_with(Open { path, flags }, |open| {
             // Get a reference to the memory. The string will be held by the
             // operation state and will not be accessed again until the operation
             // completes.
@@ -33,7 +33,7 @@ impl Op<Open> {
                 .flags(flags)
                 .mode(options.mode)
                 .build()
-        })
+        }))
     }
 }
 

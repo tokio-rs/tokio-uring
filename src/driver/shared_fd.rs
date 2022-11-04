@@ -1,7 +1,7 @@
 use crate::driver::{Close, Op};
 use crate::future::poll_fn;
 
-use std::cell::RefCell;
+use std::{cell::RefCell, io};
 use std::os::unix::io::{FromRawFd, RawFd};
 use std::rc::Rc;
 use std::task::Waker;
@@ -63,7 +63,19 @@ impl SharedFd {
             inner.submit_close_op();
         }
 
-        self.inner.closed().await;
+        if let Err(e) = self.inner.closed().await {
+            // Submitting the operation failed, we fall back on a
+            // synchronous `close`. This is safe as, at this point, we
+            // guarantee all in-flight operations have completed. The most
+            // common cause for an error is attempting to close the FD while
+            // off runtime.
+            //
+            // This is done by initializing a `File` with the FD and
+            // dropping it.
+            //
+            // TODO: Should we warn?
+            let _ = unsafe { std::fs::File::from_raw_fd(self.inner.fd) };
+        }
     }
 }
 
@@ -74,28 +86,11 @@ impl Inner {
         let state = RefCell::get_mut(&mut self.state);
 
         // Submit a close operation
-        *state = match Op::close(self.fd) {
-            Ok(op) => State::Closing(op),
-            Err(_) => {
-                // Submitting the operation failed, we fall back on a
-                // synchronous `close`. This is safe as, at this point, we
-                // guarantee all in-flight operations have completed. The most
-                // common cause for an error is attempting to close the FD while
-                // off runtime.
-                //
-                // This is done by initializing a `File` with the FD and
-                // dropping it.
-                //
-                // TODO: Should we warn?
-                let _ = unsafe { std::fs::File::from_raw_fd(self.fd) };
-
-                State::Closed
-            }
-        };
+        *state = State::Closing(Op::close(self.fd));
     }
 
     /// Completes when the FD has been closed.
-    async fn closed(&self) {
+    async fn closed(&self) -> io::Result<()> {
         use std::future::Future;
         use std::pin::Pin;
         use std::task::Poll;
@@ -120,15 +115,14 @@ impl Inner {
                     Poll::Pending
                 }
                 State::Closing(op) => {
-                    // Nothing to do if the close opeation failed.
-                    let _ = ready!(Pin::new(op).poll(cx));
+                    let r = ready!(Pin::new(op).poll(cx));
                     *state = State::Closed;
-                    Poll::Ready(())
+                    Poll::Ready(r)
                 }
-                State::Closed => Poll::Ready(()),
+                State::Closed => Poll::Ready(Ok(())),
             }
         })
-        .await;
+        .await
     }
 }
 

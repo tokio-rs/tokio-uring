@@ -27,7 +27,7 @@ impl Op<Unlink> {
 
         let path = driver::util::cstr(path)?;
 
-        Op::submit_with(Unlink { path }, |unlink| {
+        Ok(Op::submit_with(Unlink { path }, |unlink| {
             // Get a reference to the memory. The string will be held by the
             // operation state and will not be accessed again until the operation
             // completes.
@@ -35,7 +35,7 @@ impl Op<Unlink> {
             opcode::UnlinkAt::new(types::Fd(libc::AT_FDCWD), p_ref)
                 .flags(flags)
                 .build()
-        })
+        }))
     }
 }
 

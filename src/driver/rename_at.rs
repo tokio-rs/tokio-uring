@@ -23,7 +23,7 @@ impl Op<RenameAt> {
         let from = driver::util::cstr(from)?;
         let to = driver::util::cstr(to)?;
 
-        Op::submit_with(RenameAt { from, to }, |rename| {
+        Ok(Op::submit_with(RenameAt { from, to }, |rename| {
             // Get a reference to the memory. The string will be held by the
             // operation state and will not be accessed again until the operation
             // completes.
@@ -37,7 +37,7 @@ impl Op<RenameAt> {
             )
             .flags(flags)
             .build()
-        })
+        }))
     }
 }
 

@@ -23,7 +23,7 @@ impl<T: IoBufMut> Op<Readv<T>> {
         fd: &SharedFd,
         mut bufs: Vec<T>,
         offset: u64,
-    ) -> io::Result<Op<Readv<T>>> {
+    ) -> Op<Readv<T>> {
         use io_uring::{opcode, types};
 
         // Build `iovec` objects referring the provided `bufs` for `io_uring::opcode::Readv`.

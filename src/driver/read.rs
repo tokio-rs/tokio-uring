@@ -16,7 +16,7 @@ pub(crate) struct Read<T> {
 }
 
 impl<T: IoBufMut> Op<Read<T>> {
-    pub(crate) fn read_at(fd: &SharedFd, buf: T, offset: u64) -> io::Result<Op<Read<T>>> {
+    pub(crate) fn read_at(fd: &SharedFd, buf: T, offset: u64) -> Op<Read<T>> {
         use io_uring::{opcode, types};
 
         Op::submit_with(

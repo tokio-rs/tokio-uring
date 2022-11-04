@@ -13,7 +13,7 @@ pub(crate) struct Connect {
 
 impl Op<Connect> {
     /// Submit a request to connect.
-    pub(crate) fn connect(fd: &SharedFd, socket_addr: SockAddr) -> io::Result<Op<Connect>> {
+    pub(crate) fn connect(fd: &SharedFd, socket_addr: SockAddr) -> Op<Connect> {
         use io_uring::{opcode, types};
 
         Op::submit_with(

@@ -281,6 +281,6 @@ pub type BufResult<T, B> = (std::io::Result<T>, B);
 /// }
 /// ```
 pub async fn no_op() -> std::io::Result<()> {
-    let op = driver::Op::<driver::NoOp>::no_op().unwrap();
+    let op = driver::Op::<driver::NoOp>::no_op();
     op.await
 }
