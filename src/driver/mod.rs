@@ -202,7 +202,7 @@ impl Drop for Driver {
                 let _ = self.wait();
                 self.tick();
             } else {
-                id +=1;
+                id += 1;
             };
         }
     }
