@@ -4,13 +4,15 @@ use std::marker::PhantomData;
 use std::pin::Pin;
 use std::task::{Context, Poll, Waker};
 
-use io_uring::{cqueue, squeue::{self, Entry}};
+use io_uring::{
+    cqueue,
+    squeue::{self, Entry},
+};
 
 mod slab_list;
 
 use slab::Slab;
 use slab_list::{SlabListEntry, SlabListIndices};
-
 
 use crate::runtime::CONTEXT;
 use crate::util::PhantomUnsendUnsync;
@@ -110,7 +112,7 @@ where
     {
         CONTEXT.with(|cx| {
             cx.with_driver_mut(|driver| {
-                // Get an vacent entry in the slab 
+                // Get an vacent entry in the slab
                 let entry = driver.ops.lifecycle.vacant_entry();
 
                 // Configure the SQE
@@ -148,7 +150,7 @@ where
                 match mem::replace(lifecycle, Lifecycle::Submitted) {
                     Lifecycle::Pending(sqe) => {
                         // Try to push the new operation
-                        if unsafe { driver.uring.submission().push(&sqe).is_err()}  {
+                        if unsafe { driver.uring.submission().push(&sqe).is_err() } {
                             // If the sqe is full, flush to kernel and remain pending
                             if let Err(e) = driver.submit() {
                                 // If there is an Io error whilst submitting to the q return the error
@@ -158,16 +160,12 @@ where
                                 };
                                 driver.ops.remove(me.index);
                                 me.index = usize::MAX;
-                                return Poll::Ready(me.data.take().unwrap().complete(cqe))
-                            } 
-                            let lifecycle = driver
-                                .ops
-                                .get_mut(me.index).unwrap().0;
+                                return Poll::Ready(me.data.take().unwrap().complete(cqe));
+                            }
+                            let lifecycle = driver.ops.get_mut(me.index).unwrap().0;
                             *lifecycle = Lifecycle::Pending(sqe);
-
-                        } 
+                        }
                         Poll::Pending
-
                     }
                     Lifecycle::Submitted => {
                         *lifecycle = Lifecycle::Waiting(cx.waker().clone());
@@ -462,7 +460,7 @@ mod test {
         let op = CONTEXT.with(|cx| {
             cx.set_driver(driver);
 
-            cx.with_driver_mut(|driver| 
+            cx.with_driver_mut(|driver|
                 Op::new(data.clone(), usize::MAX))
         });
 

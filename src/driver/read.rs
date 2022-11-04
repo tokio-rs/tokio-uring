@@ -4,7 +4,6 @@ use crate::BufResult;
 
 use crate::driver::op::{self, Completable};
 
-
 pub(crate) struct Read<T> {
     /// Holds a strong ref to the FD, preventing the file from being closed
     /// while the operation is in-flight.

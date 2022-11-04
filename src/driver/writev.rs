@@ -19,11 +19,7 @@ pub(crate) struct Writev<T> {
 }
 
 impl<T: IoBuf> Op<Writev<T>> {
-    pub(crate) fn writev_at(
-        fd: &SharedFd,
-        mut bufs: Vec<T>,
-        offset: u64,
-    ) -> Op<Writev<T>> {
+    pub(crate) fn writev_at(fd: &SharedFd, mut bufs: Vec<T>, offset: u64) -> Op<Writev<T>> {
         use io_uring::{opcode, types};
 
         // Build `iovec` objects referring the provided `bufs` for `io_uring::opcode::Readv`.

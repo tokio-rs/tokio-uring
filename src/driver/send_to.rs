@@ -18,11 +18,7 @@ pub(crate) struct SendTo<T> {
 }
 
 impl<T: IoBuf> Op<SendTo<T>> {
-    pub(crate) fn send_to(
-        fd: &SharedFd,
-        buf: T,
-        socket_addr: SocketAddr,
-    ) -> Op<SendTo<T>> {
+    pub(crate) fn send_to(fd: &SharedFd, buf: T, socket_addr: SocketAddr) -> Op<SendTo<T>> {
         use io_uring::{opcode, types};
 
         let io_slices = vec![IoSlice::new(unsafe {

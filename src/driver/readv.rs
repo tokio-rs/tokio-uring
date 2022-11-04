@@ -5,7 +5,6 @@ use crate::BufResult;
 use crate::driver::op::{self, Completable};
 use libc::iovec;
 
-
 pub(crate) struct Readv<T> {
     /// Holds a strong ref to the FD, preventing the file from being closed
     /// while the operation is in-flight.
@@ -19,11 +18,7 @@ pub(crate) struct Readv<T> {
 }
 
 impl<T: IoBufMut> Op<Readv<T>> {
-    pub(crate) fn readv_at(
-        fd: &SharedFd,
-        mut bufs: Vec<T>,
-        offset: u64,
-    ) -> Op<Readv<T>> {
+    pub(crate) fn readv_at(fd: &SharedFd, mut bufs: Vec<T>, offset: u64) -> Op<Readv<T>> {
         use io_uring::{opcode, types};
 
         // Build `iovec` objects referring the provided `bufs` for `io_uring::opcode::Readv`.
