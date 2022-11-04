@@ -1,10 +1,13 @@
 use crate::driver::{op, Close, Op};
 use crate::future::poll_fn;
 
-use std::{os::unix::io::{FromRawFd, RawFd}, io};
+use std::cell::RefCell;
 use std::rc::Rc;
 use std::task::Waker;
-use std::cell::RefCell;
+use std::{
+    io,
+    os::unix::io::{FromRawFd, RawFd},
+};
 
 // Tracks in-flight operations on a file descriptor. Ensures all in-flight
 // operations complete before submitting the close.

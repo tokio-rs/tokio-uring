@@ -209,9 +209,8 @@ where
         let me = &mut *self;
 
         CONTEXT.with(|runtime_context| {
-
-            if !runtime_context.is_set(){
-                return Poll::Ready(Err(io::ErrorKind::Other.into()))
+            if !runtime_context.is_set() {
+                return Poll::Ready(Err(io::ErrorKind::Other.into()));
             }
 
             runtime_context.with_driver_mut(|driver| {
@@ -262,7 +261,6 @@ where
         })
     }
 }
-
 
 /// The operation may have pending cqe's not yet processed.
 /// To manage this, the lifecycle associated with the Op may if required

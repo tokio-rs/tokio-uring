@@ -1,5 +1,5 @@
-use crate::driver::Op;
 use crate::driver::op;
+use crate::driver::Op;
 use std::os::unix::io::RawFd;
 
 pub(crate) struct Close {
