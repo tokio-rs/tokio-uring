@@ -202,7 +202,7 @@ impl Drop for Driver {
             };
 
             // Remove completed lifecycles from Slab.
-            // This prevents worst case quadtratic processing
+            // This prevents worst case quadratic processing
             if let Some(id) = remove {
                 self.ops.lifecycle.remove(id);
             } else {
