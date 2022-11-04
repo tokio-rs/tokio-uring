@@ -3,7 +3,7 @@ use crate::driver::Driver;
 use std::future::Future;
 use std::io;
 use std::mem::ManuallyDrop;
-use std::os::unix::io::{AsRawFd, RawFd};
+use std::os::unix::io::AsRawFd;
 use tokio::io::unix::AsyncFd;
 use tokio::task::LocalSet;
 
@@ -17,9 +17,6 @@ thread_local! {
 
 /// The Runtime executor
 pub struct Runtime {
-    /// io-uring driver
-    uring_fd: RawFd,
-
     /// LocalSet for !Send tasks
     local: ManuallyDrop<LocalSet>,
 
@@ -79,21 +76,9 @@ impl Runtime {
 
         CONTEXT.with(|cx| cx.set_driver(driver));
 
-        Ok(Runtime {
-            uring_fd: driver_fd,
-            local,
-            rt,
-        })
-    }
-
-    /// Runs a future to completion on the current runtime
-    pub fn block_on<F>(&self, future: F) -> F::Output
-    where
-        F: Future,
-    {
         let drive = {
-            let _guard = self.rt.enter();
-            let driver = AsyncFd::new(self.uring_fd).unwrap();
+            let _guard = rt.enter();
+            let driver = AsyncFd::new(driver_fd).unwrap();
 
             async move {
                 loop {
@@ -105,9 +90,17 @@ impl Runtime {
             }
         };
 
-        tokio::pin!(future);
+        local.spawn_local(drive);
 
-        self.local.spawn_local(drive);
+        Ok(Runtime { local, rt })
+    }
+
+    /// Runs a future to completion on the current runtime
+    pub fn block_on<F>(&self, future: F) -> F::Output
+    where
+        F: Future,
+    {
+        tokio::pin!(future);
 
         self.rt
             .block_on(self.local.run_until(crate::future::poll_fn(|cx| {

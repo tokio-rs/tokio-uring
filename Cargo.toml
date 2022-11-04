@@ -31,6 +31,8 @@ tokio-test = "0.4.2"
 iai = "0.1.1"
 futures = "0.3.25"
 criterion = "0.4.0"
+# we use joinset in our tests
+tokio = "1.21.0"
 
 [package.metadata.docs.rs]
 all-features = true
