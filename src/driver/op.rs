@@ -113,13 +113,12 @@ where
         CONTEXT.with(|cx| {
             cx.with_driver_mut(|driver| {
                 // Get an vacent entry in the slab
-                let entry = driver.ops.lifecycle.vacant_entry();
+                let entry = driver.ops.insert();
 
                 // Configure the SQE
                 let sqe = f(&mut data).user_data(entry.key() as _);
 
                 // Create a pending entry for Op
-                // Create the operation
                 let op = Op::new(data, entry.key());
                 entry.insert(Lifecycle::Pending(sqe));
 
@@ -300,7 +299,6 @@ impl Lifecycle {
     }
 }
 
-/*
 #[cfg(test)]
 mod test {
     use std::rc::Rc;
@@ -355,7 +353,7 @@ mod test {
             result,
             flags,
             data: d,
-        } = assert_ready!(op.poll()).expect("Io Error");
+        } = assert_ready!(op.poll());
         assert_eq!(2, Rc::strong_count(&data));
         assert_eq!(1, result.unwrap());
         assert_eq!(0, flags);
@@ -380,7 +378,7 @@ mod test {
             complete(&op, Ok(1));
 
             assert!(op.is_woken());
-            let Completion { result, flags, .. } = assert_ready!(op.poll()).expect("Io Error");
+            let Completion { result, flags, .. } = assert_ready!(op.poll());
             assert_eq!(1, result.unwrap());
             assert_eq!(0, flags);
         }
@@ -402,7 +400,7 @@ mod test {
             complete(&op, Ok(1));
 
             assert!(op.is_woken());
-            let Completion { result, flags, .. } = assert_ready!(op.poll()).expect("Io Error");
+            let Completion { result, flags, .. } = assert_ready!(op.poll());
             assert_eq!(1, result.unwrap());
             assert_eq!(0, flags);
         }
@@ -418,7 +416,7 @@ mod test {
         assert_eq!(1, num_operations());
         assert_eq!(2, Rc::strong_count(&data));
 
-        let Completion { result, flags, .. } = assert_ready!(op.poll()).expect("Io Error");
+        let Completion { result, flags, .. } = assert_ready!(op.poll());
         assert_eq!(1, result.unwrap());
         assert_eq!(0, flags);
 
@@ -460,8 +458,10 @@ mod test {
         let op = CONTEXT.with(|cx| {
             cx.set_driver(driver);
 
-            cx.with_driver_mut(|driver|
-                Op::new(data.clone(), usize::MAX))
+            cx.with_driver_mut(|driver| {
+                let index = driver.ops.lifecycle.insert(Lifecycle::Submitted);
+                Op::new(data.clone(), index)
+            })
         });
 
         (op, data)
@@ -487,4 +487,3 @@ mod test {
         });
     }
 }
-*/

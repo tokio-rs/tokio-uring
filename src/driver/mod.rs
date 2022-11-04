@@ -42,7 +42,7 @@ mod writev;
 use crate::driver::op::Lifecycle;
 use io_uring::opcode::AsyncCancel;
 use io_uring::IoUring;
-use slab::Slab;
+use slab::{Slab, VacantEntry};
 use std::io;
 use std::os::unix::io::{AsRawFd, RawFd};
 
@@ -198,8 +198,8 @@ impl Ops {
     }
 
     // Insert a new operation
-    fn insert(&mut self) -> usize {
-        self.lifecycle.insert(op::Lifecycle::Submitted)
+    fn insert(&mut self) -> VacantEntry<'_, op::Lifecycle> {
+        self.lifecycle.vacant_entry()
     }
 
     // Remove an operation
