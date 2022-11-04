@@ -188,29 +188,22 @@ impl Drop for Driver {
         }
 
         // Wait until all in flight cancellations have stopped
+        // Manually iterate the slab to process it in a single pass
+        let mut id = 0;
         loop {
             if self.ops.lifecycle.is_empty() {
                 break;
             }
             // Cycles are either all ignored or complete
-            let remove = if let (id, Lifecycle::Completed(..)) =
-                &self.ops.lifecycle.iter().next().unwrap()
-            {
-                Some(*id)
-            } else {
-                None
-            };
-
-            // Remove completed lifecycles from Slab
-            // This prevents worst case quadratic processing
-            if let Some(id) = remove {
-                self.ops.lifecycle.remove(id);
-            } else {
+            // If there is at least one Ignored still to process, call wait
+            if let Some(Lifecycle::Ignored(..)) = self.ops.lifecycle.get(id) {
                 // If waiting fails, ignore the error. The wait will be attempted
                 // again on the next loop.
                 let _ = self.wait();
                 self.tick();
-            }
+            } else {
+                id +=1;
+            };
         }
     }
 }
