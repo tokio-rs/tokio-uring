@@ -1,10 +1,10 @@
-use crate::driver::{Close, Op};
+use crate::driver::{op, Close, Op};
 use crate::future::poll_fn;
 
-use std::os::unix::io::{FromRawFd, RawFd};
+use std::{os::unix::io::{FromRawFd, RawFd}, io};
 use std::rc::Rc;
 use std::task::Waker;
-use std::{cell::RefCell, io};
+use std::cell::RefCell;
 
 // Tracks in-flight operations on a file descriptor. Ensures all in-flight
 // operations complete before submitting the close.
@@ -29,7 +29,7 @@ enum State {
     Waiting(Option<Waker>),
 
     /// The FD is closing
-    Closing(Op<Close>),
+    Closing(Op<Close, op::Fallible>),
 
     /// The FD is fully closed
     Closed,

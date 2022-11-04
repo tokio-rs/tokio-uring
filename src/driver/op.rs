@@ -42,6 +42,10 @@ pub(crate) struct Op<T: 'static, CqeType = SingleCQE> {
 /// A Marker for Ops which expect only a single completion event
 pub(crate) struct SingleCQE;
 
+/// A Marker for Ops which may be submitted when the ring is not present
+/// The only user of this is `Close` currently
+pub(crate) struct Fallible;
+
 pub(crate) trait Completable {
     type Output;
     fn complete(self, cqe: CqeResult) -> Self::Output;
@@ -89,8 +93,8 @@ impl From<cqueue::Entry> for CqeResult {
 }
 
 impl<T, CqeType> Op<T, CqeType>
-where
-    T: Completable,
+// where
+//     T: Completable,
 {
     /// Create a new operation
     fn new(data: T, index: usize) -> Self {
@@ -192,6 +196,73 @@ where
         })
     }
 }
+
+impl<T> Future for Op<T, Fallible>
+where
+    T: Unpin + 'static,
+{
+    type Output = io::Result<()>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        use std::mem;
+
+        let me = &mut *self;
+
+        CONTEXT.with(|runtime_context| {
+
+            if !runtime_context.is_set(){
+                return Poll::Ready(Err(io::ErrorKind::Other.into()))
+            }
+
+            runtime_context.with_driver_mut(|driver| {
+                let (lifecycle, _) = driver
+                    .ops
+                    .get_mut(me.index)
+                    .expect("invalid internal state");
+
+                match mem::replace(lifecycle, Lifecycle::Submitted) {
+                    Lifecycle::Pending(sqe) => {
+                        // Try to push the new operation
+                        if unsafe { driver.uring.submission().push(&sqe).is_err() } {
+                            // If the sqe is full, flush to kernel and remain pending
+                            if let Err(e) = driver.submit() {
+                                // If there is an Io error whilst submitting to the q return the error
+                                driver.ops.remove(me.index);
+                                me.index = usize::MAX;
+                                return Poll::Ready(Err(e));
+                            }
+                            let lifecycle = driver.ops.get_mut(me.index).unwrap().0;
+                            *lifecycle = Lifecycle::Pending(sqe);
+                        }
+                        Poll::Pending
+                    }
+                    Lifecycle::Submitted => {
+                        *lifecycle = Lifecycle::Waiting(cx.waker().clone());
+                        Poll::Pending
+                    }
+                    Lifecycle::Waiting(waker) if !waker.will_wake(cx.waker()) => {
+                        *lifecycle = Lifecycle::Waiting(cx.waker().clone());
+                        Poll::Pending
+                    }
+                    Lifecycle::Waiting(waker) => {
+                        *lifecycle = Lifecycle::Waiting(waker);
+                        Poll::Pending
+                    }
+                    Lifecycle::Ignored(..) => unreachable!(),
+                    Lifecycle::Completed(_) => {
+                        driver.ops.remove(me.index);
+                        me.index = usize::MAX;
+                        Poll::Ready(Ok(()))
+                    }
+                    Lifecycle::CompletionList(..) => {
+                        unreachable!("No `more` flag set for Fallible")
+                    }
+                }
+            })
+        })
+    }
+}
+
 
 /// The operation may have pending cqe's not yet processed.
 /// To manage this, the lifecycle associated with the Op may if required
