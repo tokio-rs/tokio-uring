@@ -144,28 +144,17 @@ impl Drop for Driver {
         }
 
         // pre-determine what to cancel
-        let mut cancellable_ops = Vec::new();
-
-        let Ops {
-            lifecycle,
-            completions,
-        } = &mut self.ops;
-
-        for (id, cycle) in lifecycle.iter_mut() {
-            match cycle {
-                Lifecycle::Completed(_) => {
+        // All Cancallable Ops are marked ignored
+        for (_, cycle) in self.ops.lifecycle.iter_mut() {
+            match std::mem::replace(cycle, Lifecycle::Ignored(Box::new(()))) {
+                lc @ Lifecycle::Completed(_) => {
                     // don't cancel completed items
+                    *cycle = lc;
                 }
 
                 Lifecycle::CompletionList(indices) => {
-                    let mut list = indices.clone().into_list(completions);
-                    if io_uring::cqueue::more(list.peek_end().unwrap().flags) {
-                        // If the completion list is not finished,
-                        // mark for cancellation, and mark the lifecycle as ignored
-                        cancellable_ops.push(id);
-                        *cycle = Lifecycle::Ignored(Box::new(()));
-                        // Dropping the list here deallocates the unconsumed cqe slab entries
-                    } else {
+                    let mut list = indices.clone().into_list(&mut self.ops.completions);
+                    if !io_uring::cqueue::more(list.peek_end().unwrap().flags) {
                         // This op is complete. Replace with a null Completed entry
                         *cycle = Lifecycle::Completed(op::CqeResult {
                             result: Ok(0),
@@ -175,36 +164,53 @@ impl Drop for Driver {
                 }
 
                 _ => {
-                    // All other states need cancelling
-                    cancellable_ops.push(id)
+                    // All other states need cancelling.
                 }
             }
         }
 
-        // cancel all ops
-        for id in cancellable_ops {
-            unsafe {
-                while self
-                    .uring
-                    .submission()
-                    .push(&AsyncCancel::new(id as u64).build().user_data(u64::MAX))
-                    .is_err()
-                {
-                    self.submit().expect("Internal error when dropping driver");
+        // Submit cancellation for all ops marked Ignored
+        for (id, cycle) in self.ops.lifecycle.iter_mut() {
+            if let Lifecycle::Ignored(..) = cycle {
+                unsafe {
+                    while self
+                        .uring
+                        .submission()
+                        .push(&AsyncCancel::new(id as u64).build().user_data(u64::MAX))
+                        .is_err()
+                    {
+                        self.uring
+                            .submit_and_wait(1)
+                            .expect("Internal error when dropping driver");
+                    }
                 }
             }
         }
 
-        while !self
-            .ops
-            .lifecycle
-            .iter()
-            .all(|(_, cycle)| matches!(cycle, Lifecycle::Completed(_)))
-        {
-            // If waiting fails, ignore the error. The wait will be attempted
-            // again on the next loop.
-            let _ = self.wait();
-            self.tick();
+        // Wait until all in flight cancellations have stopped
+        loop {
+            if self.ops.lifecycle.is_empty() {
+                break;
+            }
+            // Cycles are either all ignored or complete
+            let remove = if let (id, Lifecycle::Completed(..)) =
+                &self.ops.lifecycle.iter().next().unwrap()
+            {
+                Some(*id)
+            } else {
+                None
+            };
+
+            // Remove completed lifecycles from Slab.
+            // This prevents worst case quadtratic processing
+            if let Some(id) = remove {
+                self.ops.lifecycle.remove(id);
+            } else {
+                // If waiting fails, ignore the error. The wait will be attempted
+                // again on the next loop.
+                let _ = self.wait();
+                self.tick();
+            }
         }
     }
 }
