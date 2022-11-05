@@ -143,8 +143,8 @@ impl Drop for Driver {
             self.submit().expect("Internal error when dropping driver");
         }
 
-        // pre-determine what to cancel
-        // All Cancallable Ops are marked ignored
+        // Pre-determine what to cancel
+        // After this pass, all LifeCycles will be marked either as Completed or Ignored, as appropriate
         for (_, cycle) in self.ops.lifecycle.iter_mut() {
             match std::mem::replace(cycle, Lifecycle::Ignored(Box::new(()))) {
                 lc @ Lifecycle::Completed(_) => {
@@ -165,6 +165,7 @@ impl Drop for Driver {
 
                 _ => {
                     // All other states need cancelling.
+                    // The mem::replace means these are now marked Ignored.
                 }
             }
         }
@@ -187,8 +188,12 @@ impl Drop for Driver {
             }
         }
 
-        // Wait until all in flight cancellations have stopped
-        // Manually iterate the slab to process it in a single pass
+        // Wait until all Lifetimes have been removed from the slab. 
+        //
+        // Ignored entries will be removed from the Lifecycle slab
+        // by the complete logic called by `tick()`
+        // 
+        // Completed Entries are removed here directly
         let mut id = 0;
         loop {
             if self.ops.lifecycle.is_empty() {
@@ -205,6 +210,7 @@ impl Drop for Driver {
                 }
 
                 Some(_) => {
+                    // Remove Completed entries
                     let _ = self.ops.lifecycle.remove(id);
                     id += 1;
                 }
