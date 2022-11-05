@@ -3,129 +3,53 @@
 ### Fixed
 
 - Fix panic in Deref/DerefMut for Slice extending into uninitialized part of the buffer ([#52])
-- by mzabaluev
-
+- docs: all-features = true ([#84])
 - chore: fix clippy lints ([#99])
-- by Noah-Kennedy
-
 - fix fs unit tests to avoid parallelism ([#121])
-- by FrankReh
-
 - Box the socket address to allow moving the Connect future ([#126])
-- by fasterthanlime
-
 - rt: Fix data race ([#146])
-- by ollie-etl
-
 
 ### Added
 
-- Tokio-uring design proposal ([#1])
-- by carllerche
-
 - driver: batch submit requests and add benchmark ([#78])
-- by Noah-Kennedy
-
 - Implement fs::File::readv_at()/writev_at() ([#87])
-- by jiangliu
-
 - fs: implement FromRawFd for File ([#89])
-- by jiangliu
-
 - Implement `AsRawFd` for `TcpStream` ([#94])
-- by dpc
-
 - net: add TcpListener.local_addr method ([#107])
-- by FrankReh
-
 - write all ([#111])
-- by FrankReh
-
 - driver: add Builder API as an option to start ([#113])
-- by FrankReh
-
 - Socket and TcpStream shutdown ([#124])
-- by FrankReh
-
 - fs: implement fs::File::from_std ([#131])
-- by littledivy
-
 - net: implement FromRawFd for TcpStream ([#132])
-- by littledivy
-
 - fs: implement OpenOptionsExt for OpenOptions ([#133])
-- by littledivy
-
 - Add NoOp support ([#134])
-- by ollie-etl
-
 - Add writev to TcpStream ([#136])
-- by fasterthanlime
-
 - sync TcpStream, UnixStream and UdpSocket functionality ([#141])
-- by FrankReh
-
 - Add benchmarks for no-op submission ([#144])
-- by ollie-etl
-
 - Expose runtime structure ([#148])
-- by ollie-etl
-
 - Depend on io-uring version ^0.5.8 ([#153])
-- by FrankReh
 
 ### Refactors
 
 - io: refactor post-op logic in ops into Completable ([#116])
-- by Noah-Kennedy
-
 - Support multi completion events: v2 ([#130])
-- by ollie-etl
-
 - simplify driver operation futures ([#139])
-- by FrankReh
-
 - rt: refactor runtime to avoid Rc&lt;RefCell&lt;...&gt;&gt; ([#142])
-- by Noah-Kennedy
-
 - Remove unused dev-dependencies ([#143])
-- by ollie-etl
-
 - chore: types and fields explicitly named ([#149])
-- by ollie-etl
-
 - Ignore errors from uring while cleaning up ([#154])
-- by FrankReh
-
 - rt: drop runtime before driver during shutdown ([#155])
-- by Noah-Kennedy
-
 - rt: refactor drop logic ([#157])
-- by Noah-Kennedy
-
 - rt: fix error when calling block_on twice ([#162])
-- by Noah-Kennedy
 
 ### CI changes
 
 - chore: update actions/checkout action to v3 ([#90])
-- by taiki-e
-
 - chore: add all-systems-go ci check ([#98])
-- by Noah-Kennedy
-
 - chore: add clippy to ci ([#100])
-- by Noah-Kennedy
-
 - ci: run cargo test --doc ([#135])
-- by ollie-etl
 
-### Unclassified so far
 
-- docs: all-features = true ([#84])
-by AaronO
-
-[#1]: https://github.com/tokio-rs/tokio-uring/pull/1
 [#52]: https://github.com/tokio-rs/tokio-uring/pull/52
 [#78]: https://github.com/tokio-rs/tokio-uring/pull/78
 [#84]: https://github.com/tokio-rs/tokio-uring/pull/84
