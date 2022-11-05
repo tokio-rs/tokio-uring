@@ -98,7 +98,7 @@ impl FixedBufRegistry {
     /// Returns a buffer identified by the specified index for use by the
     /// application, unless the buffer is already in use.
     ///
-    /// The buffer is released to be checked out again once the
+    /// The buffer is released to be available again once the
     /// returned `FixedBuf` handle has been dropped. An I/O operation
     /// using the buffer takes ownership of it and returns it once completed,
     /// preventing shared use of the buffer while the operation is in flight.
