@@ -101,10 +101,7 @@ impl From<cqueue::Entry> for CqeResult {
     }
 }
 
-impl<T, CqeType> Op<T, CqeType>
-// where
-//     T: Completable,
-{
+impl<T, CqeType> Op<T, CqeType> {
     /// Create a new operation
     fn new(data: T, index: usize) -> Self {
         Op {
@@ -117,27 +114,43 @@ impl<T, CqeType> Op<T, CqeType>
 
     /// Submit an operation to the driver.
     ///
-    /// `state` is stored during the operation tracking any state submitted to
+    /// `data` is stored during the operation tracking any state for submission to
     /// the kernel.
+    ///
+    /// This will panic if the Op is not within the RuntimeContext
     pub(super) fn submit_with<F>(mut data: T, f: F) -> Self
     where
         F: FnOnce(&mut T) -> squeue::Entry,
     {
         CONTEXT.with(|cx| {
             cx.with_driver_mut(|driver| {
-                // Get an vacent entry in the slab
+                // Get an vacent entry in the Lifecycle slab
                 let entry = driver.ops.insert();
 
-                // Configure the SQE
+                // Configure the Sqe for submission
                 let sqe = f(&mut data).user_data(entry.key() as _);
 
-                // Create a pending entry for Op
+                // Create a pending Lifecycle entry for the Op
                 let op = Op::new(data, entry.key());
                 entry.insert(Lifecycle::Pending(sqe));
 
                 op
             })
         })
+    }
+
+    /// Try submitting an to the driver
+    ///
+    /// This will return an Error if the Op is not within the RuntimeContext
+    pub(super) fn try_submit_with<F>(data: T, f: F) -> io::Result<Self>
+    where
+        F: FnOnce(&mut T) -> squeue::Entry,
+    {
+        if CONTEXT.with(|cx| cx.is_set()) {
+            Ok(Op::submit_with(data, f))
+        } else {
+            Err(io::ErrorKind::Other.into())
+        }
     }
 }
 
@@ -233,7 +246,7 @@ where
                                 // Fail if an IoError in encountered
                                 driver.ops.remove(me.index);
                                 me.index = usize::MAX;
-                                return Poll::Ready(Err(e))
+                                return Poll::Ready(Err(e));
                             }
                         }
                         let lifecycle = driver.ops.get_mut(me.index).unwrap().0;
@@ -321,7 +334,7 @@ impl Lifecycle {
                 unreachable!("Completion for pending Op")
             }
 
-             Lifecycle::Waiting(waker) => {
+            Lifecycle::Waiting(waker) => {
                 if io_uring::cqueue::more(cqe.flags) {
                     let mut list = SlabListIndices::new().into_list(completions);
                     list.push(cqe);

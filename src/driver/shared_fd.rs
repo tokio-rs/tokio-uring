@@ -32,7 +32,7 @@ enum State {
     Waiting(Option<Waker>),
 
     /// The FD is closing
-    Closing(Op<Close, op::Fallible>),
+    Closing(io::Result<Op<Close, op::Fallible>>),
 
     /// The FD is fully closed
     Closed,
@@ -65,7 +65,6 @@ impl SharedFd {
             // Submit the close operation
             inner.submit_close_op();
         }
-
         if let Err(_e) = self.inner.closed().await {
             // Submitting the operation failed, we fall back on a
             // synchronous `close`. This is safe as, at this point, we
@@ -100,17 +99,18 @@ impl Inner {
 
         poll_fn(|cx| {
             let mut state = self.state.borrow_mut();
+            let state = &mut *state;
 
-            match &mut *state {
+            match std::mem::replace(state, State::Closed) {
                 State::Init => {
                     *state = State::Waiting(Some(cx.waker().clone()));
                     Poll::Pending
                 }
-                State::Waiting(Some(waker)) => {
+                State::Waiting(Some(mut waker)) => {
                     if !waker.will_wake(cx.waker()) {
-                        *waker = cx.waker().clone();
+                        waker = cx.waker().clone();
                     }
-
+                    *state = State::Waiting(Some(waker));
                     Poll::Pending
                 }
                 State::Waiting(None) => {
@@ -118,7 +118,12 @@ impl Inner {
                     Poll::Pending
                 }
                 State::Closing(op) => {
-                    let r = ready!(Pin::new(op).poll(cx));
+                    let r = match op {
+                        Ok(mut op) => {
+                            ready!(Pin::new(&mut op).poll(cx))
+                        }
+                        Err(e) => Err(e),
+                    };
                     *state = State::Closed;
                     Poll::Ready(r)
                 }

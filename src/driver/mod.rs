@@ -217,11 +217,10 @@ impl Ops {
 
 impl Drop for Ops {
     fn drop(&mut self) {
-        for (_,cycle) in self.lifecycle
-        .iter(){
+        for (_, cycle) in self.lifecycle.iter() {
             match cycle {
-                Lifecycle::Completed(_) | Lifecycle::Pending(_) => {},
-                c => unreachable!("Lifecycle {:?} found during driver drop", c)
+                Lifecycle::Completed(_) | Lifecycle::Pending(_) => {}
+                c => unreachable!("Lifecycle {:?} found during driver drop", c),
             }
         }
     }

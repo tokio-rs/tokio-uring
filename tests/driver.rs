@@ -5,7 +5,7 @@ use tokio_uring::{buf::IoBuf, fs::File};
 #[path = "../src/future.rs"]
 #[allow(warnings)]
 mod future;
-/*
+
 #[test]
 fn complete_ops_on_drop() {
     use std::sync::Arc;
@@ -71,7 +71,6 @@ fn complete_ops_on_drop() {
 
     // little sleep
     std::thread::sleep(std::time::Duration::from_millis(100));
-
     drop(file);
 }
 
@@ -139,4 +138,3 @@ async fn poll_once(future: impl std::future::Future) {
     })
     .await;
 }
-*/
