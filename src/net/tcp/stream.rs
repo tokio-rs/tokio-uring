@@ -69,8 +69,11 @@ impl TcpStream {
         Self { inner }
     }
 
-    /// Read some data from the stream into the buffer, returning the original buffer and
-    /// quantity of data read.
+    /// Reads some data from the stream into the buffer.
+    /// Returns the operation result, carrying the number of bytes read,
+    /// and the buffer passed as the argument.
+    /// The buffer is uniformly returned as a [`Slice`] view
+    /// covering the same range of the buffer as was passed to the method.
     pub async fn read<T: IoBufMut>(
         &self,
         buf: impl Into<Slice<T>>,
@@ -78,8 +81,11 @@ impl TcpStream {
         self.inner.read(buf).await
     }
 
-    /// Write some data to the stream from the buffer, returning the original buffer and
-    /// quantity of data written.
+    /// Writes some data to the stream from the buffer.
+    /// Returns the operation result, carrying the number of bytes written,
+    /// and the buffer passed as the argument.
+    /// The buffer is uniformly returned as a [`Slice`] view
+    /// covering the same range of the buffer as was passed to the method.
     pub async fn write<T: IoBuf>(
         &self,
         buf: impl Into<Slice<T>>,
@@ -92,6 +98,9 @@ impl TcpStream {
     /// This method will continuously call [`write`] until there is no more data to be
     /// written or an error is returned. This method will not return until the entire
     /// buffer has been successfully written or an error has occurred.
+    /// Returns the operation result and the buffer passed as the argument.
+    /// The buffer is uniformly returned as a [`Slice`] view
+    /// covering the same range of the buffer as was passed to the method.
     ///
     /// If the buffer contains no data, this will never call [`write`].
     ///

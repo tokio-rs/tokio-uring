@@ -165,8 +165,11 @@ impl UdpSocket {
         self.inner.connect(SockAddr::from(socket_addr)).await
     }
 
-    /// Sends data on the socket to the given address. On success, returns the
-    /// number of bytes written.
+    /// Sends data on the socket to the given address.
+    /// Returns the operation result, carrying the number of bytes written,
+    /// and the buffer passed as an argument.
+    /// The buffer is uniformly returned as a [`Slice`] view
+    /// covering the same range of the buffer as was passed to the method.
     pub async fn send_to<T: IoBuf>(
         &self,
         buf: impl Into<Slice<T>>,
@@ -175,8 +178,11 @@ impl UdpSocket {
         self.inner.send_to(buf, socket_addr).await
     }
 
-    /// Receives a single datagram message on the socket. On success, returns
-    /// the number of bytes read and the origin.
+    /// Receives a single datagram message on the socket.
+    /// Returns the operation result, carrying the number of bytes read
+    /// and the sender's address, and the buffer passed as the argument.
+    /// The buffer is uniformly returned as a [`Slice`] view
+    /// covering the same range of the buffer as was passed to the method.
     pub async fn recv_from<T: IoBufMut>(
         &self,
         buf: impl Into<Slice<T>>,
@@ -184,8 +190,11 @@ impl UdpSocket {
         self.inner.recv_from(buf).await
     }
 
-    /// Read a packet of data from the socket into the buffer, returning the original buffer and
-    /// quantity of data read.
+    /// Reads a packet of data from the socket into the buffer.
+    /// Returns the operation result, carrying the number of bytes read,
+    /// and the buffer passed as the argument.
+    /// The buffer is uniformly returned as a [`Slice`] view
+    /// covering the same range of the buffer as was passed to the method.
     pub async fn read<T: IoBufMut>(
         &self,
         buf: impl Into<Slice<T>>,
@@ -193,8 +202,11 @@ impl UdpSocket {
         self.inner.read(buf).await
     }
 
-    /// Write some data to the socket from the buffer, returning the original buffer and
-    /// quantity of data written.
+    /// Writes some data to the socket from the buffer.
+    /// Returns the operation result, carrying the number of bytes written,
+    /// and the buffer passed as the argument.
+    /// The buffer is uniformly returned as a [`Slice`] view
+    /// covering the same range of the buffer as was passed to the method.
     pub async fn write<T: IoBuf>(
         &self,
         buf: impl Into<Slice<T>>,

@@ -133,8 +133,9 @@ impl File {
     ///
     /// # Return
     ///
-    /// The method returns the operation result and the same buffer value passed
-    /// as an argument.
+    /// The method returns the operation result and the buffer passed
+    /// as an argument. The buffer is uniformly returned as a [`Slice`] view
+    /// covering the same range of the buffer as was passed to the method.
     ///
     /// If the method returns [`Ok(n)`], then the read was successful. A nonzero
     /// `n` value indicates that the buffer has been filled with `n` bytes of
@@ -303,8 +304,10 @@ impl File {
     ///
     /// # Return
     ///
-    /// The method returns the operation result and the same buffer value passed
-    /// in as an argument. A return value of `0` typically means that the
+    /// The method returns the operation result and the buffer passed
+    /// as an argument. The buffer is uniformly returned as a [`Slice`] view
+    /// covering the same range of the buffer as was passed to the method.
+    /// A result value of `Ok(0)` typically means that the
     /// underlying file is no longer able to accept bytes and will likely not be
     /// able to in the future as well, or that the buffer provided is empty.
     ///
