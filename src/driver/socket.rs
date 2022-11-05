@@ -1,5 +1,6 @@
 use crate::{
-    buf::{IoBuf, IoBufMut},
+    buf::fixed::FixedBuf,
+    buf::{IoBuf, IoBufMut, Slice},
     driver::{Op, SharedFd},
 };
 use std::{
@@ -44,6 +45,14 @@ impl Socket {
         op.await
     }
 
+    pub(crate) async fn write_fixed(
+        &self,
+        buf: Slice<FixedBuf>,
+    ) -> crate::BufResult<usize, Slice<FixedBuf>> {
+        let op = Op::write_fixed_at(&self.fd, buf, 0).unwrap();
+        op.await
+    }
+
     pub async fn writev<T: IoBuf>(&self, buf: Vec<T>) -> crate::BufResult<usize, Vec<T>> {
         let op = Op::writev_at(&self.fd, buf, 0).unwrap();
         op.await
@@ -60,6 +69,14 @@ impl Socket {
 
     pub(crate) async fn read<T: IoBufMut>(&self, buf: T) -> crate::BufResult<usize, T> {
         let op = Op::read_at(&self.fd, buf, 0).unwrap();
+        op.await
+    }
+
+    pub(crate) async fn read_fixed(
+        &self,
+        buf: Slice<FixedBuf>,
+    ) -> crate::BufResult<usize, Slice<FixedBuf>> {
+        let op = Op::read_fixed_at(&self.fd, buf, 0).unwrap();
         op.await
     }
 
