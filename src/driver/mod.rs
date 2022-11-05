@@ -63,7 +63,9 @@ pub(crate) struct Driver {
     /// IoUring bindings
     pub(crate) uring: IoUring,
 
-    /// Reference to the currently registered buffers
+    /// Reference to the currently registered buffers.
+    /// Ensures that the buffers are not dropped until
+    /// after the io-uring runtime has terminated.
     fixed_buffers: Option<Rc<RefCell<FixedBuffers>>>,
 }
 
