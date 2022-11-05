@@ -11,8 +11,6 @@ use std::rc::Rc;
 /// allocated in memory, that can be registered in the current `tokio-uring`
 /// context using the [`register`] method.
 ///
-/// [`register`]: Self::register
-///
 /// A `FixedBufRegistry` value is a lightweight handle for a collection of
 /// allocated buffers. Cloning of a `FixedBufRegistry` creates a new reference to
 /// the same collection of buffers.
@@ -22,8 +20,11 @@ use std::rc::Rc;
 /// - all [`FixedBuf`] handles to individual buffers in the collection have
 ///   been dropped, including the buffer handles owned by any I/O operations
 ///   in flight;
-/// - every `tokio-uring` runtime the buffers have been registered in
-///   has terminated.
+/// - The `tokio-uring` [`Runtime`] the buffers are registered with
+///   has been dropped.
+///
+/// [`register`]: Self::register
+/// [`Runtime`]: crate::Runtime
 #[derive(Clone)]
 pub struct FixedBufRegistry {
     inner: Rc<RefCell<FixedBuffers>>,
