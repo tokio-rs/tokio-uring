@@ -37,7 +37,7 @@
 - io: refactor post-op logic in ops into Completable ([#116])
 - Support multi completion events: v2 ([#130])
 - simplify driver operation futures ([#139])
-- rt: refactor runtime to avoid Rc&lt;RefCell&lt;...&gt;&gt; ([#142])
+- rt: refactor runtime to avoid Rc\<RefCell\<...>> ([#142])
 - Remove unused dev-dependencies ([#143])
 - chore: types and fields explicitly named ([#149])
 - Ignore errors from uring while cleaning up ([#154])
