@@ -70,6 +70,18 @@ pub(crate) enum Lifecycle {
     CompletionList(SlabListIndices),
 }
 
+impl std::fmt::Debug for Lifecycle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Pending(_) => f.debug_tuple("Pending").finish(),
+            Self::Waiting(_) => f.debug_tuple("Waiting").finish(),
+            Self::Ignored(_) => f.debug_tuple("Ignored").finish(),
+            Self::Completed(_) => f.debug_tuple("Completed").finish(),
+            Self::CompletionList(_) => f.debug_tuple("CompletionList").finish(),
+        }
+    }
+}
+
 /// A single CQE entry
 pub(crate) struct CqeResult {
     pub(crate) result: io::Result<u32>,
@@ -306,7 +318,7 @@ impl Lifecycle {
             Lifecycle::Pending(..) => {
                 // Pending Operations have not submitted to the ring
                 // They should not be receiving completions
-                unreachable!("invalid operation state")
+                unreachable!("Completion for pending Op")
             }
 
              Lifecycle::Waiting(waker) => {
