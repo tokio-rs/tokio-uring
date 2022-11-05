@@ -14,6 +14,9 @@ use std::rc::Rc;
 /// application code or owned by an I/O operation at any given time,
 /// thus avoiding data races between `io-uring` operations in flight and
 /// the application accessing buffer data.
+///
+/// [`FixedBufRegistry`]: super::FixedBufRegistry
+///
 pub struct FixedBuf {
     registry: Rc<RefCell<FixedBuffers>>,
     buf: ManuallyDrop<Vec<u8>>,
