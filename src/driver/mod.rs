@@ -188,11 +188,11 @@ impl Drop for Driver {
             }
         }
 
-        // Wait until all Lifetimes have been removed from the slab. 
+        // Wait until all Lifetimes have been removed from the slab.
         //
         // Ignored entries will be removed from the Lifecycle slab
         // by the complete logic called by `tick()`
-        // 
+        //
         // Completed Entries are removed here directly
         let mut id = 0;
         loop {
