@@ -15,6 +15,7 @@ pub(crate) struct SlabList<'a, T> {
 }
 
 // Indices to the head and tail of a single list held within a SlabList
+#[derive(Clone)]
 pub(crate) struct SlabListIndices {
     start: usize,
     end: usize,

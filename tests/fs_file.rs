@@ -37,6 +37,22 @@ fn basic_read() {
 }
 
 #[test]
+fn basic_read_exact() {
+    tokio_uring::start(async {
+        let data = HELLO.repeat(1000);
+        let buf = Vec::with_capacity(data.len());
+
+        let mut tempfile = tempfile();
+        tempfile.write_all(&data).unwrap();
+
+        let file = File::open(tempfile.path()).await.unwrap();
+        let (res, buf) = file.read_exact_at(buf, 0).await;
+        res.unwrap();
+        assert_eq!(buf, data);
+    });
+}
+
+#[test]
 fn basic_write() {
     tokio_uring::start(async {
         let tempfile = tempfile();
@@ -80,6 +96,22 @@ fn vectored_write() {
 
         let file = std::fs::read(tempfile.path()).unwrap();
         assert_eq!(file, HELLO);
+    });
+}
+
+#[test]
+fn basic_write_all() {
+    tokio_uring::start(async {
+        let data = HELLO.repeat(1000);
+
+        let tempfile = tempfile();
+
+        let file = File::create(tempfile.path()).await.unwrap();
+        let (ret, data) = file.write_all_at(data, 0).await;
+        ret.unwrap();
+
+        let file = std::fs::read(tempfile.path()).unwrap();
+        assert_eq!(file, data);
     });
 }
 
