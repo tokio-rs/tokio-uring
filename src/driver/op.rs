@@ -55,9 +55,6 @@ pub(crate) enum Lifecycle {
     /// The operation has been created, and will be submitted when polled
     Pending(Entry),
 
-    /// The operation has been submitted to uring and is currently in-flight
-    Submitted,
-
     /// The submitter is waiting for the completion of the operation
     Waiting(Waker),
 
@@ -150,13 +147,13 @@ where
                     .get_mut(me.index)
                     .expect("invalid internal state");
 
-                match mem::replace(lifecycle, Lifecycle::Submitted) {
+                match mem::replace(lifecycle, Lifecycle::Ignored(Box::new(()))) {
                     Lifecycle::Pending(sqe) => {
                         // Try to push the new operation
-                        if unsafe { driver.uring.submission().push(&sqe).is_err() } {
-                            // If the sqe is full, flush to kernel and remain pending
+                        while unsafe { driver.uring.submission().push(&sqe).is_err() } {
+                            // If the sqe is full, flush to kernel
                             if let Err(e) = driver.submit() {
-                                // If there is an Io error whilst submitting to the q return the error
+                                // Fail if an IoError in encountered
                                 let cqe = CqeResult {
                                     result: Err(e),
                                     flags: 0,
@@ -165,12 +162,8 @@ where
                                 me.index = usize::MAX;
                                 return Poll::Ready(me.data.take().unwrap().complete(cqe));
                             }
-                            let lifecycle = driver.ops.get_mut(me.index).unwrap().0;
-                            *lifecycle = Lifecycle::Pending(sqe);
                         }
-                        Poll::Pending
-                    }
-                    Lifecycle::Submitted => {
+                        let lifecycle = driver.ops.get_mut(me.index).unwrap().0;
                         *lifecycle = Lifecycle::Waiting(cx.waker().clone());
                         Poll::Pending
                     }
@@ -219,23 +212,19 @@ where
                     .get_mut(me.index)
                     .expect("invalid internal state");
 
-                match mem::replace(lifecycle, Lifecycle::Submitted) {
+                match mem::replace(lifecycle, Lifecycle::Ignored(Box::new(()))) {
                     Lifecycle::Pending(sqe) => {
                         // Try to push the new operation
-                        if unsafe { driver.uring.submission().push(&sqe).is_err() } {
-                            // If the sqe is full, flush to kernel and remain pending
+                        while unsafe { driver.uring.submission().push(&sqe).is_err() } {
+                            // If the sqe is full, flush to kernel
                             if let Err(e) = driver.submit() {
-                                // If there is an Io error whilst submitting to the q return the error
+                                // Fail if an IoError in encountered
                                 driver.ops.remove(me.index);
                                 me.index = usize::MAX;
-                                return Poll::Ready(Err(e));
+                                return Poll::Ready(Err(e))
                             }
-                            let lifecycle = driver.ops.get_mut(me.index).unwrap().0;
-                            *lifecycle = Lifecycle::Pending(sqe);
                         }
-                        Poll::Pending
-                    }
-                    Lifecycle::Submitted => {
+                        let lifecycle = driver.ops.get_mut(me.index).unwrap().0;
                         *lifecycle = Lifecycle::Waiting(cx.waker().clone());
                         Poll::Pending
                     }
@@ -281,8 +270,8 @@ impl<T, CqeType> Drop for Op<T, CqeType> {
                     }
                 };
 
-                match mem::replace(lifecycle, Lifecycle::Submitted) {
-                    Lifecycle::Submitted | Lifecycle::Waiting(_) => {
+                match mem::replace(lifecycle, Lifecycle::Ignored(Box::new(()))) {
+                    Lifecycle::Waiting(_) => {
                         *lifecycle = Lifecycle::Ignored(Box::new(self.data.take()));
                     }
                     Lifecycle::Completed(..) | Lifecycle::Pending(_) => {
@@ -313,14 +302,14 @@ impl Lifecycle {
     pub(super) fn complete(&mut self, completions: &mut Slab<Completion>, cqe: CqeResult) -> bool {
         use std::mem;
 
-        match mem::replace(self, Lifecycle::Submitted) {
+        match mem::replace(self, Lifecycle::Ignored(Box::new(()))) {
             Lifecycle::Pending(..) => {
                 // Pending Operations have not submitted to the ring
                 // They should not be receiving completions
                 unreachable!("invalid operation state")
             }
 
-            x @ Lifecycle::Submitted | x @ Lifecycle::Waiting(..) => {
+             Lifecycle::Waiting(waker) => {
                 if io_uring::cqueue::more(cqe.flags) {
                     let mut list = SlabListIndices::new().into_list(completions);
                     list.push(cqe);
@@ -328,11 +317,9 @@ impl Lifecycle {
                 } else {
                     *self = Lifecycle::Completed(cqe);
                 }
-                if let Lifecycle::Waiting(waker) = x {
-                    // waker is woken to notify cqe has arrived
-                    // Note: Maybe defer calling until cqe with !`more` flag set?
-                    waker.wake();
-                }
+                // waker is woken to notify cqe has arrived
+                // Note: Maybe defer calling until cqe with !`more` flag set?
+                waker.wake();
                 false
             }
 
@@ -368,6 +355,7 @@ impl Lifecycle {
     }
 }
 
+/*
 #[cfg(test)]
 mod test {
     use std::rc::Rc;
@@ -556,3 +544,4 @@ mod test {
         });
     }
 }
+ */
