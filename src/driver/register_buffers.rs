@@ -30,7 +30,7 @@ pub(crate) fn unregister_buffers(buffers: &Rc<RefCell<FixedBuffers>>) -> io::Res
             }
             Err(io::Error::new(
                 io::ErrorKind::Other,
-                "not currently registered",
+                "fixed buffers are not currently registered",
             ))
         })
     })
