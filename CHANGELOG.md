@@ -4,19 +4,17 @@
 
 - Fix panic in Deref/DerefMut for Slice extending into uninitialized part of the buffer ([#52])
 - docs: all-features = true ([#84])
-- chore: fix clippy lints ([#99])
 - fix fs unit tests to avoid parallelism ([#121])
 - Box the socket address to allow moving the Connect future ([#126])
 - rt: Fix data race ([#146])
 
 ### Added
 
-- driver: batch submit requests and add benchmark ([#78])
 - Implement fs::File::readv_at()/writev_at() ([#87])
 - fs: implement FromRawFd for File ([#89])
 - Implement `AsRawFd` for `TcpStream` ([#94])
 - net: add TcpListener.local_addr method ([#107])
-- write all ([#111])
+- net: add TcpStream.write_all ([#111])
 - driver: add Builder API as an option to start ([#113])
 - Socket and TcpStream shutdown ([#124])
 - fs: implement fs::File::from_std ([#131])
@@ -27,10 +25,15 @@
 - sync TcpStream, UnixStream and UdpSocket functionality ([#141])
 - Add benchmarks for no-op submission ([#144])
 - Expose runtime structure ([#148])
+
+### Changed
+
+- driver: batch submit requests and add benchmark ([#78])
 - Depend on io-uring version ^0.5.8 ([#153])
 
-### Refactors
+### Internal Improvements
 
+- chore: fix clippy lints ([#99])
 - io: refactor post-op logic in ops into Completable ([#116])
 - Support multi completion events: v2 ([#130])
 - simplify driver operation futures ([#139])
