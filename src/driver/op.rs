@@ -116,8 +116,6 @@ impl<T, CqeType> Op<T, CqeType> {
     ///
     /// `data` is stored during the operation tracking any state for submission to
     /// the kernel.
-    ///
-    /// This will panic if the Op is not within the RuntimeContext
     pub(super) fn submit_with<F>(mut data: T, f: F) -> Self
     where
         F: FnOnce(&mut T) -> squeue::Entry,
