@@ -115,8 +115,12 @@ impl UnixStream {
         &self,
         buf: impl Into<Slice<T>>,
     ) -> crate::BufResult<(), Slice<T>> {
+        self.write_all_slice(buf.into()).await
+    }
+
+    // The implementation of write_all, factored out to reduce code bloat.
+    async fn write_all_slice<T: IoBuf>(&self, mut buf: Slice<T>) -> crate::BufResult<(), Slice<T>> {
         // This function is copied from the TcpStream impl.
-        let mut buf = buf.into();
         let (in_begin, in_end) = (buf.begin(), buf.end());
         while buf.len() > 0 {
             let res = self.write(buf).await;
