@@ -6,7 +6,6 @@
 - docs: all-features = true ([#84])
 - fix fs unit tests to avoid parallelism ([#121])
 - Box the socket address to allow moving the Connect future ([#126])
-- rt: Fix data race ([#146])
 
 ### Added
 
@@ -23,7 +22,7 @@
 - Add NoOp support ([#134])
 - Add writev to TcpStream ([#136])
 - sync TcpStream, UnixStream and UdpSocket functionality ([#141])
-- Add benchmarks for no-op submission ([#144])
+- Add benchmarks for no-op submission ([#144], [#146])
 - Expose runtime structure ([#148])
 
 ### Changed
