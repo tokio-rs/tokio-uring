@@ -303,8 +303,9 @@ impl File {
     ///
     /// # Return
     ///
-    /// The method returns the operation result and the same buffer value passed
-    /// as an argument.
+    /// The method returns the operation result and the buffer value passed
+    /// as an argument. The buffer is uniformly returned as a [`Slice`] view
+    /// covering the same range of the buffer as was passed to the method.
     ///
     /// If the method returns [`Ok(())`], then the read was successful.
     ///
@@ -312,10 +313,10 @@ impl File {
     ///
     /// If this function encounters an "end of file" before completely filling
     /// the buffer, it returns an error of the kind [`ErrorKind::UnexpectedEof`].
-    /// The buffer is returned on error.
+    /// The buffer is returned on error as described above.
     ///
     /// If this function encounters any form of I/O or other error, an error
-    /// variant will be returned. The buffer is returned on error.
+    /// variant will be returned. The buffer is returned on error as described above.
     ///
     /// # Examples
     ///
@@ -465,8 +466,9 @@ impl File {
     ///
     /// # Return
     ///
-    /// The method returns the operation result and the same buffer value passed
-    /// in as an argument.
+    /// The method returns the operation result and the buffer value passed
+    /// as an argument. The buffer is uniformly returned as a [`Slice`] view
+    /// covering the same range of the buffer as was passed to the method.
     ///
     /// # Errors
     ///
