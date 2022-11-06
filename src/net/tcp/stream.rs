@@ -175,9 +175,6 @@ impl TcpStream {
                 // crate's design ensures we are not calling the 'wait' option
                 // in the ENTER syscall. Only an Enter with 'wait' can generate
                 // an EINTR according to the io_uring man pages.
-                // (Err(ref e), slice) if e.kind() == std::io::ErrorKind::Interrupted => {
-                //     buf = slice.into_inner();
-                // },
                 (Err(e), slice) => return (Err(e), slice.into_inner().slice(in_begin..in_end)),
             }
         }
