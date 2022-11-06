@@ -82,9 +82,8 @@ impl Inner {
         // If either:
         //  - runtime has already closed, or
         //  - submitting the Close operation fails
-        // we fall back on a
-        // synchronous `close`. This is safe as, at this point, we
-        // guarantee all in-flight operations have completed. The most
+        // we fall back on a synchronous `close`. This is safe as, at this point,
+        // we guarantee all in-flight operations have completed. The most
         // common cause for an error is attempting to close the FD while
         // off runtime.
         //

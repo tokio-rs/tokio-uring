@@ -12,7 +12,6 @@ impl Op<Close> {
     pub(crate) fn close(fd: RawFd) -> io::Result<Op<Close>> {
         use io_uring::{opcode, types};
 
-        println!("Creating close");
         Op::submit_with(Close { fd }, |close| {
             opcode::Close::new(types::Fd(close.fd)).build()
         })
