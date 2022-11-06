@@ -45,7 +45,7 @@ fn basic_read_exact() {
         let file = File::open(tempfile.path()).await.unwrap();
         let (res, buf) = file.read_exact_at(buf, 0).await;
         res.unwrap();
-        assert_eq!(buf, data);
+        assert_eq!(buf.into_inner(), data);
     });
 }
 

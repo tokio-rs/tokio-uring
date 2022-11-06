@@ -331,7 +331,7 @@ impl File {
     ///         let (res, buffer) = f.read_exact_at(buffer, 0).await;
     ///         res?;
     ///
-    ///         println!("The bytes: {:?}", buffer);
+    ///         println!("The bytes: {:?}", buffer.into_inner());
     ///
     ///         // Close the file
     ///         f.close().await?;
@@ -343,9 +343,18 @@ impl File {
     /// [`ErrorKind::UnexpectedEof`]: std::io::ErrorKind::UnexpectedEof
     pub async fn read_exact_at<T: IoBufMut>(
         &self,
-        mut buf: T,
+        buf: impl Into<Slice<T>>,
         pos: u64,
-    ) -> crate::BufResult<(), T> {
+    ) -> crate::BufResult<(), Slice<T>> {
+        self.read_exact_slice_at(buf.into(), pos).await
+    }
+
+    // The implementation of read_exact_at, factored out to reduce monomorphization bloat.
+    async fn read_exact_slice_at<T: IoBufMut>(
+        &self,
+        mut buf: Slice<T>,
+        pos: u64,
+    ) -> crate::BufResult<(), Slice<T>> {
         let buf_len = buf.bytes_total();
 
         if pos.checked_add(buf_len as u64).is_none() {
@@ -358,12 +367,10 @@ impl File {
             );
         }
 
+        let (in_begin, in_end) = (buf.begin(), buf.end());
         let mut bytes_read = 0;
         while bytes_read < buf_len {
-            let (res, slice) = self
-                .read_at(buf.slice(bytes_read..), pos + bytes_read as u64)
-                .await;
-            buf = slice.into_inner();
+            let (res, slice) = self.read_at(buf, pos + bytes_read as u64).await;
             match res {
                 Ok(0) => {
                     return (
@@ -371,22 +378,23 @@ impl File {
                             io::ErrorKind::UnexpectedEof,
                             "failed to fill whole buffer",
                         )),
-                        buf,
+                        slice.into_inner().slice(in_begin..in_end),
                     )
                 }
                 Ok(n) => {
                     bytes_read += n;
+                    buf = slice.slice(n..);
                 }
 
                 // No match on an EINTR error is performed because this
                 // crate's design ensures we are not calling the 'wait' option
                 // in the ENTER syscall. Only an Enter with 'wait' can generate
                 // an EINTR according to the io_uring man pages.
-                Err(e) => return (Err(e), buf),
+                Err(e) => return (Err(e), slice.into_inner().slice(in_begin..in_end)),
             };
         }
 
-        (Ok(()), buf)
+        (Ok(()), buf.into_inner().slice(in_begin..in_end))
     }
 
     /// Write a buffer into this file at the specified offset, returning how
