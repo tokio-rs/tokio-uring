@@ -489,7 +489,20 @@ impl File {
     ///
     /// [`write_at`]: File::write_at
     /// [`ErrorKind::Interrupted`]: std::io::ErrorKind::Interrupted
-    pub async fn write_all_at<T: IoBuf>(&self, mut buf: T, pos: u64) -> crate::BufResult<(), T> {
+    pub async fn write_all_at<T: IoBuf>(
+        &self,
+        buf: impl Into<Slice<T>>,
+        pos: u64,
+    ) -> crate::BufResult<(), Slice<T>> {
+        self.write_all_slice_at(buf.into(), pos).await
+    }
+
+    // The implementation of write_all_at, factored out to reduce code bloat.
+    async fn write_all_slice_at<T: IoBuf>(
+        &self,
+        mut buf: Slice<T>,
+        pos: u64,
+    ) -> crate::BufResult<(), Slice<T>> {
         let buf_len = buf.bytes_init();
 
         if pos.checked_add(buf_len as u64).is_none() {
@@ -502,12 +515,10 @@ impl File {
             );
         }
 
+        let (in_begin, in_end) = (buf.begin(), buf.end());
         let mut bytes_written = 0;
         while bytes_written < buf_len {
-            let (res, slice) = self
-                .write_at(buf.slice(bytes_written..), pos + bytes_written as u64)
-                .await;
-            buf = slice.into_inner();
+            let (res, slice) = self.write_at(buf, pos + bytes_written as u64).await;
             match res {
                 Ok(0) => {
                     return (
@@ -515,18 +526,21 @@ impl File {
                             io::ErrorKind::WriteZero,
                             "failed to write whole buffer",
                         )),
-                        buf,
+                        slice.into_inner().slice(in_begin..in_end),
                     )
                 }
                 Ok(n) => {
                     bytes_written += n;
+                    buf = slice.slice(n..);
                 }
-                Err(ref e) if e.kind() == io::ErrorKind::Interrupted => {}
-                Err(e) => return (Err(e), buf),
+                Err(ref e) if e.kind() == io::ErrorKind::Interrupted => {
+                    buf = slice;
+                }
+                Err(e) => return (Err(e), slice.into_inner().slice(in_begin..in_end)),
             };
         }
 
-        (Ok(()), buf)
+        (Ok(()), buf.into_inner().slice(in_begin..in_end))
     }
 
     /// Attempts to sync all OS-internal metadata to disk.
