@@ -138,7 +138,7 @@ impl UnixStream {
                     buf = slice.slice(n..);
                 }
 
-                // This match on an EINTR error is not performed because this
+                // No match on an EINTR error is performed because this
                 // crate's design ensures we are not calling the 'wait' option
                 // in the ENTER syscall. Only an Enter with 'wait' can generate
                 // an EINTR according to the io_uring man pages.

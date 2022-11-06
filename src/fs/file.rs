@@ -310,9 +310,6 @@ impl File {
     ///
     /// # Errors
     ///
-    /// If this function encounters an error of the kind [`ErrorKind::Interrupted`]
-    /// then the error is ignored and the operation will continue.
-    ///
     /// If this function encounters an "end of file" before completely filling
     /// the buffer, it returns an error of the kind [`ErrorKind::UnexpectedEof`].
     /// The buffer is returned on error.
@@ -343,7 +340,6 @@ impl File {
     /// }
     /// ```
     ///
-    /// [`ErrorKind::Interrupted`]: std::io::ErrorKind::Interrupted
     /// [`ErrorKind::UnexpectedEof`]: std::io::ErrorKind::UnexpectedEof
     pub async fn read_exact_at<T: IoBufMut>(
         &self,
@@ -381,7 +377,11 @@ impl File {
                 Ok(n) => {
                     bytes_read += n;
                 }
-                Err(ref e) if e.kind() == io::ErrorKind::Interrupted => {}
+
+                // No match on an EINTR error is performed because this
+                // crate's design ensures we are not calling the 'wait' option
+                // in the ENTER syscall. Only an Enter with 'wait' can generate
+                // an EINTR according to the io_uring man pages.
                 Err(e) => return (Err(e), buf),
             };
         }
@@ -449,7 +449,7 @@ impl File {
     /// Attempts to write an entire buffer into this file at the specified offset.
     ///
     /// This method will continuously call [`write_at`] until there is no more data
-    /// to be written or an error of non-[`ErrorKind::Interrupted`] kind is returned.
+    /// to be written or an error is returned.
     /// This method will not return until the entire buffer has been successfully
     /// written or such an error occurs.
     ///
@@ -462,8 +462,7 @@ impl File {
     ///
     /// # Errors
     ///
-    /// This function will return the first error of
-    /// non-[`ErrorKind::Interrupted`] kind that [`write_at`] returns.
+    /// This function will return the first error that [`write_at`] returns.
     ///
     /// # Examples
     ///
@@ -488,7 +487,6 @@ impl File {
     /// ```
     ///
     /// [`write_at`]: File::write_at
-    /// [`ErrorKind::Interrupted`]: std::io::ErrorKind::Interrupted
     pub async fn write_all_at<T: IoBuf>(
         &self,
         buf: impl Into<Slice<T>>,
@@ -533,9 +531,11 @@ impl File {
                     bytes_written += n;
                     buf = slice.slice(n..);
                 }
-                Err(ref e) if e.kind() == io::ErrorKind::Interrupted => {
-                    buf = slice;
-                }
+
+                // No match on an EINTR error is performed because this
+                // crate's design ensures we are not calling the 'wait' option
+                // in the ENTER syscall. Only an Enter with 'wait' can generate
+                // an EINTR according to the io_uring man pages.
                 Err(e) => return (Err(e), slice.into_inner().slice(in_begin..in_end)),
             };
         }
