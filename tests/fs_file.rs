@@ -104,11 +104,11 @@ fn basic_write_all() {
         let tempfile = tempfile();
 
         let file = File::create(tempfile.path()).await.unwrap();
-        let (ret, data) = file.write_all_at(data, 0).await;
+        let (ret, slice) = file.write_all_at(data, 0).await;
         ret.unwrap();
 
         let file = std::fs::read(tempfile.path()).unwrap();
-        assert_eq!(file, data);
+        assert_eq!(file, slice.into_inner());
     });
 }
 
