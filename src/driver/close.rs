@@ -30,7 +30,7 @@ impl Completable for Close {
 
     fn complete(self, cqe: op::CqeResult) -> Self::Output {
         let _ = cqe.result?;
-        
+
         Ok(())
     }
 }
