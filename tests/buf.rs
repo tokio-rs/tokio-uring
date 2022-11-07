@@ -1,4 +1,4 @@
-use tokio_uring::buf::{IoBuf, IoBufMut};
+use tokio_uring::buf::{BoundedBuf, BoundedBufMut};
 
 use std::mem;
 

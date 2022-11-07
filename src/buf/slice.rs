@@ -1,4 +1,4 @@
-use crate::buf::{IoBuf, IoBufMut};
+use super::{BoundedBuf, BoundedBufMut, IoBuf, IoBufMut};
 
 use std::cmp;
 use std::ops;
@@ -9,14 +9,14 @@ use std::ops;
 /// This type is useful for performing io-uring read and write operations using
 /// a subset of a buffer.
 ///
-/// Slices are created using [`IoBuf::slice`].
+/// Slices are created using [`BoundedBuf::slice`].
 ///
 /// # Examples
 ///
 /// Creating a slice
 ///
 /// ```
-/// use tokio_uring::buf::IoBuf;
+/// use tokio_uring::buf::BoundedBuf;
 ///
 /// let buf = b"hello world".to_vec();
 /// let slice = buf.slice(..5);
@@ -39,7 +39,7 @@ impl<T> Slice<T> {
     /// # Examples
     ///
     /// ```
-    /// use tokio_uring::buf::IoBuf;
+    /// use tokio_uring::buf::BoundedBuf;
     ///
     /// let buf = b"hello world".to_vec();
     /// let slice = buf.slice(1..5);
@@ -55,7 +55,7 @@ impl<T> Slice<T> {
     /// # Examples
     ///
     /// ```
-    /// use tokio_uring::buf::IoBuf;
+    /// use tokio_uring::buf::BoundedBuf;
     ///
     /// let buf = b"hello world".to_vec();
     /// let slice = buf.slice(1..5);
@@ -73,7 +73,7 @@ impl<T> Slice<T> {
     /// # Examples
     ///
     /// ```
-    /// use tokio_uring::buf::IoBuf;
+    /// use tokio_uring::buf::BoundedBuf;
     ///
     /// let buf = b"hello world".to_vec();
     /// let slice = buf.slice(..5);
@@ -92,7 +92,7 @@ impl<T> Slice<T> {
     /// # Examples
     ///
     /// ```
-    /// use tokio_uring::buf::IoBuf;
+    /// use tokio_uring::buf::BoundedBuf;
     ///
     /// let buf = b"hello world".to_vec();
     /// let mut slice = buf.slice(..5);
@@ -111,7 +111,7 @@ impl<T> Slice<T> {
     /// # Examples
     ///
     /// ```
-    /// use tokio_uring::buf::IoBuf;
+    /// use tokio_uring::buf::BoundedBuf;
     ///
     /// let buf = b"hello world".to_vec();
     /// let slice = buf.slice(..5);
@@ -142,7 +142,51 @@ impl<T: IoBufMut> ops::DerefMut for Slice<T> {
     }
 }
 
-unsafe impl<T: IoBuf> IoBuf for Slice<T> {
+impl<T: IoBuf> BoundedBuf for Slice<T> {
+    type Buf = T;
+    type Bounds = ops::Range<usize>;
+
+    fn slice(self, range: impl ops::RangeBounds<usize>) -> Slice<T> {
+        use ops::Bound;
+
+        let begin = match range.start_bound() {
+            Bound::Included(&n) => self.begin.checked_add(n).expect("out of range"),
+            Bound::Excluded(&n) => self
+                .begin
+                .checked_add(n)
+                .and_then(|x| x.checked_add(1))
+                .expect("out of range"),
+            Bound::Unbounded => self.begin,
+        };
+
+        assert!(begin <= self.end);
+
+        let end = match range.end_bound() {
+            Bound::Included(&n) => self
+                .begin
+                .checked_add(n)
+                .and_then(|x| x.checked_add(1))
+                .expect("out of range"),
+            Bound::Excluded(&n) => self.begin.checked_add(n).expect("out of range"),
+            Bound::Unbounded => self.end,
+        };
+
+        assert!(end <= self.end);
+        assert!(begin <= self.buf.bytes_init());
+
+        Slice::new(self.buf, begin, end)
+    }
+
+    fn bounds(&self) -> Self::Bounds {
+        self.begin..self.end
+    }
+
+    fn from_buf_bounds(buf: T, bounds: Self::Bounds) -> Self {
+        assert!(bounds.start <= buf.bytes_init());
+        assert!(bounds.end <= buf.bytes_total());
+        Slice::new(buf, bounds.start, bounds.end)
+    }
+
     fn stable_ptr(&self) -> *const u8 {
         super::deref(&self.buf)[self.begin..].as_ptr()
     }
@@ -156,7 +200,9 @@ unsafe impl<T: IoBuf> IoBuf for Slice<T> {
     }
 }
 
-unsafe impl<T: IoBufMut> IoBufMut for Slice<T> {
+impl<T: IoBufMut> BoundedBufMut for Slice<T> {
+    type BufMut = T;
+
     fn stable_mut_ptr(&mut self) -> *mut u8 {
         super::deref_mut(&mut self.buf)[self.begin..].as_mut_ptr()
     }

@@ -1,6 +1,6 @@
 use crate::driver::op::{self, Completable};
 use crate::{
-    buf::IoBufMut,
+    buf::BoundedBufMut,
     driver::{Op, SharedFd},
     BufResult,
 };
@@ -19,7 +19,7 @@ pub(crate) struct RecvFrom<T> {
     pub(crate) msghdr: Box<libc::msghdr>,
 }
 
-impl<T: IoBufMut> Op<RecvFrom<T>> {
+impl<T: BoundedBufMut> Op<RecvFrom<T>> {
     pub(crate) fn recv_from(fd: &SharedFd, mut buf: T) -> io::Result<Op<RecvFrom<T>>> {
         use io_uring::{opcode, types};
 
@@ -56,7 +56,7 @@ impl<T: IoBufMut> Op<RecvFrom<T>> {
 
 impl<T> Completable for RecvFrom<T>
 where
-    T: IoBufMut,
+    T: BoundedBufMut,
 {
     type Output = BufResult<(usize, SocketAddr), T>;
 

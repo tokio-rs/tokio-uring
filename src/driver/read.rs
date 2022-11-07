@@ -1,4 +1,4 @@
-use crate::buf::IoBufMut;
+use crate::buf::BoundedBufMut;
 use crate::driver::{Op, SharedFd};
 use crate::BufResult;
 
@@ -15,7 +15,7 @@ pub(crate) struct Read<T> {
     pub(crate) buf: T,
 }
 
-impl<T: IoBufMut> Op<Read<T>> {
+impl<T: BoundedBufMut> Op<Read<T>> {
     pub(crate) fn read_at(fd: &SharedFd, buf: T, offset: u64) -> io::Result<Op<Read<T>>> {
         use io_uring::{opcode, types};
 
@@ -38,7 +38,7 @@ impl<T: IoBufMut> Op<Read<T>> {
 
 impl<T> Completable for Read<T>
 where
-    T: IoBufMut,
+    T: BoundedBufMut,
 {
     type Output = BufResult<usize, T>;
 

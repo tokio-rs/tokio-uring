@@ -1,6 +1,6 @@
 use crate::driver::op::{self, Completable, Updateable};
 use crate::{
-    buf::IoBuf,
+    buf::BoundedBuf,
     driver::{Op, SharedFd},
     BufResult,
 };
@@ -18,7 +18,7 @@ pub(crate) struct SendZc<T> {
     bytes: usize,
 }
 
-impl<T: IoBuf> Op<SendZc<T>> {
+impl<T: BoundedBuf> Op<SendZc<T>> {
     pub(crate) fn send_zc(fd: &SharedFd, buf: T) -> io::Result<Op<SendZc<T>>> {
         use io_uring::{opcode, types};
 
@@ -39,10 +39,7 @@ impl<T: IoBuf> Op<SendZc<T>> {
     }
 }
 
-impl<T> Completable for SendZc<T>
-where
-    T: IoBuf,
-{
+impl<T> Completable for SendZc<T> {
     type Output = BufResult<usize, T>;
 
     fn complete(self, cqe: op::CqeResult) -> Self::Output {
@@ -54,10 +51,7 @@ where
     }
 }
 
-impl<T> Updateable for SendZc<T>
-where
-    T: IoBuf,
-{
+impl<T> Updateable for SendZc<T> {
     fn update(&mut self, cqe: op::CqeResult) {
         // uring send_zc promises there will be no error on CQE's marked more
         self.bytes += *cqe.result.as_ref().unwrap() as usize;
