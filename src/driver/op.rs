@@ -42,10 +42,6 @@ pub(crate) struct Op<T: 'static, CqeType = SingleCQE> {
 /// A Marker for Ops which expect only a single completion event
 pub(crate) struct SingleCQE;
 
-/// A Marker for Ops which may be submitted when the ring is not present
-/// The only user of this is `Close` currently
-pub(crate) struct Fallible;
-
 pub(crate) trait Completable {
     type Output;
     fn complete(self, cqe: CqeResult) -> Self::Output;
@@ -54,6 +50,9 @@ pub(crate) trait Completable {
 pub(crate) enum Lifecycle {
     /// The operation has been created, and will be submitted when polled
     Pending(Entry),
+
+    /// The operation has been manually submitted
+    Submitted,
 
     /// The submitter is waiting for the completion of the operation
     Waiting(Waker),
@@ -74,6 +73,7 @@ impl std::fmt::Debug for Lifecycle {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Pending(_) => f.debug_tuple("Pending").finish(),
+            Self::Submitted => f.debug_tuple("Submitted").finish(),
             Self::Waiting(_) => f.debug_tuple("Waiting").finish(),
             Self::Ignored(_) => f.debug_tuple("Ignored").finish(),
             Self::Completed(_) => f.debug_tuple("Completed").finish(),
@@ -137,18 +137,36 @@ impl<T, CqeType> Op<T, CqeType> {
         })
     }
 
-    /// Try submitting an to the driver
+    /// Enqueue an operation on the submission ring, without `await`ing the future
     ///
-    /// This will return an Error if the Op is not within the RuntimeContext
-    pub(super) fn try_submit_with<F>(data: T, f: F) -> io::Result<Self>
-    where
-        F: FnOnce(&mut T) -> squeue::Entry,
-    {
-        if CONTEXT.with(|cx| cx.is_set()) {
-            Ok(Op::submit_with(data, f))
-        } else {
-            Err(io::ErrorKind::Other.into())
-        }
+    /// This is useful when any failure in io_uring submission needs
+    /// to be handled at the point of submission.
+    pub(super) fn enqueue(self) -> io::Result<Self> {
+        CONTEXT
+            .with(|runtime_context| {
+                runtime_context.with_driver_mut(|driver| {
+                    let (lifecycle, _) = driver
+                        .ops
+                        .get_mut(self.index)
+                        .expect("invalid internal state");
+
+                    match std::mem::replace(lifecycle, Lifecycle::Submitted) {
+                        Lifecycle::Pending(sqe) => {
+                            // Try to push the new operation
+                            while unsafe { driver.uring.submission().push(&sqe).is_err() } {
+                                // Fail with an IoError if encountered
+                                driver.submit()?;
+                            }
+                        }
+                        lc => {
+                            let lifecycle = driver.ops.get_mut(self.index).unwrap().0;
+                            *lifecycle = lc;
+                        }
+                    }
+                    Ok(())
+                })
+            })
+            .map(|_| self)
     }
 }
 
@@ -190,6 +208,10 @@ where
                         *lifecycle = Lifecycle::Waiting(cx.waker().clone());
                         Poll::Pending
                     }
+                    Lifecycle::Submitted => {
+                        *lifecycle = Lifecycle::Waiting(cx.waker().clone());
+                        Poll::Pending
+                    }
                     Lifecycle::Waiting(waker) if !waker.will_wake(cx.waker()) => {
                         *lifecycle = Lifecycle::Waiting(cx.waker().clone());
                         Poll::Pending
@@ -206,67 +228,6 @@ where
                     }
                     Lifecycle::CompletionList(..) => {
                         unreachable!("No `more` flag set for SingleCQE")
-                    }
-                }
-            })
-        })
-    }
-}
-
-impl<T> Future for Op<T, Fallible>
-where
-    T: Unpin + 'static,
-{
-    type Output = io::Result<()>;
-
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        use std::mem;
-
-        let me = &mut *self;
-
-        CONTEXT.with(|runtime_context| {
-            if !runtime_context.is_set() {
-                return Poll::Ready(Err(io::ErrorKind::Other.into()));
-            }
-
-            runtime_context.with_driver_mut(|driver| {
-                let (lifecycle, _) = driver
-                    .ops
-                    .get_mut(me.index)
-                    .expect("invalid internal state");
-
-                match mem::replace(lifecycle, Lifecycle::Ignored(Box::new(()))) {
-                    Lifecycle::Pending(sqe) => {
-                        // Try to push the new operation
-                        while unsafe { driver.uring.submission().push(&sqe).is_err() } {
-                            // If the sqe is full, flush to kernel
-                            if let Err(e) = driver.submit() {
-                                // Fail if an IoError in encountered
-                                driver.ops.remove(me.index);
-                                me.index = usize::MAX;
-                                return Poll::Ready(Err(e));
-                            }
-                        }
-                        let lifecycle = driver.ops.get_mut(me.index).unwrap().0;
-                        *lifecycle = Lifecycle::Waiting(cx.waker().clone());
-                        Poll::Pending
-                    }
-                    Lifecycle::Waiting(waker) if !waker.will_wake(cx.waker()) => {
-                        *lifecycle = Lifecycle::Waiting(cx.waker().clone());
-                        Poll::Pending
-                    }
-                    Lifecycle::Waiting(waker) => {
-                        *lifecycle = Lifecycle::Waiting(waker);
-                        Poll::Pending
-                    }
-                    Lifecycle::Ignored(..) => unreachable!(),
-                    Lifecycle::Completed(_) => {
-                        driver.ops.remove(me.index);
-                        me.index = usize::MAX;
-                        Poll::Ready(Ok(()))
-                    }
-                    Lifecycle::CompletionList(..) => {
-                        unreachable!("No `more` flag set for Fallible")
                     }
                 }
             })
@@ -294,7 +255,7 @@ impl<T, CqeType> Drop for Op<T, CqeType> {
                 };
 
                 match mem::replace(lifecycle, Lifecycle::Ignored(Box::new(()))) {
-                    Lifecycle::Waiting(_) => {
+                    Lifecycle::Submitted | Lifecycle::Waiting(_) => {
                         *lifecycle = Lifecycle::Ignored(Box::new(self.data.take()));
                     }
                     Lifecycle::Completed(..) | Lifecycle::Pending(_) => {
@@ -332,7 +293,7 @@ impl Lifecycle {
                 unreachable!("Completion for pending Op")
             }
 
-            Lifecycle::Waiting(waker) => {
+            x @ Lifecycle::Submitted | x @ Lifecycle::Waiting(..) => {
                 if io_uring::cqueue::more(cqe.flags) {
                     let mut list = SlabListIndices::new().into_list(completions);
                     list.push(cqe);
@@ -340,9 +301,11 @@ impl Lifecycle {
                 } else {
                     *self = Lifecycle::Completed(cqe);
                 }
-                // waker is woken to notify cqe has arrived
-                // Note: Maybe defer calling until cqe with !`more` flag set?
-                waker.wake();
+                if let Lifecycle::Waiting(waker) = x {
+                    // waker is woken to notify cqe has arrived
+                    // Note: Maybe defer calling until cqe with !`more` flag set?
+                    waker.wake();
+                }
                 false
             }
 
@@ -378,7 +341,6 @@ impl Lifecycle {
     }
 }
 
-/*
 #[cfg(test)]
 mod test {
     use std::rc::Rc;
@@ -529,6 +491,8 @@ mod test {
         release();
     }
 
+    /// Create a data, and an Op containing that data,
+    /// which is mocked as submitted on the ring
     fn init() -> (Op<Rc<()>>, Rc<()>) {
         use crate::driver::Driver;
 
@@ -537,13 +501,13 @@ mod test {
 
         let op = CONTEXT.with(|cx| {
             cx.set_driver(driver);
-
             cx.with_driver_mut(|driver| {
-                let index = driver.ops.lifecycle.insert(Lifecycle::Submitted);
-                Op::new(data.clone(), index)
+                let entry = driver.ops.insert();
+                let op = Op::new(data.clone(), entry.key());
+                entry.insert(Lifecycle::Submitted);
+                op
             })
         });
-
         (op, data)
     }
 
@@ -567,4 +531,3 @@ mod test {
         });
     }
 }
- */

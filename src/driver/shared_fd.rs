@@ -1,4 +1,4 @@
-use crate::driver::{op, Close, Op};
+use crate::driver::{Close, Op};
 use crate::future::poll_fn;
 
 use std::cell::RefCell;
@@ -9,8 +9,13 @@ use std::{
     os::unix::io::{FromRawFd, RawFd},
 };
 
+use crate::runtime::CONTEXT;
+
 // Tracks in-flight operations on a file descriptor. Ensures all in-flight
 // operations complete before submitting the close.
+//
+// If the runtime is unavailable, will fall back to synchronous Close to ensure
+// File resources are not leaked.
 #[derive(Clone)]
 pub(crate) struct SharedFd {
     inner: Rc<Inner>,
@@ -32,7 +37,7 @@ enum State {
     Waiting(Option<Waker>),
 
     /// The FD is closing
-    Closing(io::Result<Op<Close, op::Fallible>>),
+    Closing(Op<Close>),
 
     /// The FD is fully closed
     Closed,
@@ -88,7 +93,31 @@ impl Inner {
         let state = RefCell::get_mut(&mut self.state);
 
         // Submit a close operation
-        *state = State::Closing(Op::close(self.fd));
+        // If either:
+        //  - runtime has already closed, or
+        //  - submitting the Close operation fails
+        // we fall back on a synchronous `close`. This is safe as, at this point,
+        // we guarantee all in-flight operations have completed. The most
+        // common cause for an error is attempting to close the FD while
+        // off runtime.
+        //
+        // This is done by initializing a `File` with the FD and
+        // dropping it.
+        //
+        // TODO: Should we warn?
+        *state = match CONTEXT.try_with(|cx| cx.is_set()) {
+            Ok(true) => match Op::close(self.fd) {
+                Ok(op) => State::Closing(op),
+                Err(_) => {
+                    let _ = unsafe { std::fs::File::from_raw_fd(self.fd) };
+                    State::Closed
+                }
+            },
+            _ => {
+                let _ = unsafe { std::fs::File::from_raw_fd(self.fd) };
+                State::Closed
+            }
+        };
     }
 
     /// Completes when the FD has been closed.
@@ -117,13 +146,8 @@ impl Inner {
                     *state = State::Waiting(Some(cx.waker().clone()));
                     Poll::Pending
                 }
-                State::Closing(op) => {
-                    let r = match op {
-                        Ok(mut op) => {
-                            ready!(Pin::new(&mut op).poll(cx))
-                        }
-                        Err(e) => Err(e),
-                    };
+                State::Closing(mut op) => {
+                    let r = ready!(Pin::new(&mut op).poll(cx));
                     *state = State::Closed;
                     Poll::Ready(r)
                 }
