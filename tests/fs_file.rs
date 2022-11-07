@@ -157,7 +157,7 @@ fn drop_open() {
         assert_eq!(file, HELLO);
     });
 }
-/*
+
 #[test]
 fn drop_off_runtime() {
     let file = tokio_uring::start(async {
@@ -170,7 +170,7 @@ fn drop_off_runtime() {
 
     assert_invalid_fd(fd);
 }
-*/
+
 
 #[test]
 fn sync_doesnt_kill_anything() {
