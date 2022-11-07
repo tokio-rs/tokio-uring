@@ -1,6 +1,6 @@
 use crate::driver::Op;
 
-use crate::driver::op::{self, Completable};
+use crate::driver::op::{self, Buildable, Completable};
 use std::io;
 use std::os::unix::io::RawFd;
 
@@ -10,11 +10,19 @@ pub(crate) struct Close {
 
 impl Op<Close> {
     pub(crate) fn close(fd: RawFd) -> io::Result<Op<Close>> {
-        use io_uring::{opcode, types};
+        Close { fd }.submit()
+    }
+}
 
-        Op::submit_with(Close { fd }, |close| {
-            opcode::Close::new(types::Fd(close.fd)).build()
-        })
+impl Buildable for Close
+where
+    Self: 'static + Sized,
+{
+    type CqeType = op::SingleCQE;
+
+    fn create_sqe(&mut self) -> io_uring::squeue::Entry {
+        use io_uring::{opcode, types};
+        opcode::Close::new(types::Fd(self.fd)).build()
     }
 }
 

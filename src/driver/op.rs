@@ -11,7 +11,6 @@ mod slab_list;
 use slab::Slab;
 use slab_list::{SlabListEntry, SlabListIndices};
 
-use crate::driver;
 use crate::runtime::CONTEXT;
 use crate::util::PhantomUnsendUnsync;
 
@@ -88,9 +87,9 @@ where
     T: Completable,
 {
     /// Create a new operation
-    fn new(data: T, inner: &mut driver::Driver) -> Self {
+    fn new(data: T, index: usize) -> Self {
         Op {
-            index: inner.ops.insert(),
+            index,
             data: Some(data),
             _cqe_type: PhantomData,
             _phantom: PhantomData,
@@ -98,7 +97,7 @@ where
     }
 }
 
-pub trait Buildable
+pub(crate) trait Buildable
 where
     Self: 'static + Sized + Completable,
 {
@@ -114,11 +113,13 @@ where
     fn submit(mut self) -> io::Result<Op<Self, <Self as Buildable>::CqeType>> {
         CONTEXT.with(|cx| {
             cx.with_driver_mut(|driver| {
-                // Create the operation
-                let mut op = Op::new(self, driver);
+                let index = driver.ops.insert();
 
                 // Configure the SQE
-                let sqe = self.create_sqe().user_data(op.index as _);
+                let sqe = self.create_sqe().user_data(index as _);
+
+                // Create the operation
+                let op = Op::new(self, index);
 
                 // Push the new operation
                 while unsafe { driver.uring.submission().push(&sqe).is_err() } {
@@ -443,7 +444,10 @@ mod test {
         let op = CONTEXT.with(|cx| {
             cx.set_driver(driver);
 
-            cx.with_driver_mut(|driver| Op::new(data.clone(), driver))
+            cx.with_driver_mut(|driver| {
+                let index = driver.ops.insert();
+                Op::new(data.clone(), index)
+            })
         });
 
         (op, data)

@@ -35,13 +35,13 @@ where
     type CqeType = op::SingleCQE;
 
     fn create_sqe(&mut self) -> io_uring::squeue::Entry {
-        let mut opcode = opcode::Fsync::new(types::Fd(self.fd.raw_fd()));
+        let opcode = opcode::Fsync::new(types::Fd(self.fd.raw_fd()));
 
         if let Some(flags) = self.flags {
-            opcode.flags(flags);
+            opcode.flags(flags).build()
+        } else {
+            opcode.build()
         }
-
-        opcode.build()
     }
 }
 
