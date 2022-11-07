@@ -134,18 +134,6 @@ where
             })
         })
     }
-
-    /// Try submitting an operation to uring
-    pub(super) fn try_submit_with<F>(data: T, f: F) -> io::Result<Self>
-    where
-        F: FnOnce(&mut T) -> squeue::Entry,
-    {
-        if CONTEXT.with(|cx| cx.is_set()) {
-            Op::submit_with(data, f)
-        } else {
-            Err(io::ErrorKind::Other.into())
-        }
-    }
 }
 
 impl<T> Future for Op<T, SingleCQE>

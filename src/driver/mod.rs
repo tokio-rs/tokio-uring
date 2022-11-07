@@ -145,41 +145,82 @@ impl Drop for Driver {
             self.submit().expect("Internal error when dropping driver");
         }
 
-        // pre-determine what to cancel
-        let mut cancellable_ops = Vec::new();
-        for (id, cycle) in self.ops.lifecycle.iter() {
-            // don't cancel completed items
-            if !matches!(cycle, Lifecycle::Completed(_)) {
-                cancellable_ops.push(id);
-            }
-        }
+        // Pre-determine what to cancel
+        // After this pass, all LifeCycles will be marked either as Completed or Ignored, as appropriate
+        for (_, cycle) in self.ops.lifecycle.iter_mut() {
+            match std::mem::replace(cycle, Lifecycle::Ignored(Box::new(()))) {
+                lc @ Lifecycle::Completed(_) => {
+                    // don't cancel completed items
+                    *cycle = lc;
+                }
 
-        // cancel all ops
-        for id in cancellable_ops {
-            unsafe {
-                while self
-                    .uring
-                    .submission()
-                    .push(&AsyncCancel::new(id as u64).build().user_data(u64::MAX))
-                    .is_err()
-                {
-                    self.submit().expect("Internal error when dropping driver");
+                Lifecycle::CompletionList(indices) => {
+                    let mut list = indices.clone().into_list(&mut self.ops.completions);
+                    if !io_uring::cqueue::more(list.peek_end().unwrap().flags) {
+                        // This op is complete. Replace with a null Completed entry
+                        *cycle = Lifecycle::Completed(op::CqeResult {
+                            result: Ok(0),
+                            flags: 0,
+                        });
+                    }
+                }
+
+                _ => {
+                    // All other states need cancelling.
+                    // The mem::replace means these are now marked Ignored.
                 }
             }
         }
 
-        // TODO: add a way to know if a multishot op is done sending completions
-        // SAFETY: this is currently unsound for multishot ops
-        while !self
-            .ops
-            .lifecycle
-            .iter()
-            .all(|(_, cycle)| matches!(cycle, Lifecycle::Completed(_)))
-        {
-            // If waiting fails, ignore the error. The wait will be attempted
-            // again on the next loop.
-            let _ = self.wait();
-            self.tick();
+        // Submit cancellation for all ops marked Ignored
+        for (id, cycle) in self.ops.lifecycle.iter_mut() {
+            if let Lifecycle::Ignored(..) = cycle {
+                unsafe {
+                    while self
+                        .uring
+                        .submission()
+                        .push(&AsyncCancel::new(id as u64).build().user_data(u64::MAX))
+                        .is_err()
+                    {
+                        self.uring
+                            .submit_and_wait(1)
+                            .expect("Internal error when dropping driver");
+                    }
+                }
+            }
+        }
+
+        // Wait until all Lifetimes have been removed from the slab.
+        //
+        // Ignored entries will be removed from the Lifecycle slab
+        // by the complete logic called by `tick()`
+        //
+        // Completed Entries are removed here directly
+        let mut id = 0;
+        loop {
+            if self.ops.lifecycle.is_empty() {
+                break;
+            }
+            // Cycles are either all ignored or complete
+            // If there is at least one Ignored still to process, call wait
+            match self.ops.lifecycle.get(id) {
+                Some(Lifecycle::Ignored(..)) => {
+                    // If waiting fails, ignore the error. The wait will be attempted
+                    // again on the next loop.
+                    let _ = self.wait();
+                    self.tick();
+                }
+
+                Some(_) => {
+                    // Remove Completed entries
+                    let _ = self.ops.lifecycle.remove(id);
+                    id += 1;
+                }
+
+                None => {
+                    id += 1;
+                }
+            }
         }
     }
 }
