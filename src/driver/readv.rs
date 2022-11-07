@@ -2,7 +2,7 @@ use crate::buf::IoBufMut;
 use crate::driver::{Op, SharedFd};
 use crate::BufResult;
 
-use crate::driver::op::{self, Completable};
+use crate::driver::op::{self, Buildable, Completable};
 use libc::iovec;
 use std::io;
 
@@ -16,6 +16,8 @@ pub(crate) struct Readv<T> {
     pub(crate) bufs: Vec<T>,
     /// Parameter for `io_uring::op::readv`, referring `bufs`.
     iovs: Vec<iovec>,
+
+    offset: u64,
 }
 
 impl<T: IoBufMut> Op<Readv<T>> {
@@ -24,8 +26,6 @@ impl<T: IoBufMut> Op<Readv<T>> {
         mut bufs: Vec<T>,
         offset: u64,
     ) -> io::Result<Op<Readv<T>>> {
-        use io_uring::{opcode, types};
-
         // Build `iovec` objects referring the provided `bufs` for `io_uring::opcode::Readv`.
         let iovs: Vec<iovec> = bufs
             .iter_mut()
@@ -36,22 +36,32 @@ impl<T: IoBufMut> Op<Readv<T>> {
             })
             .collect();
 
-        Op::submit_with(
-            Readv {
-                fd: fd.clone(),
-                bufs,
-                iovs,
-            },
-            |read| {
-                opcode::Readv::new(
-                    types::Fd(fd.raw_fd()),
-                    read.iovs.as_ptr(),
-                    read.iovs.len() as u32,
-                )
-                .offset(offset as _)
-                .build()
-            },
+        Readv {
+            fd: fd.clone(),
+            bufs,
+            iovs,
+            offset,
+        }
+        .submit()
+    }
+}
+
+impl<T: IoBufMut> Buildable for Readv<T>
+where
+    Self: 'static + Sized,
+{
+    type CqeType = op::SingleCQE;
+
+    fn create_sqe(&mut self) -> io_uring::squeue::Entry {
+        use io_uring::{opcode, types};
+
+        opcode::Readv::new(
+            types::Fd(self.fd.raw_fd()),
+            self.iovs.as_ptr(),
+            self.iovs.len() as u32,
         )
+        .offset(self.offset as _)
+        .build()
     }
 }
 

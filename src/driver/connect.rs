@@ -1,4 +1,4 @@
-use crate::driver::op::{self, Completable};
+use crate::driver::op::{self, Buildable, Completable};
 use crate::driver::{Op, SharedFd};
 use socket2::SockAddr;
 use std::io;
@@ -14,22 +14,29 @@ pub(crate) struct Connect {
 impl Op<Connect> {
     /// Submit a request to connect.
     pub(crate) fn connect(fd: &SharedFd, socket_addr: SockAddr) -> io::Result<Op<Connect>> {
+        Connect {
+            fd: fd.clone(),
+            socket_addr: Box::new(socket_addr),
+        }
+        .submit()
+    }
+}
+
+impl Buildable for Connect
+where
+    Self: 'static + Sized,
+{
+    type CqeType = op::SingleCQE;
+
+    fn create_sqe(&mut self) -> io_uring::squeue::Entry {
         use io_uring::{opcode, types};
 
-        Op::submit_with(
-            Connect {
-                fd: fd.clone(),
-                socket_addr: Box::new(socket_addr),
-            },
-            |connect| {
-                opcode::Connect::new(
-                    types::Fd(connect.fd.raw_fd()),
-                    connect.socket_addr.as_ptr(),
-                    connect.socket_addr.len(),
-                )
-                .build()
-            },
+        opcode::Connect::new(
+            types::Fd(self.fd.raw_fd()),
+            self.socket_addr.as_ptr(),
+            self.socket_addr.len(),
         )
+        .build()
     }
 }
 

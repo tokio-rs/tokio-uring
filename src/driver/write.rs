@@ -1,4 +1,4 @@
-use crate::driver::op::{self, Completable};
+use crate::driver::op::{self, Buildable, Completable};
 use crate::{
     buf::IoBuf,
     driver::{Op, SharedFd},
@@ -13,27 +13,37 @@ pub(crate) struct Write<T> {
     fd: SharedFd,
 
     pub(crate) buf: T,
+
+    offset: u64,
 }
 
 impl<T: IoBuf> Op<Write<T>> {
     pub(crate) fn write_at(fd: &SharedFd, buf: T, offset: u64) -> io::Result<Op<Write<T>>> {
+        Write {
+            fd: fd.clone(),
+            buf,
+            offset,
+        }
+        .submit()
+    }
+}
+
+impl<T: IoBuf> op::Buildable for Write<T>
+where
+    Self: 'static + Sized,
+{
+    type CqeType = op::SingleCQE;
+
+    fn create_sqe(&mut self) -> io_uring::squeue::Entry {
         use io_uring::{opcode, types};
 
-        Op::submit_with(
-            Write {
-                fd: fd.clone(),
-                buf,
-            },
-            |write| {
-                // Get raw buffer info
-                let ptr = write.buf.stable_ptr();
-                let len = write.buf.bytes_init();
+        // Get raw buffer info
+        let ptr = self.buf.stable_ptr();
+        let len = self.buf.bytes_init();
 
-                opcode::Write::new(types::Fd(fd.raw_fd()), ptr, len as _)
-                    .offset(offset as _)
-                    .build()
-            },
-        )
+        opcode::Write::new(types::Fd(self.fd.raw_fd()), ptr, len as _)
+            .offset(self.offset as _)
+            .build()
     }
 }
 

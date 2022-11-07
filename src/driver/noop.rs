@@ -1,5 +1,5 @@
 use crate::driver::{
-    op::{self, Completable},
+    op::{self, Buildable, Completable},
     Op,
 };
 use std::io;
@@ -11,9 +11,18 @@ pub struct NoOp {}
 
 impl Op<NoOp> {
     pub fn no_op() -> io::Result<Op<NoOp>> {
-        use io_uring::opcode;
+        NoOp {}.submit()
+    }
+}
 
-        Op::submit_with(NoOp {}, |_| opcode::Nop::new().build())
+impl Buildable for NoOp
+where
+    Self: 'static + Sized,
+{
+    type CqeType = op::SingleCQE;
+
+    fn create_sqe(&mut self) -> io_uring::squeue::Entry {
+        io_uring::opcode::Nop::new().build()
     }
 }
 

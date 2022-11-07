@@ -1,4 +1,4 @@
-use crate::driver::op::{self, Completable};
+use crate::driver::op::{self, Buildable, Completable};
 use crate::{
     buf::IoBufMut,
     driver::{Op, SharedFd},
@@ -21,8 +21,6 @@ pub(crate) struct RecvFrom<T> {
 
 impl<T: IoBufMut> Op<RecvFrom<T>> {
     pub(crate) fn recv_from(fd: &SharedFd, mut buf: T) -> io::Result<Op<RecvFrom<T>>> {
-        use io_uring::{opcode, types};
-
         let mut io_slices = vec![IoSliceMut::new(unsafe {
             std::slice::from_raw_parts_mut(buf.stable_mut_ptr(), buf.bytes_total())
         })];
@@ -35,22 +33,27 @@ impl<T: IoBufMut> Op<RecvFrom<T>> {
         msghdr.msg_name = socket_addr.as_ptr() as *mut libc::c_void;
         msghdr.msg_namelen = socket_addr.len();
 
-        Op::submit_with(
-            RecvFrom {
-                fd: fd.clone(),
-                buf,
-                io_slices,
-                socket_addr,
-                msghdr,
-            },
-            |recv_from| {
-                opcode::RecvMsg::new(
-                    types::Fd(recv_from.fd.raw_fd()),
-                    recv_from.msghdr.as_mut() as *mut _,
-                )
-                .build()
-            },
-        )
+        RecvFrom {
+            fd: fd.clone(),
+            buf,
+            io_slices,
+            socket_addr,
+            msghdr,
+        }
+        .submit()
+    }
+}
+
+impl<T: IoBufMut> Buildable for RecvFrom<T>
+where
+    Self: 'static + Sized,
+{
+    type CqeType = op::SingleCQE;
+
+    fn create_sqe(&mut self) -> io_uring::squeue::Entry {
+        use io_uring::{opcode, types};
+
+        opcode::RecvMsg::new(types::Fd(self.fd.raw_fd()), self.msghdr.as_mut() as *mut _).build()
     }
 }
 

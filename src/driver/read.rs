@@ -2,7 +2,7 @@ use crate::buf::IoBufMut;
 use crate::driver::{Op, SharedFd};
 use crate::BufResult;
 
-use crate::driver::op::{self, Completable};
+use crate::driver::op::{self, Buildable, Completable};
 use std::io;
 
 pub(crate) struct Read<T> {
@@ -13,26 +13,36 @@ pub(crate) struct Read<T> {
 
     /// Reference to the in-flight buffer.
     pub(crate) buf: T,
+
+    offset: u64,
 }
 
 impl<T: IoBufMut> Op<Read<T>> {
     pub(crate) fn read_at(fd: &SharedFd, buf: T, offset: u64) -> io::Result<Op<Read<T>>> {
+        Read {
+            fd: fd.clone(),
+            buf,
+            offset,
+        }
+        .submit()
+    }
+}
+
+impl<T: IoBufMut> Buildable for Read<T>
+where
+    Self: 'static + Sized,
+{
+    type CqeType = op::SingleCQE;
+
+    fn create_sqe(&mut self) -> io_uring::squeue::Entry {
         use io_uring::{opcode, types};
 
-        Op::submit_with(
-            Read {
-                fd: fd.clone(),
-                buf,
-            },
-            |read| {
-                // Get raw buffer info
-                let ptr = read.buf.stable_mut_ptr();
-                let len = read.buf.bytes_total();
-                opcode::Read::new(types::Fd(fd.raw_fd()), ptr, len as _)
-                    .offset(offset as _)
-                    .build()
-            },
-        )
+        // Get raw buffer info
+        let ptr = self.buf.stable_mut_ptr();
+        let len = self.buf.bytes_total();
+        opcode::Read::new(types::Fd(self.fd.raw_fd()), ptr, len as _)
+            .offset(self.offset as _)
+            .build()
     }
 }
 

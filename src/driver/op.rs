@@ -96,22 +96,29 @@ where
             _phantom: PhantomData,
         }
     }
+}
 
-    /// Submit an operation to uring.
+pub trait Buildable
+where
+    Self: 'static + Sized + Completable,
+{
+    // The CqeType type which results from Submission
+    type CqeType;
+
+    fn create_sqe(&mut self) -> squeue::Entry;
+
+    /// Build an Operation, and submit to uring.
     ///
     /// `state` is stored during the operation tracking any state submitted to
     /// the kernel.
-    pub(super) fn submit_with<F>(data: T, f: F) -> io::Result<Self>
-    where
-        F: FnOnce(&mut T) -> squeue::Entry,
-    {
+    fn submit(mut self) -> io::Result<Op<Self, <Self as Buildable>::CqeType>> {
         CONTEXT.with(|cx| {
             cx.with_driver_mut(|driver| {
                 // Create the operation
-                let mut op = Op::new(data, driver);
+                let mut op = Op::new(self, driver);
 
                 // Configure the SQE
-                let sqe = f(op.data.as_mut().unwrap()).user_data(op.index as _);
+                let sqe = self.create_sqe().user_data(op.index as _);
 
                 // Push the new operation
                 while unsafe { driver.uring.submission().push(&sqe).is_err() } {
@@ -124,17 +131,11 @@ where
         })
     }
 
-    /// Try submitting an operation to uring
-    pub(super) fn try_submit_with<F>(data: T, f: F) -> io::Result<Self>
-    where
-        F: FnOnce(&mut T) -> squeue::Entry,
-    {
-        if CONTEXT.with(|cx| cx.is_set()) {
-            Op::submit_with(data, f)
-        } else {
-            Err(io::ErrorKind::Other.into())
-        }
-    }
+    // Submit an operation, linking it to the following entry
+    // fn link<S: Buildable>(self, s: S) -> Link<Op<Self, <Self as Buildable>::CqeType>, S> {
+    //     let t = self.submit();
+    //     Link {t,s}
+    // }
 }
 
 impl<T> Future for Op<T, SingleCQE>
