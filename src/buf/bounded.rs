@@ -128,6 +128,11 @@ pub trait BoundedBufMut: BoundedBuf<Buf = Self::BufMut> {
 
     /// Like [`IoBufMut::set_init`],
     /// but the position is possibly offset to the view's starting position.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that all bytes starting at `stable_mut_ptr()` up
+    /// to `pos` are initialized and owned by the buffer.
     unsafe fn set_init(&mut self, pos: usize);
 }
 
