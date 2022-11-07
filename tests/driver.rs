@@ -71,7 +71,7 @@ fn complete_ops_on_drop() {
 
     // little sleep
     std::thread::sleep(std::time::Duration::from_millis(100));
-    
+
     drop(file);
 }
 
