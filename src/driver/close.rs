@@ -27,8 +27,10 @@ impl Op<Close> {
 
 impl Completable for Close {
     type Output = io::Result<()>;
+
     fn complete(self, cqe: op::CqeResult) -> Self::Output {
         let _ = cqe.result?;
+        
         Ok(())
     }
 }

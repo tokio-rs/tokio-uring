@@ -38,7 +38,7 @@ fn main() {
                     }
 
                     let (res, slice) = stream.write_all(buf.slice(..read)).await;
-                    res.unwrap();
+                    let _ = res.unwrap();
                     buf = slice.into_inner();
                     println!("{} all {} bytes ping-ponged", socket_addr, read);
                     n += read;
