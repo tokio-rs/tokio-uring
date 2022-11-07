@@ -78,7 +78,6 @@ impl<'a, T> SlabList<'a, T> {
     }
 
     /// Pop from front of list
-    #[allow(dead_code)]
     pub(crate) fn pop(&mut self) -> Option<T> {
         self.slab
             .try_remove(self.index.start)
@@ -118,6 +117,14 @@ impl<'a, T> Drop for SlabList<'a, T> {
             let removed = self.slab.remove(self.index.start);
             self.index.start = removed.next;
         }
+    }
+}
+
+impl<'a, T> Iterator for SlabList<'a, T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.pop()
     }
 }
 
