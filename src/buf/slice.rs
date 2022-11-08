@@ -177,6 +177,10 @@ impl<T: IoBuf> BoundedBuf for Slice<T> {
         Slice::new(self.buf, begin, end)
     }
 
+    fn get_buf(&self) -> &T {
+        &self.buf
+    }
+
     fn bounds(&self) -> Self::Bounds {
         self.begin..self.end
     }

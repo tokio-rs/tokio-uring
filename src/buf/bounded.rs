@@ -49,6 +49,9 @@ pub trait BoundedBuf: Sized + Unpin + 'static {
     /// ```
     fn slice(self, range: impl ops::RangeBounds<usize>) -> Slice<Self::Buf>;
 
+    /// Gets a reference to the underlying buffer.
+    fn get_buf(&self) -> &Self::Buf;
+
     /// Returns the range bounds for this view.
     fn bounds(&self) -> Self::Bounds;
 
@@ -91,6 +94,10 @@ impl<T: IoBuf> BoundedBuf for T {
         assert!(begin <= self.bytes_init());
 
         Slice::new(self, begin, end)
+    }
+
+    fn get_buf(&self) -> &Self {
+        self
     }
 
     fn bounds(&self) -> Self::Bounds {
