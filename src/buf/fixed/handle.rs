@@ -4,6 +4,7 @@ use crate::buf::{IoBuf, IoBufMut};
 use libc::iovec;
 use std::cell::RefCell;
 use std::mem::ManuallyDrop;
+use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 
 /// A unique handle to a memory buffer that can be pre-registered with
@@ -81,5 +82,19 @@ unsafe impl IoBufMut for FixedBuf {
         if self.buf.len() < pos {
             self.buf.set_len(pos)
         }
+    }
+}
+
+impl Deref for FixedBuf {
+    type Target = [u8];
+
+    fn deref(&self) -> &[u8] {
+        &self.buf
+    }
+}
+
+impl DerefMut for FixedBuf {
+    fn deref_mut(&mut self) -> &mut [u8] {
+        &mut self.buf
     }
 }
