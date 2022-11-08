@@ -7,7 +7,7 @@ use std::{
 use tempfile::NamedTempFile;
 
 use tokio_uring::buf::fixed::FixedBufRegistry;
-use tokio_uring::buf::{IoBuf, IoBufMut};
+use tokio_uring::buf::{BoundedBuf, BoundedBufMut};
 use tokio_uring::fs::File;
 
 #[path = "../src/future.rs"]
@@ -262,7 +262,7 @@ fn write_fixed() {
         buffers.register().unwrap();
 
         let fixed_buf = buffers.check_out(0).unwrap();
-        let mut buf = fixed_buf.slice(..);
+        let mut buf = fixed_buf;
         push_slice_to_buf(&HELLO[..6], &mut buf);
 
         let (res, _) = file.write_fixed_at(buf, 0).await;
@@ -270,7 +270,7 @@ fn write_fixed() {
         assert_eq!(n, 6);
 
         let fixed_buf = buffers.check_out(1).unwrap();
-        let mut buf = fixed_buf.slice(..);
+        let mut buf = fixed_buf;
         push_slice_to_buf(&HELLO[6..], &mut buf);
 
         let (res, _) = file.write_fixed_at(buf, 6).await;
@@ -313,7 +313,7 @@ fn assert_invalid_fd(fd: RawFd) {
     }
 }
 
-fn push_slice_to_buf(src: &[u8], buf: &mut impl IoBufMut) {
+fn push_slice_to_buf(src: &[u8], buf: &mut impl BoundedBufMut) {
     assert!(buf.bytes_total() >= src.len());
     let dst = buf.stable_mut_ptr();
     unsafe {

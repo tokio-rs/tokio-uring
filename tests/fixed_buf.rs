@@ -1,6 +1,6 @@
 use tokio_test::assert_err;
 use tokio_uring::buf::fixed::FixedBufRegistry;
-use tokio_uring::buf::IoBuf;
+use tokio_uring::buf::BoundedBuf;
 use tokio_uring::fs::File;
 
 use std::io::prelude::*;
@@ -34,7 +34,7 @@ fn fixed_buf_turnaround() {
         mem::drop(fixed_buf1);
         assert!(buffers.check_out(0).is_none());
 
-        let op = file.read_fixed_at(fixed_buf.slice(..), 0);
+        let op = file.read_fixed_at(fixed_buf, 0);
 
         // The buffer is used by the pending operation, can't check it out
         // for another instance.
@@ -79,11 +79,11 @@ fn unregister_invalidates_checked_out_buffers() {
         // The old buffer's index no longer matches the memory area of the
         // currently registered buffer, so the read operation using the old
         // buffer's memory should fail.
-        let (res, _) = file.read_fixed_at(fixed_buf.slice(..), 0).await;
+        let (res, _) = file.read_fixed_at(fixed_buf, 0).await;
         assert_err!(res);
 
         let fixed_buf = buffers.check_out(0).unwrap();
-        let (res, buf) = file.read_fixed_at(fixed_buf.slice(..), 0).await;
+        let (res, buf) = file.read_fixed_at(fixed_buf, 0).await;
         let n = res.unwrap();
         assert_eq!(n, HELLO.len());
         assert_eq!(&buf[..], HELLO);

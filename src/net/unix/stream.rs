@@ -1,6 +1,6 @@
 use crate::{
     buf::fixed::FixedBuf,
-    buf::{BoundedBuf, BoundedBufMut, IoBuf, Slice},
+    buf::{BoundedBuf, BoundedBufMut, IoBuf},
     driver::{SharedFd, Socket},
 };
 use socket2::SockAddr;
@@ -89,10 +89,10 @@ impl UnixStream {
     /// In addition to errors that can be reported by `read`,
     /// this operation fails if the buffer is not registered in the
     /// current `tokio-uring` runtime.
-    pub async fn read_fixed(
-        &self,
-        buf: Slice<FixedBuf>,
-    ) -> crate::BufResult<usize, Slice<FixedBuf>> {
+    pub async fn read_fixed<T>(&self, buf: T) -> crate::BufResult<usize, T>
+    where
+        T: BoundedBufMut<BufMut = FixedBuf>,
+    {
         self.inner.read_fixed(buf).await
     }
 
@@ -113,10 +113,10 @@ impl UnixStream {
     /// In addition to errors that can be reported by `write`,
     /// this operation fails if the buffer is not registered in the
     /// current `tokio-uring` runtime.
-    pub async fn write_fixed(
-        &self,
-        buf: Slice<FixedBuf>,
-    ) -> crate::BufResult<usize, Slice<FixedBuf>> {
+    pub async fn write_fixed<T>(&self, buf: T) -> crate::BufResult<usize, T>
+    where
+        T: BoundedBuf<Buf = FixedBuf>,
+    {
         self.inner.write_fixed(buf).await
     }
 

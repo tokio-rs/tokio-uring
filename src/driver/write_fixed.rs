@@ -1,26 +1,29 @@
 use crate::buf::fixed::FixedBuf;
-use crate::buf::{IoBuf, Slice};
+use crate::buf::BoundedBuf;
 use crate::driver::op::{self, Completable};
 use crate::driver::{Op, SharedFd};
 use crate::BufResult;
 
 use std::io;
 
-pub(crate) struct WriteFixed {
+pub(crate) struct WriteFixed<T> {
     /// Holds a strong ref to the FD, preventing the file from being closed
     /// while the operation is in-flight.
     #[allow(dead_code)]
     fd: SharedFd,
 
-    buf: Slice<FixedBuf>,
+    buf: T,
 }
 
-impl Op<WriteFixed> {
+impl<T> Op<WriteFixed<T>>
+where
+    T: BoundedBuf<Buf = FixedBuf>,
+{
     pub(crate) fn write_fixed_at(
         fd: &SharedFd,
-        buf: Slice<FixedBuf>,
+        buf: T,
         offset: u64,
-    ) -> io::Result<Op<WriteFixed>> {
+    ) -> io::Result<Op<WriteFixed<T>>> {
         use io_uring::{opcode, types};
 
         Op::submit_with(
@@ -32,7 +35,7 @@ impl Op<WriteFixed> {
                 // Get raw buffer info
                 let ptr = write_fixed.buf.stable_ptr();
                 let len = write_fixed.buf.bytes_init();
-                let buf_index = write_fixed.buf.get_ref().buf_index();
+                let buf_index = write_fixed.buf.get_buf().buf_index();
                 opcode::WriteFixed::new(types::Fd(fd.raw_fd()), ptr, len as _, buf_index)
                     .offset(offset as _)
                     .build()
@@ -41,8 +44,8 @@ impl Op<WriteFixed> {
     }
 }
 
-impl Completable for WriteFixed {
-    type Output = BufResult<usize, Slice<FixedBuf>>;
+impl<T> Completable for WriteFixed<T> {
+    type Output = BufResult<usize, T>;
 
     fn complete(self, cqe: op::CqeResult) -> Self::Output {
         // Convert the operation result to `usize`

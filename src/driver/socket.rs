@@ -45,10 +45,10 @@ impl Socket {
         op.await
     }
 
-    pub(crate) async fn write_fixed(
-        &self,
-        buf: Slice<FixedBuf>,
-    ) -> crate::BufResult<usize, Slice<FixedBuf>> {
+    pub(crate) async fn write_fixed<T>(&self, buf: T) -> crate::BufResult<usize, T>
+    where
+        T: BoundedBuf<Buf = FixedBuf>,
+    {
         let op = Op::write_fixed_at(&self.fd, buf, 0).unwrap();
         op.await
     }
@@ -111,10 +111,10 @@ impl Socket {
         op.await
     }
 
-    pub(crate) async fn read_fixed(
-        &self,
-        buf: Slice<FixedBuf>,
-    ) -> crate::BufResult<usize, Slice<FixedBuf>> {
+    pub(crate) async fn read_fixed<T>(&self, buf: T) -> crate::BufResult<usize, T>
+    where
+        T: BoundedBufMut<BufMut = FixedBuf>,
+    {
         let op = Op::read_fixed_at(&self.fd, buf, 0).unwrap();
         op.await
     }

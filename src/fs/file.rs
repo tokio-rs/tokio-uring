@@ -418,7 +418,7 @@ impl File {
     ///     let buffer = registry.check_out(2).unwrap();
     ///
     ///     // Read up to 10 bytes
-    ///     let (res, buffer) = f.read_fixed_at(buffer.slice(..), 0).await;
+    ///     let (res, buffer) = f.read_fixed_at(buffer, 0).await;
     ///     let n = res?;
     ///
     ///     println!("The bytes: {:?}", &buffer[..n]);
@@ -429,11 +429,10 @@ impl File {
     /// })
     ///# }
     /// ```
-    pub async fn read_fixed_at(
-        &self,
-        buf: Slice<FixedBuf>,
-        pos: u64,
-    ) -> crate::BufResult<usize, Slice<FixedBuf>> {
+    pub async fn read_fixed_at<T>(&self, buf: T, pos: u64) -> crate::BufResult<usize, T>
+    where
+        T: BoundedBufMut<BufMut = FixedBuf>,
+    {
         // Submit the read operation
         let op = Op::read_fixed_at(&self.fd, buf, pos).unwrap();
         op.await
@@ -613,7 +612,7 @@ impl File {
     ///
     ///     // Writes some prefix of the buffer content,
     ///     // not necessarily all of it.
-    ///     let (res, _) = file.write_fixed_at(buffer.slice(..), 0).await;
+    ///     let (res, _) = file.write_fixed_at(buffer, 0).await;
     ///     let n = res?;
     ///
     ///     println!("wrote {} bytes", n);
@@ -624,11 +623,10 @@ impl File {
     /// })
     ///# }
     /// ```
-    pub async fn write_fixed_at(
-        &self,
-        buf: Slice<FixedBuf>,
-        pos: u64,
-    ) -> crate::BufResult<usize, Slice<FixedBuf>> {
+    pub async fn write_fixed_at<T>(&self, buf: T, pos: u64) -> crate::BufResult<usize, T>
+    where
+        T: BoundedBuf<Buf = FixedBuf>,
+    {
         let op = Op::write_fixed_at(&self.fd, buf, pos).unwrap();
         op.await
     }
