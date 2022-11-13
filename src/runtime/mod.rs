@@ -120,7 +120,11 @@ impl Drop for Runtime {
 
         // once tasks are dropped, we can unset the driver
         // this will block until all completions are received
-        CONTEXT.with(|rc| rc.unset_driver())
+        //
+        // NOTE:
+        // The CONTEXT thread_local may have been destructed.
+        // If put Runtime into thread_local, the order of Drop calls is platform-dependent.
+        CONTEXT.try_with(|rc| rc.unset_driver()).ok();
     }
 }
 
@@ -141,5 +145,16 @@ mod test {
         let rt = Runtime::new(&builder()).unwrap();
         rt.block_on(async move { () });
         rt.block_on(async move { () });
+    }
+
+    thread_local! {
+        static TEST_CONTEXT: Runtime = Runtime::new(&builder()).unwrap();
+    }
+
+    #[test]
+    fn runtime_in_thread_local() {
+        TEST_CONTEXT.with(|rt| {
+            rt.block_on(async move { () });
+        })
     }
 }
