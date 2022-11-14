@@ -79,6 +79,7 @@ pub mod buf;
 pub mod fs;
 pub mod net;
 
+pub use driver::ProbeInfo;
 pub use runtime::spawn;
 pub use runtime::Runtime;
 
@@ -283,4 +284,14 @@ pub type BufResult<T, B> = (std::io::Result<T>, B);
 pub async fn no_op() -> std::io::Result<()> {
     let op = driver::Op::<driver::NoOp>::no_op().unwrap();
     op.await
+}
+
+/// Probe IO-Uring is supported in current kernel.
+///
+/// ```no_run
+/// let probe_info = tokio_uring::io_uring_probe();
+/// probe_info.supported();
+/// ```
+pub fn io_uring_probe() -> ProbeInfo {
+    *driver::PROBE_INFO
 }

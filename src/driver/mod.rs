@@ -41,6 +41,10 @@ mod write;
 
 mod writev;
 
+mod probe;
+pub use probe::ProbeInfo;
+pub(crate) use probe::PROBE_INFO;
+
 use crate::driver::op::Lifecycle;
 use io_uring::opcode::AsyncCancel;
 use io_uring::IoUring;
