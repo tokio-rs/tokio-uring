@@ -5,6 +5,7 @@ use crate::{
     BufResult,
 };
 use std::io;
+use crate::driver::op::MultiCQEFuture;
 
 pub(crate) struct SendZc<T> {
     /// Holds a strong ref to the FD, preventing the file from being closed
@@ -18,8 +19,8 @@ pub(crate) struct SendZc<T> {
     bytes: usize,
 }
 
-impl<T: IoBuf> Op<SendZc<T>> {
-    pub(crate) fn send_zc(fd: &SharedFd, buf: T) -> io::Result<Op<SendZc<T>>> {
+impl<T: IoBuf> Op<SendZc<T>, MultiCQEFuture> {
+    pub(crate) fn send_zc(fd: &SharedFd, buf: T) -> io::Result<Self> {
         use io_uring::{opcode, types};
 
         Op::submit_with(
