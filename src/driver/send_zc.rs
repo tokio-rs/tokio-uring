@@ -1,4 +1,4 @@
-use crate::driver::op::{self, Completable, Updateable};
+use crate::driver::op::{self, Completable, MultiCQEFuture, Updateable};
 use crate::{
     buf::BoundedBuf,
     driver::{Op, SharedFd},
@@ -18,8 +18,8 @@ pub(crate) struct SendZc<T> {
     bytes: usize,
 }
 
-impl<T: BoundedBuf> Op<SendZc<T>> {
-    pub(crate) fn send_zc(fd: &SharedFd, buf: T) -> io::Result<Op<SendZc<T>>> {
+impl<T: BoundedBuf> Op<SendZc<T>, MultiCQEFuture> {
+    pub(crate) fn send_zc(fd: &SharedFd, buf: T) -> io::Result<Self> {
         use io_uring::{opcode, types};
 
         Op::submit_with(
