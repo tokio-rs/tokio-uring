@@ -1,11 +1,10 @@
-use crate::driver::op::{self, Completable, Updateable};
+use crate::driver::op::{self, Completable, MultiCQEFuture, Updateable};
 use crate::{
     buf::IoBuf,
     driver::{Op, SharedFd},
     BufResult,
 };
 use std::io;
-use crate::driver::op::MultiCQEFuture;
 
 pub(crate) struct SendZc<T> {
     /// Holds a strong ref to the FD, preventing the file from being closed
