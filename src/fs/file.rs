@@ -341,7 +341,7 @@ impl File {
         T: BoundedBufMut,
     {
         let orig_bounds = buf.bounds();
-        let (res, buf) = self.read_exact_slice_at(buf.slice(..), pos).await;
+        let (res, buf) = self.read_exact_slice_at(buf.slice_full(), pos).await;
         (res, T::from_buf_bounds(buf, orig_bounds))
     }
 
@@ -485,7 +485,7 @@ impl File {
         T: BoundedBuf,
     {
         let orig_bounds = buf.bounds();
-        let (res, buf) = self.write_all_slice_at(buf.slice(..), pos).await;
+        let (res, buf) = self.write_all_slice_at(buf.slice_full(), pos).await;
         (res, T::from_buf_bounds(buf, orig_bounds))
     }
 

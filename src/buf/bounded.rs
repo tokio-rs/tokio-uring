@@ -49,6 +49,12 @@ pub trait BoundedBuf: Unpin + 'static {
     /// ```
     fn slice(self, range: impl ops::RangeBounds<usize>) -> Slice<Self::Buf>;
 
+    /// Returns a `Slice` with the view's full range.
+    ///
+    /// This method is to be used by the `tokio-uring` runtime and it is not
+    /// expected for users to call it directly.
+    fn slice_full(self) -> Slice<Self::Buf>;
+
     /// Gets a reference to the underlying buffer.
     fn get_buf(&self) -> &Self::Buf;
 
@@ -94,6 +100,11 @@ impl<T: IoBuf> BoundedBuf for T {
         assert!(begin <= self.bytes_init());
 
         Slice::new(self, begin, end)
+    }
+
+    fn slice_full(self) -> Slice<Self> {
+        let end = self.bytes_total();
+        Slice::new(self, 0, end)
     }
 
     fn get_buf(&self) -> &Self {

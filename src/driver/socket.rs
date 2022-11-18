@@ -46,7 +46,7 @@ impl Socket {
 
     pub async fn write_all<T: BoundedBuf>(&self, buf: T) -> crate::BufResult<(), T> {
         let orig_bounds = buf.bounds();
-        let (res, buf) = self.write_all_slice(buf.slice(..)).await;
+        let (res, buf) = self.write_all_slice(buf.slice_full()).await;
         (res, T::from_buf_bounds(buf, orig_bounds))
     }
 
