@@ -13,7 +13,7 @@ use std::ops;
 /// into such buffers with `io-uring` operations.
 ///
 /// [`.slice()`]: BoundedBuf::slice
-pub trait BoundedBuf: Sized + Unpin + 'static {
+pub trait BoundedBuf: Unpin + 'static {
     /// The type of the underlying buffer.
     type Buf: IoBuf;
 
