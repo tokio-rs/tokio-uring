@@ -1,9 +1,5 @@
-use crate::driver::op::{self, Completable};
-use crate::{
-    buf::BoundedBufMut,
-    driver::{Op, SharedFd},
-    BufResult,
-};
+use crate::runtime::driver::op::{self, Completable, CqeResult, Op};
+use crate::{buf::BoundedBufMut, io::SharedFd, BufResult};
 use socket2::SockAddr;
 use std::{
     io::IoSliceMut,
@@ -60,7 +56,7 @@ where
 {
     type Output = BufResult<(usize, SocketAddr), T>;
 
-    fn complete(self, cqe: op::CqeResult) -> Self::Output {
+    fn complete(self, cqe: CqeResult) -> Self::Output {
         // Convert the operation result to `usize`
         let res = cqe.result.map(|v| v as usize);
         // Recover the buffer

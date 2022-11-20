@@ -6,7 +6,7 @@ use std::{
 
 use crate::{
     buf::{BoundedBuf, BoundedBufMut, IoBuf},
-    driver::{SharedFd, Socket},
+    io::{SharedFd, Socket},
 };
 
 /// A TCP stream between a local and a remote socket.

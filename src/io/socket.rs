@@ -1,6 +1,7 @@
+use crate::runtime::driver::op::Op;
 use crate::{
     buf::{BoundedBuf, BoundedBufMut, IoBuf, Slice},
-    driver::{Op, SharedFd},
+    io::SharedFd,
 };
 use std::{
     io,

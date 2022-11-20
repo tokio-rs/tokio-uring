@@ -1,6 +1,5 @@
-use crate::driver::Op;
-
-use crate::driver::op::{self, Completable};
+use crate::runtime::driver::op;
+use crate::runtime::driver::op::{Completable, Op};
 use std::io;
 use std::os::unix::io::RawFd;
 

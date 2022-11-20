@@ -1,9 +1,5 @@
-use crate::driver::op::{self, Completable, MultiCQEFuture, Updateable};
-use crate::{
-    buf::BoundedBuf,
-    driver::{Op, SharedFd},
-    BufResult,
-};
+use crate::runtime::driver::op::{Completable, CqeResult, MultiCQEFuture, Op, Updateable};
+use crate::{buf::BoundedBuf, io::SharedFd, BufResult};
 use std::io;
 
 pub(crate) struct SendZc<T> {
@@ -42,7 +38,7 @@ impl<T: BoundedBuf> Op<SendZc<T>, MultiCQEFuture> {
 impl<T> Completable for SendZc<T> {
     type Output = BufResult<usize, T>;
 
-    fn complete(self, cqe: op::CqeResult) -> Self::Output {
+    fn complete(self, cqe: CqeResult) -> Self::Output {
         // Convert the operation result to `usize`
         let res = cqe.result.map(|v| self.bytes + v as usize);
         // Recover the buffer
@@ -52,7 +48,7 @@ impl<T> Completable for SendZc<T> {
 }
 
 impl<T> Updateable for SendZc<T> {
-    fn update(&mut self, cqe: op::CqeResult) {
+    fn update(&mut self, cqe: CqeResult) {
         // uring send_zc promises there will be no error on CQE's marked more
         self.bytes += *cqe.result.as_ref().unwrap() as usize;
     }

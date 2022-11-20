@@ -1,6 +1,6 @@
 use crate::buf::BoundedBuf;
-use crate::driver::op::{self, Completable};
-use crate::driver::{Op, SharedFd};
+use crate::io::SharedFd;
+use crate::runtime::driver::op::{Completable, CqeResult, Op};
 use crate::BufResult;
 use socket2::SockAddr;
 use std::io::IoSlice;
@@ -59,7 +59,7 @@ impl<T: BoundedBuf> Op<SendTo<T>> {
 impl<T> Completable for SendTo<T> {
     type Output = BufResult<usize, T>;
 
-    fn complete(self, cqe: op::CqeResult) -> Self::Output {
+    fn complete(self, cqe: CqeResult) -> Self::Output {
         // Convert the operation result to `usize`
         let res = cqe.result.map(|v| v as usize);
         // Recover the buffer

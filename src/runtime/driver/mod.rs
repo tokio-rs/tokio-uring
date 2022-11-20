@@ -1,52 +1,11 @@
-mod accept;
-
-mod close;
-pub(crate) use close::Close;
-
-mod connect;
-
-mod fsync;
-
-mod noop;
-pub(crate) use noop::NoOp;
-
-mod op;
-pub(crate) use op::Op;
-
-mod open;
-
-mod read;
-
-mod readv;
-
-mod recv_from;
-
-mod rename_at;
-
-mod send_to;
-
-mod send_zc;
-
-mod shared_fd;
-pub(crate) use shared_fd::SharedFd;
-
-mod socket;
-pub(crate) use socket::Socket;
-
-mod unlink_at;
-
-mod util;
-
-mod write;
-
-mod writev;
-
-use crate::driver::op::Lifecycle;
+use crate::runtime::driver::op::Lifecycle;
 use io_uring::opcode::AsyncCancel;
 use io_uring::IoUring;
 use slab::Slab;
 use std::io;
 use std::os::unix::io::{AsRawFd, RawFd};
+
+pub(crate) mod op;
 
 pub(crate) struct Driver {
     /// In-flight operations

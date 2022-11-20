@@ -1,8 +1,7 @@
-use crate::driver::{Op, SharedFd};
-
 use std::io;
 
-use crate::driver::op::{self, Completable};
+use crate::io::SharedFd;
+use crate::runtime::driver::op::{Completable, CqeResult, Op};
 use io_uring::{opcode, types};
 
 pub(crate) struct Fsync {
@@ -28,7 +27,7 @@ impl Op<Fsync> {
 impl Completable for Fsync {
     type Output = io::Result<()>;
 
-    fn complete(self, cqe: op::CqeResult) -> Self::Output {
+    fn complete(self, cqe: CqeResult) -> Self::Output {
         cqe.result.map(|_| ())
     }
 }
