@@ -90,6 +90,47 @@ fn unregister_invalidates_checked_out_buffers() {
     });
 }
 
+#[test]
+fn slicing() {
+    tokio_uring::start(async {
+        let mut tempfile = tempfile();
+        tempfile.write_all(HELLO).unwrap();
+
+        let file = File::from_std(
+            std::fs::File::options()
+                .read(true)
+                .write(true)
+                .open(tempfile.path())
+                .unwrap(),
+        );
+
+        let buffers = FixedBufRegistry::new([Vec::with_capacity(1024)]);
+        buffers.register().unwrap();
+
+        let fixed_buf = buffers.check_out(0).unwrap();
+
+        let (res, slice) = file.read_fixed_at(fixed_buf.slice(..8), 3).await;
+        let n = res.unwrap();
+        assert_eq!(n, 8);
+        assert_eq!(slice[..], HELLO[3..11]);
+        let fixed_buf = slice.into_inner();
+
+        let (res, slice) = file
+            .write_fixed_at(fixed_buf.slice(1..), HELLO.len() as u64)
+            .await;
+        let n = res.unwrap();
+        assert_eq!(n, 7);
+        assert_eq!(slice[..], HELLO[4..11]);
+        let fixed_buf = slice.into_inner();
+
+        let (res, slice) = file.read_fixed_at(fixed_buf.slice(3..), 0).await;
+        let n = res.unwrap();
+        assert_eq!(n, HELLO.len() + 7);
+        assert_eq!(slice[..HELLO.len()], HELLO[..]);
+        assert_eq!(slice[HELLO.len()..], HELLO[4..11]);
+    })
+}
+
 fn tempfile() -> NamedTempFile {
     NamedTempFile::new().unwrap()
 }
