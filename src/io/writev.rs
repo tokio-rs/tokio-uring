@@ -1,9 +1,5 @@
-use crate::driver::op::{self, Completable};
-use crate::{
-    buf::IoBuf,
-    driver::{Op, SharedFd},
-    BufResult,
-};
+use crate::runtime::driver::op::{Completable, CqeResult, Op};
+use crate::{buf::IoBuf, io::SharedFd, BufResult};
 use libc::iovec;
 use std::io;
 
@@ -61,7 +57,7 @@ where
 {
     type Output = BufResult<usize, Vec<T>>;
 
-    fn complete(self, cqe: op::CqeResult) -> Self::Output {
+    fn complete(self, cqe: CqeResult) -> Self::Output {
         // Convert the operation result to `usize`
         let res = cqe.result.map(|v| v as usize);
         // Recover the buffer

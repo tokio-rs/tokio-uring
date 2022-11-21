@@ -1,5 +1,5 @@
-use crate::driver::op::{self, Completable};
-use crate::driver::{Op, SharedFd};
+use crate::io::SharedFd;
+use crate::runtime::driver::op::{Completable, CqeResult, Op};
 use socket2::SockAddr;
 use std::io;
 
@@ -36,7 +36,7 @@ impl Op<Connect> {
 impl Completable for Connect {
     type Output = io::Result<()>;
 
-    fn complete(self, cqe: op::CqeResult) -> Self::Output {
+    fn complete(self, cqe: CqeResult) -> Self::Output {
         cqe.result.map(|_| ())
     }
 }

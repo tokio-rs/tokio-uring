@@ -71,7 +71,7 @@ macro_rules! syscall {
 
 #[macro_use]
 mod future;
-mod driver;
+mod io;
 mod runtime;
 mod util;
 
@@ -82,6 +82,7 @@ pub mod net;
 pub use runtime::spawn;
 pub use runtime::Runtime;
 
+use crate::runtime::driver::op::Op;
 use std::future::Future;
 
 /// Start an `io_uring` enabled Tokio runtime.
@@ -281,6 +282,6 @@ pub type BufResult<T, B> = (std::io::Result<T>, B);
 /// }
 /// ```
 pub async fn no_op() -> std::io::Result<()> {
-    let op = driver::Op::<driver::NoOp>::no_op().unwrap();
+    let op = Op::<io::NoOp>::no_op().unwrap();
     op.await
 }

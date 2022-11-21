@@ -1,6 +1,6 @@
 use crate::{
     buf::{BoundedBuf, BoundedBufMut},
-    driver::{SharedFd, Socket},
+    io::{SharedFd, Socket},
 };
 use socket2::SockAddr;
 use std::{

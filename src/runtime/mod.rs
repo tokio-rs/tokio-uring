@@ -1,4 +1,4 @@
-use crate::driver::Driver;
+use driver::Driver;
 
 use std::future::Future;
 use std::io;
@@ -8,6 +8,7 @@ use tokio::io::unix::AsyncFd;
 use tokio::task::LocalSet;
 
 mod context;
+pub(crate) mod driver;
 
 pub(crate) use context::RuntimeContext;
 

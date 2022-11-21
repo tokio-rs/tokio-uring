@@ -11,7 +11,7 @@ mod slab_list;
 use slab::Slab;
 use slab_list::{SlabListEntry, SlabListIndices};
 
-use crate::driver;
+use crate::runtime;
 use crate::runtime::CONTEXT;
 use crate::util::PhantomUnsendUnsync;
 
@@ -25,7 +25,7 @@ pub(crate) type Completion = SlabListEntry<CqeResult>;
 /// In-flight operation
 pub(crate) struct Op<T: 'static, CqeType = SingleCQE> {
     // Operation index in the slab
-    pub(super) index: usize,
+    pub(crate) index: usize,
 
     // Per-operation data
     data: Option<T>,
@@ -99,7 +99,7 @@ where
     T: Completable,
 {
     /// Create a new operation
-    fn new(data: T, inner: &mut driver::Driver) -> Self {
+    fn new(data: T, inner: &mut runtime::driver::Driver) -> Self {
         Op {
             index: inner.ops.insert(),
             data: Some(data),
@@ -112,7 +112,7 @@ where
     ///
     /// `state` is stored during the operation tracking any state submitted to
     /// the kernel.
-    pub(super) fn submit_with<F>(data: T, f: F) -> io::Result<Self>
+    pub(crate) fn submit_with<F>(data: T, f: F) -> io::Result<Self>
     where
         F: FnOnce(&mut T) -> squeue::Entry,
     {
@@ -302,7 +302,7 @@ impl<T, CqeType> Drop for Op<T, CqeType> {
 }
 
 impl Lifecycle {
-    pub(super) fn complete(&mut self, completions: &mut Slab<Completion>, cqe: CqeResult) -> bool {
+    pub(crate) fn complete(&mut self, completions: &mut Slab<Completion>, cqe: CqeResult) -> bool {
         use std::mem;
 
         match mem::replace(self, Lifecycle::Submitted) {
@@ -505,7 +505,7 @@ mod test {
     }
 
     fn init() -> (Op<Rc<()>>, Rc<()>) {
-        use crate::driver::Driver;
+        use crate::runtime::driver::Driver;
 
         let driver = Driver::new(&crate::builder()).unwrap();
         let data = Rc::new(());
