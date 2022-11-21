@@ -1,6 +1,8 @@
-use tokio_uring::buf::{IoBuf, IoBufMut};
+use tokio_uring::buf::{BoundedBuf, BoundedBufMut, Slice};
 
 use std::mem;
+use std::ops::RangeBounds;
+use std::slice::SliceIndex;
 
 #[test]
 fn test_vec() {
@@ -110,9 +112,80 @@ macro_rules! test_slice {
                     assert_eq!(&slice[5..10], &DATA[5..10]);
                     assert_eq!(&slice[..5], &DATA[..5]);
                 }
+
+                #[test]
+                fn test_subslice_read() {
+                    let buf = $buf;
+
+                    let buf = test_subslice_read_case(buf.slice(..), DATA, ..);
+                    let buf = test_subslice_read_case(buf.slice(..), DATA, 10..);
+                    let buf = test_subslice_read_case(buf.slice(..), DATA, 5..15);
+                    let buf = test_subslice_read_case(buf.slice(..), DATA, ..15);
+
+                    let buf = test_subslice_read_case(buf.slice(5..), &DATA[5..], ..);
+                    let buf = test_subslice_read_case(buf.slice(5..), &DATA[5..], 5..);
+                    let buf = test_subslice_read_case(buf.slice(5..), &DATA[5..], 5..15);
+                    let buf = test_subslice_read_case(buf.slice(5..), &DATA[5..], ..10);
+
+                    let buf = test_subslice_read_case(buf.slice(5..25), &DATA[5..25], ..);
+                    let buf = test_subslice_read_case(buf.slice(5..25), &DATA[5..25], 5..);
+                    let buf = test_subslice_read_case(buf.slice(5..25), &DATA[5..25], 5..15);
+                    let buf = test_subslice_read_case(buf.slice(5..25), &DATA[5..25], ..10);
+
+                    let buf = test_subslice_read_case(buf.slice(..25), &DATA[..25], ..);
+                    let buf = test_subslice_read_case(buf.slice(..25), &DATA[..25], 5..);
+                    let buf = test_subslice_read_case(buf.slice(..25), &DATA[..25], 5..15);
+                    let ___ = test_subslice_read_case(buf.slice(..25), &DATA[..25], ..10);
+                }
             }
         )*
     };
+}
+
+fn test_subslice_read_case<B, R>(slice: Slice<B>, expected: &[u8], range: R) -> B
+where
+    B: tokio_uring::buf::IoBuf,
+    R: RangeBounds<usize> + SliceIndex<[u8], Output = [u8]> + Clone,
+{
+    use std::ops::{Bound, Index};
+
+    let buf_ptr = slice.get_ref().stable_ptr();
+    let buf_total = slice.get_ref().bytes_total();
+    let buf_init = slice.get_ref().bytes_init();
+
+    let begin = slice.begin();
+    let end = slice.end();
+    let subslice = slice.slice(range.clone());
+    let data = expected.index(range.clone());
+    match range.start_bound() {
+        Bound::Included(&n) => {
+            assert_eq!(subslice.begin(), begin + n);
+        }
+        Bound::Excluded(&n) => {
+            assert_eq!(subslice.begin(), begin + n + 1);
+        }
+        Bound::Unbounded => {
+            assert_eq!(subslice.begin(), begin);
+        }
+    }
+    match range.end_bound() {
+        Bound::Included(&n) => {
+            assert_eq!(subslice.end(), begin + n + 1);
+        }
+        Bound::Excluded(&n) => {
+            assert_eq!(subslice.end(), begin + n);
+        }
+        Bound::Unbounded => {
+            assert_eq!(subslice.end(), end);
+        }
+    }
+    assert_eq!(&subslice[..], data);
+
+    let buf = subslice.into_inner();
+    assert_eq!(buf.stable_ptr(), buf_ptr);
+    assert_eq!(buf.bytes_init(), buf_init);
+    assert_eq!(buf.bytes_total(), buf_total);
+    buf
 }
 
 test_slice! {
