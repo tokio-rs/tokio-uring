@@ -1,4 +1,4 @@
-use crate::runtime::driver::op::{self, Completable, CqeResult, Op};
+use crate::runtime::driver::op::{Completable, CqeResult, Op};
 use crate::{buf::BoundedBufMut, io::SharedFd, BufResult};
 use socket2::SockAddr;
 use std::{

@@ -1,5 +1,4 @@
 use crate::buf::{BoundedBuf, BoundedBufMut, IoBuf, IoBufMut, Slice};
-use crate::driver::{Op, SharedFd};
 use crate::fs::OpenOptions;
 use crate::io::SharedFd;
 
