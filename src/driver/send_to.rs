@@ -1,4 +1,4 @@
-use crate::buf::IoBuf;
+use crate::buf::BoundedBuf;
 use crate::driver::op::{self, Completable};
 use crate::driver::{Op, SharedFd};
 use crate::BufResult;
@@ -17,7 +17,7 @@ pub(crate) struct SendTo<T> {
     pub(crate) msghdr: Box<libc::msghdr>,
 }
 
-impl<T: IoBuf> Op<SendTo<T>> {
+impl<T: BoundedBuf> Op<SendTo<T>> {
     pub(crate) fn send_to(
         fd: &SharedFd,
         buf: T,
@@ -56,10 +56,7 @@ impl<T: IoBuf> Op<SendTo<T>> {
     }
 }
 
-impl<T> Completable for SendTo<T>
-where
-    T: IoBuf,
-{
+impl<T> Completable for SendTo<T> {
     type Output = BufResult<usize, T>;
 
     fn complete(self, cqe: op::CqeResult) -> Self::Output {

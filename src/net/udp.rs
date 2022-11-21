@@ -1,5 +1,5 @@
 use crate::{
-    buf::{IoBuf, IoBufMut},
+    buf::{BoundedBuf, BoundedBufMut},
     driver::{SharedFd, Socket},
 };
 use socket2::SockAddr;
@@ -167,7 +167,7 @@ impl UdpSocket {
 
     /// Sends data on the socket to the given address. On success, returns the
     /// number of bytes written.
-    pub async fn send_to<T: IoBuf>(
+    pub async fn send_to<T: BoundedBuf>(
         &self,
         buf: T,
         socket_addr: SocketAddr,
@@ -175,21 +175,40 @@ impl UdpSocket {
         self.inner.send_to(buf, socket_addr).await
     }
 
+    /// Sends data on the socket. Will attempt to do so without intermediate copies.
+    /// On success, returns the number of bytes written.
+    ///
+    /// See the linux [kernel docs](https://www.kernel.org/doc/html/latest/networking/msg_zerocopy.html)
+    /// for a discussion on when this might be appropriate. In particular:
+    ///
+    /// > Copy avoidance is not a free lunch. As implemented, with page pinning,
+    /// > it replaces per byte copy cost with page accounting and completion
+    /// > notification overhead. As a result, zero copy is generally only effective
+    /// > at writes over around 10 KB.
+    ///
+    /// Note: Using fixed buffers [#54](https://github.com/tokio-rs/tokio-uring/pull/54), avoids the page-pinning overhead
+    pub async fn send_zc<T: BoundedBuf>(&self, buf: T) -> crate::BufResult<usize, T> {
+        self.inner.send_zc(buf).await
+    }
+
     /// Receives a single datagram message on the socket. On success, returns
     /// the number of bytes read and the origin.
-    pub async fn recv_from<T: IoBufMut>(&self, buf: T) -> crate::BufResult<(usize, SocketAddr), T> {
+    pub async fn recv_from<T: BoundedBufMut>(
+        &self,
+        buf: T,
+    ) -> crate::BufResult<(usize, SocketAddr), T> {
         self.inner.recv_from(buf).await
     }
 
     /// Read a packet of data from the socket into the buffer, returning the original buffer and
     /// quantity of data read.
-    pub async fn read<T: IoBufMut>(&self, buf: T) -> crate::BufResult<usize, T> {
+    pub async fn read<T: BoundedBufMut>(&self, buf: T) -> crate::BufResult<usize, T> {
         self.inner.read(buf).await
     }
 
     /// Write some data to the socket from the buffer, returning the original buffer and
     /// quantity of data written.
-    pub async fn write<T: IoBuf>(&self, buf: T) -> crate::BufResult<usize, T> {
+    pub async fn write<T: BoundedBuf>(&self, buf: T) -> crate::BufResult<usize, T> {
         self.inner.write(buf).await
     }
 

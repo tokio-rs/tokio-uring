@@ -18,7 +18,6 @@ keywords = ["async", "fs", "io-uring"]
 
 [dependencies]
 tokio = { version = "1.2", features = ["net", "rt"] }
-scoped-tls = "1.0.0"
 slab = "0.4.2"
 libc = "0.2.80"
 io-uring = { version = "0.5.8", features = ["unstable"] }

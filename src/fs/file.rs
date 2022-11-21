@@ -1,5 +1,5 @@
 use crate::buf::fixed::FixedBuf;
-use crate::buf::{IoBuf, IoBufMut, Slice};
+use crate::buf::{BoundedBuf, BoundedBufMut, IoBuf, IoBufMut, Slice};
 use crate::driver::{Op, SharedFd};
 use crate::fs::OpenOptions;
 
@@ -174,7 +174,7 @@ impl File {
     ///     })
     /// }
     /// ```
-    pub async fn read_at<T: IoBufMut>(&self, buf: T, pos: u64) -> crate::BufResult<usize, T> {
+    pub async fn read_at<T: BoundedBufMut>(&self, buf: T, pos: u64) -> crate::BufResult<usize, T> {
         // Submit the read operation
         let op = Op::read_at(&self.fd, buf, pos).unwrap();
         op.await
@@ -306,9 +306,6 @@ impl File {
     ///
     /// # Errors
     ///
-    /// If this function encounters an error of the kind [`ErrorKind::Interrupted`]
-    /// then the error is ignored and the operation will continue.
-    ///
     /// If this function encounters an "end of file" before completely filling
     /// the buffer, it returns an error of the kind [`ErrorKind::UnexpectedEof`].
     /// The buffer is returned on error.
@@ -339,31 +336,33 @@ impl File {
     /// }
     /// ```
     ///
-    /// [`ErrorKind::Interrupted`]: std::io::ErrorKind::Interrupted
     /// [`ErrorKind::UnexpectedEof`]: std::io::ErrorKind::UnexpectedEof
-    pub async fn read_exact_at<T: IoBufMut>(
-        &self,
-        mut buf: T,
-        pos: u64,
-    ) -> crate::BufResult<(), T> {
-        let buf_len = buf.bytes_total();
+    pub async fn read_exact_at<T>(&self, buf: T, pos: u64) -> crate::BufResult<(), T>
+    where
+        T: BoundedBufMut,
+    {
+        let orig_bounds = buf.bounds();
+        let (res, buf) = self.read_exact_slice_at(buf.slice_full(), pos).await;
+        (res, T::from_buf_bounds(buf, orig_bounds))
+    }
 
-        if pos.checked_add(buf_len as u64).is_none() {
+    async fn read_exact_slice_at<T: IoBufMut>(
+        &self,
+        mut buf: Slice<T>,
+        mut pos: u64,
+    ) -> crate::BufResult<(), T> {
+        if pos.checked_add(buf.bytes_total() as u64).is_none() {
             return (
                 Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
                     "buffer too large for file",
                 )),
-                buf,
+                buf.into_inner(),
             );
         }
 
-        let mut bytes_read = 0;
-        while bytes_read < buf_len {
-            let (res, slice) = self
-                .read_at(buf.slice(bytes_read..), pos + bytes_read as u64)
-                .await;
-            buf = slice.into_inner();
+        while buf.bytes_total() != 0 {
+            let (res, slice) = self.read_at(buf, pos).await;
             match res {
                 Ok(0) => {
                     return (
@@ -371,18 +370,23 @@ impl File {
                             io::ErrorKind::UnexpectedEof,
                             "failed to fill whole buffer",
                         )),
-                        buf,
+                        slice.into_inner(),
                     )
                 }
                 Ok(n) => {
-                    bytes_read += n;
+                    pos += n as u64;
+                    buf = slice.slice(n..);
                 }
-                Err(ref e) if e.kind() == io::ErrorKind::Interrupted => {}
-                Err(e) => return (Err(e), buf),
+
+                // No match on an EINTR error is performed because this
+                // crate's design ensures we are not calling the 'wait' option
+                // in the ENTER syscall. Only an Enter with 'wait' can generate
+                // an EINTR according to the io_uring man pages.
+                Err(e) => return (Err(e), slice.into_inner()),
             };
         }
 
-        (Ok(()), buf)
+        (Ok(()), buf.into_inner())
     }
 
     /// Like [`read_at`], but using a pre-mapped buffer
@@ -481,7 +485,7 @@ impl File {
     /// ```
     ///
     /// [`Ok(n)`]: Ok
-    pub async fn write_at<T: IoBuf>(&self, buf: T, pos: u64) -> crate::BufResult<usize, T> {
+    pub async fn write_at<T: BoundedBuf>(&self, buf: T, pos: u64) -> crate::BufResult<usize, T> {
         let op = Op::write_at(&self.fd, buf, pos).unwrap();
         op.await
     }
@@ -489,9 +493,9 @@ impl File {
     /// Attempts to write an entire buffer into this file at the specified offset.
     ///
     /// This method will continuously call [`write_at`] until there is no more data
-    /// to be written or an error of non-[`ErrorKind::Interrupted`] kind is returned.
+    /// to be written or an error is returned.
     /// This method will not return until the entire buffer has been successfully
-    /// written or such an error occurs.
+    /// written or an error occurs.
     ///
     /// If the buffer contains no data, this will never call [`write_at`].
     ///
@@ -502,8 +506,7 @@ impl File {
     ///
     /// # Errors
     ///
-    /// This function will return the first error of
-    /// non-[`ErrorKind::Interrupted`] kind that [`write_at`] returns.
+    /// This function will return the first error that [`write_at`] returns.
     ///
     /// # Examples
     ///
@@ -528,26 +531,32 @@ impl File {
     /// ```
     ///
     /// [`write_at`]: File::write_at
-    /// [`ErrorKind::Interrupted`]: std::io::ErrorKind::Interrupted
-    pub async fn write_all_at<T: IoBuf>(&self, mut buf: T, pos: u64) -> crate::BufResult<(), T> {
-        let buf_len = buf.bytes_init();
+    pub async fn write_all_at<T>(&self, buf: T, pos: u64) -> crate::BufResult<(), T>
+    where
+        T: BoundedBuf,
+    {
+        let orig_bounds = buf.bounds();
+        let (res, buf) = self.write_all_slice_at(buf.slice_full(), pos).await;
+        (res, T::from_buf_bounds(buf, orig_bounds))
+    }
 
-        if pos.checked_add(buf_len as u64).is_none() {
+    async fn write_all_slice_at<T: IoBuf>(
+        &self,
+        mut buf: Slice<T>,
+        mut pos: u64,
+    ) -> crate::BufResult<(), T> {
+        if pos.checked_add(buf.bytes_init() as u64).is_none() {
             return (
                 Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
                     "buffer too large for file",
                 )),
-                buf,
+                buf.into_inner(),
             );
         }
 
-        let mut bytes_written = 0;
-        while bytes_written < buf_len {
-            let (res, slice) = self
-                .write_at(buf.slice(bytes_written..), pos + bytes_written as u64)
-                .await;
-            buf = slice.into_inner();
+        while buf.bytes_init() != 0 {
+            let (res, slice) = self.write_at(buf, pos).await;
             match res {
                 Ok(0) => {
                     return (
@@ -555,18 +564,23 @@ impl File {
                             io::ErrorKind::WriteZero,
                             "failed to write whole buffer",
                         )),
-                        buf,
+                        slice.into_inner(),
                     )
                 }
                 Ok(n) => {
-                    bytes_written += n;
+                    pos += n as u64;
+                    buf = slice.slice(n..);
                 }
-                Err(ref e) if e.kind() == io::ErrorKind::Interrupted => {}
-                Err(e) => return (Err(e), buf),
+
+                // No match on an EINTR error is performed because this
+                // crate's design ensures we are not calling the 'wait' option
+                // in the ENTER syscall. Only an Enter with 'wait' can generate
+                // an EINTR according to the io_uring man pages.
+                Err(e) => return (Err(e), slice.into_inner()),
             };
         }
 
-        (Ok(()), buf)
+        (Ok(()), buf.into_inner())
     }
 
     /// Like [`write_at`], but using a pre-mapped buffer

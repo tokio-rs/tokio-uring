@@ -1,6 +1,6 @@
 use crate::driver::op::{self, Completable};
 use crate::{
-    buf::IoBuf,
+    buf::BoundedBuf,
     driver::{Op, SharedFd},
     BufResult,
 };
@@ -15,7 +15,7 @@ pub(crate) struct Write<T> {
     buf: T,
 }
 
-impl<T: IoBuf> Op<Write<T>> {
+impl<T: BoundedBuf> Op<Write<T>> {
     pub(crate) fn write_at(fd: &SharedFd, buf: T, offset: u64) -> io::Result<Op<Write<T>>> {
         use io_uring::{opcode, types};
 
@@ -37,10 +37,7 @@ impl<T: IoBuf> Op<Write<T>> {
     }
 }
 
-impl<T> Completable for Write<T>
-where
-    T: IoBuf,
-{
+impl<T> Completable for Write<T> {
     type Output = BufResult<usize, T>;
 
     fn complete(self, cqe: op::CqeResult) -> Self::Output {

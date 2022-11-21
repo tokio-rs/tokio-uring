@@ -1,6 +1,6 @@
 use crate::{
     buf::fixed::FixedBuf,
-    buf::{IoBuf, IoBufMut, Slice},
+    buf::{BoundedBuf, BoundedBufMut, IoBuf, Slice},
     driver::{SharedFd, Socket},
 };
 use socket2::SockAddr;
@@ -74,7 +74,7 @@ impl UnixStream {
 
     /// Read some data from the stream into the buffer, returning the original buffer and
     /// quantity of data read.
-    pub async fn read<T: IoBufMut>(&self, buf: T) -> crate::BufResult<usize, T> {
+    pub async fn read<T: BoundedBufMut>(&self, buf: T) -> crate::BufResult<usize, T> {
         self.inner.read(buf).await
     }
 
@@ -98,7 +98,7 @@ impl UnixStream {
 
     /// Write some data to the stream from the buffer, returning the original buffer and
     /// quantity of data written.
-    pub async fn write<T: IoBuf>(&self, buf: T) -> crate::BufResult<usize, T> {
+    pub async fn write<T: BoundedBuf>(&self, buf: T) -> crate::BufResult<usize, T> {
         self.inner.write(buf).await
     }
 
@@ -133,38 +133,8 @@ impl UnixStream {
     /// This function will return the first error that [`write`] returns.
     ///
     /// [`write`]: Self::write
-    pub async fn write_all<T: IoBuf>(&self, mut buf: T) -> crate::BufResult<(), T> {
-        // This function is copied from the TcpStream impl.
-        let mut n = 0;
-        while n < buf.bytes_init() {
-            let res = self.write(buf.slice(n..)).await;
-            match res {
-                (Ok(0), slice) => {
-                    return (
-                        Err(std::io::Error::new(
-                            std::io::ErrorKind::WriteZero,
-                            "failed to write whole buffer",
-                        )),
-                        slice.into_inner(),
-                    )
-                }
-                (Ok(m), slice) => {
-                    n += m;
-                    buf = slice.into_inner();
-                }
-
-                // This match on an EINTR error is not performed because this
-                // crate's design ensures we are not calling the 'wait' option
-                // in the ENTER syscall. Only an Enter with 'wait' can generate
-                // an EINTR according to the io_uring man pages.
-                // (Err(ref e), slice) if e.kind() == std::io::ErrorKind::Interrupted => {
-                //     buf = slice.into_inner();
-                // },
-                (Err(e), slice) => return (Err(e), slice.into_inner()),
-            }
-        }
-
-        (Ok(()), buf)
+    pub async fn write_all<T: BoundedBuf>(&self, buf: T) -> crate::BufResult<(), T> {
+        self.inner.write_all(buf).await
     }
 
     /// Write data from buffers into this socket returning how many bytes were
