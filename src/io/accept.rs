@@ -1,5 +1,6 @@
-use crate::driver::op::{self, Completable};
-use crate::driver::{Op, SharedFd, Socket};
+use crate::io::{SharedFd, Socket};
+use crate::runtime::driver::op;
+use crate::runtime::driver::op::{Completable, Op};
 use std::net::SocketAddr;
 use std::{boxed::Box, io};
 

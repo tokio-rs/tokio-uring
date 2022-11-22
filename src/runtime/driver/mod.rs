@@ -1,55 +1,5 @@
-mod accept;
-
-mod register_buffers;
-pub(crate) use register_buffers::{register_buffers, unregister_buffers};
-
-mod close;
-pub(crate) use close::Close;
-
-mod connect;
-
-mod fsync;
-
-mod noop;
-pub(crate) use noop::NoOp;
-
-mod op;
-pub(crate) use op::Op;
-
-mod open;
-
-mod read;
-
-mod readv;
-
-mod read_fixed;
-
-mod recv_from;
-
-mod rename_at;
-
-mod send_to;
-
-mod send_zc;
-
-mod shared_fd;
-pub(crate) use shared_fd::SharedFd;
-
-mod socket;
-pub(crate) use socket::Socket;
-
-mod unlink_at;
-
-mod util;
-
-mod write;
-
-mod write_fixed;
-
-mod writev;
-
 use crate::buf::fixed::FixedBuffers;
-use crate::driver::op::Lifecycle;
+use crate::runtime::driver::op::Lifecycle;
 use io_uring::opcode::AsyncCancel;
 use io_uring::IoUring;
 use slab::Slab;
@@ -57,6 +7,8 @@ use std::cell::RefCell;
 use std::io;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::rc::Rc;
+
+pub(crate) mod op;
 
 pub(crate) struct Driver {
     /// In-flight operations
@@ -68,7 +20,7 @@ pub(crate) struct Driver {
     /// Reference to the currently registered buffers.
     /// Ensures that the buffers are not dropped until
     /// after the io-uring runtime has terminated.
-    fixed_buffers: Option<Rc<RefCell<FixedBuffers>>>,
+    pub(crate) fixed_buffers: Option<Rc<RefCell<FixedBuffers>>>,
 }
 
 struct Ops {

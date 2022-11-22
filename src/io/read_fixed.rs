@@ -1,34 +1,43 @@
+use crate::buf::fixed::FixedBuf;
 use crate::buf::BoundedBufMut;
-use crate::driver::{Op, SharedFd};
+use crate::io::SharedFd;
+use crate::runtime::driver::op::{self, Completable, Op};
 use crate::BufResult;
 
-use crate::driver::op::{self, Completable};
 use std::io;
 
-pub(crate) struct Read<T> {
+pub(crate) struct ReadFixed<T> {
     /// Holds a strong ref to the FD, preventing the file from being closed
     /// while the operation is in-flight.
     #[allow(dead_code)]
     fd: SharedFd,
 
-    /// Reference to the in-flight buffer.
-    pub(crate) buf: T,
+    /// The in-flight buffer.
+    buf: T,
 }
 
-impl<T: BoundedBufMut> Op<Read<T>> {
-    pub(crate) fn read_at(fd: &SharedFd, buf: T, offset: u64) -> io::Result<Op<Read<T>>> {
+impl<T> Op<ReadFixed<T>>
+where
+    T: BoundedBufMut<BufMut = FixedBuf>,
+{
+    pub(crate) fn read_fixed_at(
+        fd: &SharedFd,
+        buf: T,
+        offset: u64,
+    ) -> io::Result<Op<ReadFixed<T>>> {
         use io_uring::{opcode, types};
 
         Op::submit_with(
-            Read {
+            ReadFixed {
                 fd: fd.clone(),
                 buf,
             },
-            |read| {
+            |read_fixed| {
                 // Get raw buffer info
-                let ptr = read.buf.stable_mut_ptr();
-                let len = read.buf.bytes_total();
-                opcode::Read::new(types::Fd(fd.raw_fd()), ptr, len as _)
+                let ptr = read_fixed.buf.stable_mut_ptr();
+                let len = read_fixed.buf.bytes_total();
+                let buf_index = read_fixed.buf.get_buf().buf_index();
+                opcode::ReadFixed::new(types::Fd(fd.raw_fd()), ptr, len as _, buf_index)
                     .offset(offset as _)
                     .build()
             },
@@ -36,9 +45,9 @@ impl<T: BoundedBufMut> Op<Read<T>> {
     }
 }
 
-impl<T> Completable for Read<T>
+impl<T> Completable for ReadFixed<T>
 where
-    T: BoundedBufMut,
+    T: BoundedBufMut<BufMut = FixedBuf>,
 {
     type Output = BufResult<usize, T>;
 

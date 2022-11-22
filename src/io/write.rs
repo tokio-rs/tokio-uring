@@ -1,9 +1,5 @@
-use crate::driver::op::{self, Completable};
-use crate::{
-    buf::BoundedBuf,
-    driver::{Op, SharedFd},
-    BufResult,
-};
+use crate::runtime::driver::op::{Completable, CqeResult, Op};
+use crate::{buf::BoundedBuf, io::SharedFd, BufResult};
 use std::io;
 
 pub(crate) struct Write<T> {
@@ -40,7 +36,7 @@ impl<T: BoundedBuf> Op<Write<T>> {
 impl<T> Completable for Write<T> {
     type Output = BufResult<usize, T>;
 
-    fn complete(self, cqe: op::CqeResult) -> Self::Output {
+    fn complete(self, cqe: CqeResult) -> Self::Output {
         // Convert the operation result to `usize`
         let res = cqe.result.map(|v| v as usize);
         // Recover the buffer

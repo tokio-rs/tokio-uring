@@ -1,5 +1,4 @@
 use super::{buffers::FixedBuffers, FixedBuf};
-use crate::driver;
 
 use std::cell::RefCell;
 use std::io;
@@ -74,7 +73,7 @@ impl FixedBufRegistry {
     /// of the `tokio-uring` runtime this call is made in, the function returns
     /// an error.
     pub fn register(&self) -> io::Result<()> {
-        driver::register_buffers(&self.inner)
+        crate::io::register_buffers(&self.inner)
     }
 
     /// Unregisters this collection of buffers.
@@ -93,7 +92,7 @@ impl FixedBufRegistry {
     /// an error. Calling `unregister` when no `FixedBufRegistry` is currently
     /// registered on this runtime also returns an error.
     pub fn unregister(&self) -> io::Result<()> {
-        driver::unregister_buffers(&self.inner)
+        crate::io::unregister_buffers(&self.inner)
     }
 
     /// Returns a buffer identified by the specified index for use by the

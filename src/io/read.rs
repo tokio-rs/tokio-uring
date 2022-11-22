@@ -1,43 +1,34 @@
-use crate::buf::fixed::FixedBuf;
 use crate::buf::BoundedBufMut;
-use crate::driver::op::{self, Completable};
-use crate::driver::{Op, SharedFd};
+use crate::io::SharedFd;
 use crate::BufResult;
 
+use crate::runtime::driver::op::{Completable, CqeResult, Op};
 use std::io;
 
-pub(crate) struct ReadFixed<T> {
+pub(crate) struct Read<T> {
     /// Holds a strong ref to the FD, preventing the file from being closed
     /// while the operation is in-flight.
     #[allow(dead_code)]
     fd: SharedFd,
 
-    /// The in-flight buffer.
-    buf: T,
+    /// Reference to the in-flight buffer.
+    pub(crate) buf: T,
 }
 
-impl<T> Op<ReadFixed<T>>
-where
-    T: BoundedBufMut<BufMut = FixedBuf>,
-{
-    pub(crate) fn read_fixed_at(
-        fd: &SharedFd,
-        buf: T,
-        offset: u64,
-    ) -> io::Result<Op<ReadFixed<T>>> {
+impl<T: BoundedBufMut> Op<Read<T>> {
+    pub(crate) fn read_at(fd: &SharedFd, buf: T, offset: u64) -> io::Result<Op<Read<T>>> {
         use io_uring::{opcode, types};
 
         Op::submit_with(
-            ReadFixed {
+            Read {
                 fd: fd.clone(),
                 buf,
             },
-            |read_fixed| {
+            |read| {
                 // Get raw buffer info
-                let ptr = read_fixed.buf.stable_mut_ptr();
-                let len = read_fixed.buf.bytes_total();
-                let buf_index = read_fixed.buf.get_buf().buf_index();
-                opcode::ReadFixed::new(types::Fd(fd.raw_fd()), ptr, len as _, buf_index)
+                let ptr = read.buf.stable_mut_ptr();
+                let len = read.buf.bytes_total();
+                opcode::Read::new(types::Fd(fd.raw_fd()), ptr, len as _)
                     .offset(offset as _)
                     .build()
             },
@@ -45,13 +36,13 @@ where
     }
 }
 
-impl<T> Completable for ReadFixed<T>
+impl<T> Completable for Read<T>
 where
-    T: BoundedBufMut<BufMut = FixedBuf>,
+    T: BoundedBufMut,
 {
     type Output = BufResult<usize, T>;
 
-    fn complete(self, cqe: op::CqeResult) -> Self::Output {
+    fn complete(self, cqe: CqeResult) -> Self::Output {
         // Convert the operation result to `usize`
         let res = cqe.result.map(|v| v as usize);
         // Recover the buffer
