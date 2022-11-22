@@ -3,6 +3,7 @@ use crate::buf::{IoBuf, IoBufMut};
 
 use libc::iovec;
 use std::cell::RefCell;
+use std::fmt::{self, Debug};
 use std::mem::ManuallyDrop;
 use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
@@ -96,5 +97,14 @@ impl Deref for FixedBuf {
 impl DerefMut for FixedBuf {
     fn deref_mut(&mut self) -> &mut [u8] {
         &mut self.buf
+    }
+}
+
+impl Debug for FixedBuf {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("FixedBuf")
+            .field("buf", &*self.buf) // deref ManuallyDrop
+            .field("index", &self.index)
+            .finish_non_exhaustive()
     }
 }
