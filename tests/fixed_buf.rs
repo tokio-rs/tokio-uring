@@ -109,12 +109,15 @@ fn slicing() {
 
         let fixed_buf = buffers.check_out(0).unwrap();
 
+        // Read no more than 8 bytes into the fixed buffer.
         let (res, slice) = file.read_fixed_at(fixed_buf.slice(..8), 3).await;
         let n = res.unwrap();
         assert_eq!(n, 8);
         assert_eq!(slice[..], HELLO[3..11]);
         let fixed_buf = slice.into_inner();
 
+        // Write from the fixed buffer, starting at offset 1,
+        // up to the end of the initialized bytes in the buffer.
         let (res, slice) = file
             .write_fixed_at(fixed_buf.slice(1..), HELLO.len() as u64)
             .await;
@@ -123,6 +126,9 @@ fn slicing() {
         assert_eq!(slice[..], HELLO[4..11]);
         let fixed_buf = slice.into_inner();
 
+        // Read into the fixed buffer, overwriting bytes starting from offset 3
+        // and then extending the initialized part with as many bytes as
+        // the operation can read.
         let (res, slice) = file.read_fixed_at(fixed_buf.slice(3..), 0).await;
         let n = res.unwrap();
         assert_eq!(n, HELLO.len() + 7);
