@@ -1,5 +1,6 @@
 use crate::runtime::driver::op::Op;
 use crate::{
+    buf::fixed::FixedBuf,
     buf::{BoundedBuf, BoundedBufMut, IoBuf, Slice},
     io::SharedFd,
 };
@@ -42,6 +43,14 @@ impl Socket {
 
     pub(crate) async fn write<T: BoundedBuf>(&self, buf: T) -> crate::BufResult<usize, T> {
         let op = Op::write_at(&self.fd, buf, 0).unwrap();
+        op.await
+    }
+
+    pub(crate) async fn write_fixed<T>(&self, buf: T) -> crate::BufResult<usize, T>
+    where
+        T: BoundedBuf<Buf = FixedBuf>,
+    {
+        let op = Op::write_fixed_at(&self.fd, buf, 0).unwrap();
         op.await
     }
 
@@ -100,6 +109,14 @@ impl Socket {
 
     pub(crate) async fn read<T: BoundedBufMut>(&self, buf: T) -> crate::BufResult<usize, T> {
         let op = Op::read_at(&self.fd, buf, 0).unwrap();
+        op.await
+    }
+
+    pub(crate) async fn read_fixed<T>(&self, buf: T) -> crate::BufResult<usize, T>
+    where
+        T: BoundedBufMut<BufMut = FixedBuf>,
+    {
+        let op = Op::read_fixed_at(&self.fd, buf, 0).unwrap();
         op.await
     }
 

@@ -1,9 +1,12 @@
+use crate::buf::fixed::FixedBuffers;
 use crate::runtime::driver::op::Lifecycle;
 use io_uring::opcode::AsyncCancel;
 use io_uring::IoUring;
 use slab::Slab;
+use std::cell::RefCell;
 use std::io;
 use std::os::unix::io::{AsRawFd, RawFd};
+use std::rc::Rc;
 
 pub(crate) mod op;
 
@@ -13,6 +16,11 @@ pub(crate) struct Driver {
 
     /// IoUring bindings
     pub(crate) uring: IoUring,
+
+    /// Reference to the currently registered buffers.
+    /// Ensures that the buffers are not dropped until
+    /// after the io-uring runtime has terminated.
+    pub(crate) fixed_buffers: Option<Rc<RefCell<FixedBuffers>>>,
 }
 
 struct Ops {
@@ -31,6 +39,7 @@ impl Driver {
         Ok(Driver {
             ops: Ops::new(),
             uring,
+            fixed_buffers: None,
         })
     }
 

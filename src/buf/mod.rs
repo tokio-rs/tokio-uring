@@ -4,6 +4,8 @@
 //! crate defines [`IoBuf`] and [`IoBufMut`] traits which are implemented by buffer
 //! types that respect the `io-uring` contract.
 
+pub mod fixed;
+
 mod io_buf;
 pub use io_buf::IoBuf;
 

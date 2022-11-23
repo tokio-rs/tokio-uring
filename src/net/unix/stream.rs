@@ -1,4 +1,5 @@
 use crate::{
+    buf::fixed::FixedBuf,
     buf::{BoundedBuf, BoundedBufMut, IoBuf},
     io::{SharedFd, Socket},
 };
@@ -77,10 +78,46 @@ impl UnixStream {
         self.inner.read(buf).await
     }
 
+    /// Like [`read`], but using a pre-mapped buffer
+    /// registered with [`FixedBufRegistry`].
+    ///
+    /// [`read`]: Self::read
+    /// [`FixedBufRegistry`]: crate::buf::fixed::FixedBufRegistry
+    ///
+    /// # Errors
+    ///
+    /// In addition to errors that can be reported by `read`,
+    /// this operation fails if the buffer is not registered in the
+    /// current `tokio-uring` runtime.
+    pub async fn read_fixed<T>(&self, buf: T) -> crate::BufResult<usize, T>
+    where
+        T: BoundedBufMut<BufMut = FixedBuf>,
+    {
+        self.inner.read_fixed(buf).await
+    }
+
     /// Write some data to the stream from the buffer, returning the original buffer and
     /// quantity of data written.
     pub async fn write<T: BoundedBuf>(&self, buf: T) -> crate::BufResult<usize, T> {
         self.inner.write(buf).await
+    }
+
+    /// Like [`write`], but using a pre-mapped buffer
+    /// registered with [`FixedBufRegistry`].
+    ///
+    /// [`write`]: Self::write
+    /// [`FixedBufRegistry`]: crate::buf::fixed::FixedBufRegistry
+    ///
+    /// # Errors
+    ///
+    /// In addition to errors that can be reported by `write`,
+    /// this operation fails if the buffer is not registered in the
+    /// current `tokio-uring` runtime.
+    pub async fn write_fixed<T>(&self, buf: T) -> crate::BufResult<usize, T>
+    where
+        T: BoundedBuf<Buf = FixedBuf>,
+    {
+        self.inner.write_fixed(buf).await
     }
 
     /// Attempts to write an entire buffer to the stream.
