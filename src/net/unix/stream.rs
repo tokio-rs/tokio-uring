@@ -102,6 +102,23 @@ impl UnixStream {
         self.inner.write(buf).await
     }
 
+    /// Attempts to write an entire buffer to the stream.
+    ///
+    /// This method will continuously call [`write`] until there is no more data to be
+    /// written or an error is returned. This method will not return until the entire
+    /// buffer has been successfully written or an error has occurred.
+    ///
+    /// If the buffer contains no data, this will never call [`write`].
+    ///
+    /// # Errors
+    ///
+    /// This function will return the first error that [`write`] returns.
+    ///
+    /// [`write`]: Self::write
+    pub async fn write_all<T: BoundedBuf>(&self, buf: T) -> crate::BufResult<(), T> {
+        self.inner.write_all(buf).await
+    }
+
     /// Like [`write`], but using a pre-mapped buffer
     /// registered with [`FixedBufRegistry`].
     ///
@@ -122,19 +139,20 @@ impl UnixStream {
 
     /// Attempts to write an entire buffer to the stream.
     ///
-    /// This method will continuously call [`write`] until there is no more data to be
+    /// This method will continuously call [`write_fixed`] until there is no more data to be
     /// written or an error is returned. This method will not return until the entire
     /// buffer has been successfully written or an error has occurred.
     ///
-    /// If the buffer contains no data, this will never call [`write`].
+    /// If the buffer contains no data, this will never call [`write_fixed`].
     ///
     /// # Errors
     ///
-    /// This function will return the first error that [`write`] returns.
-    ///
-    /// [`write`]: Self::write
-    pub async fn write_all<T: BoundedBuf>(&self, buf: T) -> crate::BufResult<(), T> {
-        self.inner.write_all(buf).await
+    /// This function will return the first error that [`write_fixed`] returns.
+    pub async fn write_fixed_all<T>(&self, buf: T) -> crate::BufResult<(), T>
+    where
+        T: BoundedBuf<Buf = FixedBuf>,
+    {
+        self.inner.write_fixed_all(buf).await
     }
 
     /// Write data from buffers into this socket returning how many bytes were
