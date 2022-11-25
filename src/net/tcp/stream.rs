@@ -183,6 +183,8 @@ impl TcpStream {
     /// # Errors
     ///
     /// This function will return the first error that [`write_fixed`] returns.
+    ///
+    /// [`write_fixed`]: Self::write
     pub async fn write_fixed_all<T>(&self, buf: T) -> crate::BufResult<(), T>
     where
         T: BoundedBuf<Buf = FixedBuf>,

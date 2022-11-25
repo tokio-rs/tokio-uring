@@ -649,6 +649,8 @@ impl File {
     /// # Errors
     ///
     /// This function will return the first error that [`write_fixed_at`] returns.
+    ///
+    /// [`write_fixed_at`]: Self::write_fixed_at
     pub async fn write_fixed_all_at<T>(&self, buf: T, pos: u64) -> crate::BufResult<(), T>
     where
         T: BoundedBuf<Buf = FixedBuf>,
