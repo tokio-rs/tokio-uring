@@ -54,8 +54,9 @@ impl FixedBuf {
             index,
         }
     }
-
-    pub(crate) fn buf_index(&self) -> u16 {
+    
+    /// Index of the underlying registry buffer
+    pub fn buf_index(&self) -> u16 {
         self.index
     }
 }
