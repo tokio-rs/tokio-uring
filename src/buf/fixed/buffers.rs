@@ -16,7 +16,7 @@ pub(crate) struct FixedBuffers {
     // Original capacity of raw_bufs as a Vec.
     orig_cap: usize,
     // Index of the next free buffer, if any is available.
-    next_free_buf: ListIndex,
+    next_free_buf: Option<u16>,
 }
 
 // State information of a buffer in the registry,
@@ -44,36 +44,18 @@ struct FreeBufInfo {
     // This field records the length of the initialized part.
     init_len: usize,
     // Index of the previous buffer in the free buffer list, if any.
-    prev: ListIndex,
+    prev: Option<u16>,
     // Index of the next buffer in the free buffer list, if any.
-    next: ListIndex,
-}
-
-// Index reference for the free buffer list, smaller than `Option<u16>`.
-#[derive(Copy, Clone, PartialEq, Eq)]
-struct ListIndex(u16);
-
-impl ListIndex {
-    // io-uring does not allow registering more than UIO_MAXIOV buffers,
-    // so we can use a larger value to represent absence of an index reference.
-    const NONE: Self = Self(u16::MAX);
-
-    fn get(self) -> Option<usize> {
-        if self == Self::NONE {
-            None
-        } else {
-            Some(self.0 as usize)
-        }
-    }
+    next: Option<u16>,
 }
 
 impl FixedBuffers {
     pub(crate) fn new(bufs: impl Iterator<Item = Vec<u8>>) -> Self {
-        let bufs = bufs.take(cmp::min(UIO_MAXIOV as usize, ListIndex::NONE.0 as usize));
+        let bufs = bufs.take(cmp::min(UIO_MAXIOV as usize, u16::MAX as usize));
         let (size_hint, _) = bufs.size_hint();
         let mut iovecs = Vec::with_capacity(size_hint);
         let mut states = Vec::with_capacity(size_hint);
-        let mut prev_idx = ListIndex::NONE;
+        let mut prev_idx = None;
         for (i, mut buf) in bufs.enumerate() {
             iovecs.push(iovec {
                 iov_base: buf.as_mut_ptr() as *mut _,
@@ -82,21 +64,21 @@ impl FixedBuffers {
             states.push(BufState::Free(FreeBufInfo {
                 init_len: buf.len(),
                 prev: prev_idx,
-                next: ListIndex((i + 1) as u16),
+                next: Some((i + 1) as u16),
             }));
             mem::forget(buf);
-            prev_idx = ListIndex(i as u16);
+            prev_idx = Some(i as u16);
         }
         debug_assert_eq!(iovecs.len(), states.len());
-        let next_free_buf = if let Some(i) = prev_idx.get() {
+        let next_free_buf = if let Some(i) = prev_idx {
             // Fix up the last buffer's next free index.
-            let BufState::Free(FreeBufInfo { next, .. }) = &mut states[i]
+            let BufState::Free(FreeBufInfo { next, .. }) = &mut states[i as usize]
                 else { unreachable!() };
-            *next = ListIndex::NONE;
+            *next = None;
 
-            ListIndex(0)
+            Some(0)
         } else {
-            ListIndex::NONE
+            None
         };
 
         // Safety: Vec::as_mut_ptr never returns null
@@ -111,14 +93,14 @@ impl FixedBuffers {
         }
     }
 
-    fn prev_free_buf_index_at(&mut self, index: usize) -> &mut ListIndex {
+    fn prev_free_buf_index_at(&mut self, index: usize) -> &mut Option<u16> {
         match &mut self.states[index] {
             BufState::Free(FreeBufInfo { prev, .. }) => prev,
             BufState::CheckedOut => panic!("buffer is checked out"),
         }
     }
 
-    fn next_free_buf_index_at(&mut self, index: usize) -> &mut ListIndex {
+    fn next_free_buf_index_at(&mut self, index: usize) -> &mut Option<u16> {
         match &mut self.states[index] {
             BufState::Free(FreeBufInfo { next, .. }) => next,
             BufState::CheckedOut => panic!("buffer is checked out"),
@@ -144,14 +126,14 @@ impl FixedBuffers {
         };
 
         // Remove the buffer from the free list.
-        if let Some(i) = prev.get() {
-            let next_of_prev = self.next_free_buf_index_at(i);
+        if let Some(i) = prev {
+            let next_of_prev = self.next_free_buf_index_at(i as usize);
             *next_of_prev = next;
         } else {
             self.next_free_buf = next;
         }
-        if let Some(i) = next.get() {
-            let prev_of_next = self.prev_free_buf_index_at(i);
+        if let Some(i) = next {
+            let prev_of_next = self.prev_free_buf_index_at(i as usize);
             *prev_of_next = prev;
         }
 
@@ -179,17 +161,16 @@ impl FixedBuffers {
         );
         *state = BufState::Free(FreeBufInfo {
             init_len,
-            prev: ListIndex::NONE,
+            prev: None,
             next: self.next_free_buf,
         });
-        debug_assert!(index < ListIndex::NONE.0 as usize);
-        self.next_free_buf = ListIndex(index as u16);
+        self.next_free_buf = Some(index as u16);
     }
 
     // If the free buffer list is not empty, checks out the first buffer
     // from the list and returns its data. Otherwise, returns None.
     pub(super) fn try_next(&mut self) -> Option<CheckedOutBuf> {
-        let index = self.next_free_buf.get()?;
+        let index = self.next_free_buf? as usize;
         let state = &mut self.states[index];
 
         let FreeBufInfo {
@@ -204,7 +185,7 @@ impl FixedBuffers {
             BufState::CheckedOut => panic!("buffer is checked out"),
         };
 
-        debug_assert!(_prev.get().is_none());
+        debug_assert!(_prev.is_none());
         self.next_free_buf = next;
 
         // Safety: the allocated array under the pointer is valid
