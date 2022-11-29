@@ -1,4 +1,4 @@
-use super::buffers::{CheckedOutBuf, FixedBuffers};
+use super::buffers::CheckedOutBuf;
 use crate::buf::{IoBuf, IoBufMut};
 
 use std::cell::RefCell;
@@ -6,6 +6,14 @@ use std::fmt::{self, Debug};
 use std::mem::ManuallyDrop;
 use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
+
+// Abstracts management of fixed buffers in a buffer registry.
+pub(super) trait CheckIn {
+    // Sets the indexed buffer's state to free and records the updated length
+    // of its initialized part. The buffer addressed must be in the checked out
+    // state, otherwise this function will panic.
+    fn check_in(&mut self, buf_index: u16, init_len: usize);
+}
 
 /// A unique handle to a memory buffer that can be pre-registered with
 /// the kernel for `io-uring` operations.
@@ -19,7 +27,7 @@ use std::rc::Rc;
 /// [`FixedBufRegistry`]: super::FixedBufRegistry
 ///
 pub struct FixedBuf {
-    registry: Rc<RefCell<FixedBuffers>>,
+    registry: Rc<RefCell<dyn CheckIn>>,
     buf: ManuallyDrop<Vec<u8>>,
     index: u16,
 }
@@ -27,24 +35,17 @@ pub struct FixedBuf {
 impl Drop for FixedBuf {
     fn drop(&mut self) {
         let mut registry = self.registry.borrow_mut();
-        debug_assert_eq!(
-            registry.iovecs()[self.index as usize].iov_base as *const u8,
-            self.buf.as_ptr()
-        );
-        debug_assert_eq!(
-            registry.iovecs()[self.index as usize].iov_len,
-            self.buf.capacity()
-        );
-        registry.check_in(self.index as usize, self.buf.len());
+        registry.check_in(self.index, self.buf.len());
     }
 }
 
 impl FixedBuf {
     // Safety: Validity constrants must apply to CheckedOutBuf members:
     // - iovec must refer to an array allocated by Vec<u8>;
+    // - the array will not be deallocated until the buffer is checked in;
     // - the data in the array must be initialized up to the number of bytes
     //   given in init_len.
-    pub(super) unsafe fn new(registry: Rc<RefCell<FixedBuffers>>, data: CheckedOutBuf) -> Self {
+    pub(super) unsafe fn new(registry: Rc<RefCell<dyn CheckIn>>, data: CheckedOutBuf) -> Self {
         let CheckedOutBuf {
             iovec,
             init_len,

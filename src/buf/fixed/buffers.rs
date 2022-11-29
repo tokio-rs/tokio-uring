@@ -1,3 +1,5 @@
+use super::handle::CheckIn;
+
 use libc::{iovec, UIO_MAXIOV};
 use std::cmp;
 use std::mem;
@@ -150,23 +152,6 @@ impl FixedBuffers {
         })
     }
 
-    // Sets the indexed buffer's state to free and records the updated length
-    // of its initialized part. The buffer addressed must be in the checked out
-    // state, otherwise this function will panic.
-    pub(crate) fn check_in(&mut self, index: usize, init_len: usize) {
-        let state = self.states.get_mut(index).expect("invalid buffer index");
-        debug_assert!(
-            matches!(state, BufState::CheckedOut),
-            "the buffer must be checked out"
-        );
-        *state = BufState::Free(FreeBufInfo {
-            init_len,
-            prev: None,
-            next: self.next_free_buf,
-        });
-        self.next_free_buf = Some(index as u16);
-    }
-
     // If the free buffer list is not empty, checks out the first buffer
     // from the list and returns its data. Otherwise, returns None.
     pub(super) fn try_next(&mut self) -> Option<CheckedOutBuf> {
@@ -205,6 +190,25 @@ impl FixedBuffers {
         // Safety: the raw_bufs pointer is valid for the lifetime of self,
         // the slice length is valid by construction.
         unsafe { slice::from_raw_parts(self.raw_bufs.as_ptr(), self.states.len()) }
+    }
+}
+
+impl CheckIn for FixedBuffers {
+    fn check_in(&mut self, index: u16, init_len: usize) {
+        let state = self
+            .states
+            .get_mut(index as usize)
+            .expect("invalid buffer index");
+        debug_assert!(
+            matches!(state, BufState::CheckedOut),
+            "the buffer must be checked out"
+        );
+        *state = BufState::Free(FreeBufInfo {
+            init_len,
+            prev: None,
+            next: self.next_free_buf,
+        });
+        self.next_free_buf = Some(index);
     }
 }
 

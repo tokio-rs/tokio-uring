@@ -105,9 +105,10 @@ impl FixedBufRegistry {
     pub fn check_out(&self, index: usize) -> Option<FixedBuf> {
         let mut inner = self.inner.borrow_mut();
         inner.check_out(index).map(|data| {
+            let registry = Rc::clone(&self.inner);
             // Safety: the validity of buffer data is ensured by
             // FixedBuffers::check_out
-            unsafe { FixedBuf::new(Rc::clone(&self.inner), data) }
+            unsafe { FixedBuf::new(registry, data) }
         })
     }
 
@@ -127,9 +128,10 @@ impl FixedBufRegistry {
     pub fn try_next(&self) -> Option<FixedBuf> {
         let mut inner = self.inner.borrow_mut();
         inner.try_next().map(|data| {
+            let registry = Rc::clone(&self.inner);
             // Safety: the validity of buffer data is ensured by
             // FixedBuffers::try_next
-            unsafe { FixedBuf::new(Rc::clone(&self.inner), data) }
+            unsafe { FixedBuf::new(registry, data) }
         })
     }
 }
