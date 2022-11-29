@@ -104,11 +104,32 @@ impl FixedBufRegistry {
     /// preventing shared use of the buffer while the operation is in flight.
     pub fn check_out(&self, index: usize) -> Option<FixedBuf> {
         let mut inner = self.inner.borrow_mut();
-        inner.check_out(index).map(|(iovec, init_len)| {
-            debug_assert!(index <= u16::MAX as usize);
-            // Safety: the validity of iovec and init_len is ensured by
+        inner.check_out(index).map(|data| {
+            // Safety: the validity of buffer data is ensured by
             // FixedBuffers::check_out
-            unsafe { FixedBuf::new(Rc::clone(&self.inner), iovec, init_len, index as u16) }
+            unsafe { FixedBuf::new(Rc::clone(&self.inner), data) }
+        })
+    }
+
+    /// Returns a buffer from this collection that is not currently owned
+    /// by any other [`FixedBuf`] handle. If no such free buffer is available,
+    /// returns `None`.
+    ///
+    /// The buffer is released to be available again once the
+    /// returned `FixedBuf` handle has been dropped. An I/O operation
+    /// using the buffer takes ownership of it and returns it once completed,
+    /// preventing shared use of the buffer while the operation is in flight.
+    ///
+    /// An application should not rely on any particular order
+    /// in which available buffers are retrieved. It's advised to allocate
+    /// buffers of equal capacity to avoid disparity in behavior when this
+    /// method is used.
+    pub fn try_next(&self) -> Option<FixedBuf> {
+        let mut inner = self.inner.borrow_mut();
+        inner.try_next().map(|data| {
+            // Safety: the validity of buffer data is ensured by
+            // FixedBuffers::try_next
+            unsafe { FixedBuf::new(Rc::clone(&self.inner), data) }
         })
     }
 }

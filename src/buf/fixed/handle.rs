@@ -1,7 +1,6 @@
-use super::FixedBuffers;
+use super::buffers::{CheckedOutBuf, FixedBuffers};
 use crate::buf::{IoBuf, IoBufMut};
 
-use libc::iovec;
 use std::cell::RefCell;
 use std::fmt::{self, Debug};
 use std::mem::ManuallyDrop;
@@ -41,12 +40,16 @@ impl Drop for FixedBuf {
 }
 
 impl FixedBuf {
-    pub(super) unsafe fn new(
-        registry: Rc<RefCell<FixedBuffers>>,
-        iovec: iovec,
-        init_len: usize,
-        index: u16,
-    ) -> Self {
+    // Safety: Validity constrants must apply to CheckedOutBuf members:
+    // - iovec must refer to an array allocated by Vec<u8>;
+    // - the data in the array must be initialized up to the number of bytes
+    //   given in init_len.
+    pub(super) unsafe fn new(registry: Rc<RefCell<FixedBuffers>>, data: CheckedOutBuf) -> Self {
+        let CheckedOutBuf {
+            iovec,
+            init_len,
+            index,
+        } = data;
         let buf = Vec::from_raw_parts(iovec.iov_base as _, init_len, iovec.iov_len);
         FixedBuf {
             registry,

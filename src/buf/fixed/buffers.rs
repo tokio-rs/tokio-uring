@@ -29,6 +29,16 @@ enum BufState {
     CheckedOut,
 }
 
+// Data to construct a `FixedBuf` handle from.
+pub(super) struct CheckedOutBuf {
+    // Pointer and size of the buffer.
+    pub iovec: iovec,
+    // Length of the initialized part.
+    pub init_len: usize,
+    // Buffer index.
+    pub index: u16,
+}
+
 #[derive(Copy, Clone)]
 struct FreeBufInfo {
     // This field records the length of the initialized part.
@@ -115,9 +125,10 @@ impl FixedBuffers {
         }
     }
 
-    // If the indexed buffer is free, changes its state to checked out and
-    // returns its data. If the buffer is already checked out, returns None.
-    pub(crate) fn check_out(&mut self, index: usize) -> Option<(iovec, usize)> {
+    // If the indexed buffer is free, changes its state to checked out, removes
+    // the buffer from the free buffer list, and returns its data.
+    // If the buffer is already checked out, returns None.
+    pub(super) fn check_out(&mut self, index: usize) -> Option<CheckedOutBuf> {
         let state = self.states.get_mut(index)?;
 
         let FreeBufInfo {
@@ -149,7 +160,12 @@ impl FixedBuffers {
         // as checked by Vec::get_mut above, called on the array of
         // states that has the same length.
         let iovec = unsafe { self.raw_bufs.as_ptr().add(index).read() };
-        Some((iovec, init_len))
+        debug_assert!(index <= u16::MAX as usize);
+        Some(CheckedOutBuf {
+            iovec,
+            init_len,
+            index: index as u16,
+        })
     }
 
     // Sets the indexed buffer's state to free and records the updated length
@@ -168,6 +184,40 @@ impl FixedBuffers {
         });
         debug_assert!(index < ListIndex::NONE.0 as usize);
         self.next_free_buf = ListIndex(index as u16);
+    }
+
+    // If the free buffer list is not empty, checks out the first buffer
+    // from the list and returns its data. Otherwise, returns None.
+    pub(super) fn try_next(&mut self) -> Option<CheckedOutBuf> {
+        let index = self.next_free_buf.get()?;
+        let state = &mut self.states[index];
+
+        let FreeBufInfo {
+            init_len,
+            prev: _prev,
+            next,
+        } = match *state {
+            BufState::Free(info) => {
+                *state = BufState::CheckedOut;
+                info
+            }
+            BufState::CheckedOut => panic!("buffer is checked out"),
+        };
+
+        debug_assert!(_prev.get().is_none());
+        self.next_free_buf = next;
+
+        // Safety: the allocated array under the pointer is valid
+        // for the lifetime of self, a free buffer index is inside the array,
+        // as also asserted by the indexing operation on the states array
+        // that has the same length.
+        let iovec = unsafe { self.raw_bufs.as_ptr().add(index).read() };
+        debug_assert!(index <= u16::MAX as usize);
+        Some(CheckedOutBuf {
+            iovec,
+            init_len,
+            index: index as u16,
+        })
     }
 
     pub(crate) fn iovecs(&self) -> &[iovec] {
