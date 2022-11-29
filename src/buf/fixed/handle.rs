@@ -1,18 +1,21 @@
-use super::buffers::CheckedOutBuf;
+use super::FixedBuffers;
 use crate::buf::{IoBuf, IoBufMut};
 
+use libc::iovec;
 use std::cell::RefCell;
 use std::fmt::{self, Debug};
 use std::mem::ManuallyDrop;
 use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 
-// Abstracts management of fixed buffers in a buffer registry.
-pub(super) trait CheckIn {
-    // Sets the indexed buffer's state to free and records the updated length
-    // of its initialized part. The buffer addressed must be in the checked out
-    // state, otherwise this function will panic.
-    fn check_in(&mut self, buf_index: u16, init_len: usize);
+// Data to construct a `FixedBuf` handle from.
+pub(super) struct CheckedOutBuf {
+    // Pointer and size of the buffer.
+    pub iovec: iovec,
+    // Length of the initialized part.
+    pub init_len: usize,
+    // Buffer index.
+    pub index: u16,
 }
 
 /// A unique handle to a memory buffer that can be pre-registered with
@@ -27,7 +30,7 @@ pub(super) trait CheckIn {
 /// [`FixedBufRegistry`]: super::FixedBufRegistry
 ///
 pub struct FixedBuf {
-    registry: Rc<RefCell<dyn CheckIn>>,
+    registry: Rc<RefCell<dyn FixedBuffers>>,
     buf: ManuallyDrop<Vec<u8>>,
     index: u16,
 }
@@ -45,7 +48,7 @@ impl FixedBuf {
     // - the array will not be deallocated until the buffer is checked in;
     // - the data in the array must be initialized up to the number of bytes
     //   given in init_len.
-    pub(super) unsafe fn new(registry: Rc<RefCell<dyn CheckIn>>, data: CheckedOutBuf) -> Self {
+    pub(super) unsafe fn new(registry: Rc<RefCell<dyn FixedBuffers>>, data: CheckedOutBuf) -> Self {
         let CheckedOutBuf {
             iovec,
             init_len,
