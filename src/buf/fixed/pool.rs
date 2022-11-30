@@ -47,26 +47,32 @@ use std::slice;
 /// use std::iter;
 /// use std::mem;
 ///
+/// # #[allow(non_snake_case)]
 /// # fn main() -> Result<(), std::io::Error> {
+/// # let (memlock_limit, _) = rlimit::Resource::MEMLOCK.get()?;
+/// # let BUF_SIZE_LARGE = memlock_limit as usize / 4;
+/// # let BUF_SIZE_SMALL = memlock_limit as usize / 8;
 /// let pool = FixedBufPool::new(
-///     iter::once(Vec::with_capacity(4096))
-///         .chain(iter::repeat_with(|| Vec::with_capacity(256)).take(16))
+///     iter::once(Vec::with_capacity(BUF_SIZE_LARGE))
+///         .chain(iter::repeat_with(|| Vec::with_capacity(BUF_SIZE_SMALL)).take(2))
 /// );
 ///
 /// tokio_uring::start(async {
 ///     pool.register()?;
 ///
-///     let buf = pool.try_next(4096).unwrap();
-///     assert_eq!(buf.bytes_total(), 4096);
-///     let next = pool.try_next(4096);
+///     let buf = pool.try_next(BUF_SIZE_LARGE).unwrap();
+///     assert_eq!(buf.bytes_total(), BUF_SIZE_LARGE);
+///     let next = pool.try_next(BUF_SIZE_LARGE);
 ///     assert!(next.is_none());
-///     let buf1 = pool.try_next(256).unwrap();
-///     assert_eq!(buf1.bytes_total(), 256);
-///     let buf2 = pool.try_next(256).unwrap();
-///     assert_eq!(buf2.bytes_total(), 256);
+///     let buf1 = pool.try_next(BUF_SIZE_SMALL).unwrap();
+///     assert_eq!(buf1.bytes_total(), BUF_SIZE_SMALL);
+///     let buf2 = pool.try_next(BUF_SIZE_SMALL).unwrap();
+///     assert_eq!(buf2.bytes_total(), BUF_SIZE_SMALL);
+///     let next = pool.try_next(BUF_SIZE_SMALL);
+///     assert!(next.is_none());
 ///     mem::drop(buf);
-///     let buf = pool.try_next(4096).unwrap();
-///     assert_eq!(buf.bytes_total(), 4096);
+///     let buf = pool.try_next(BUF_SIZE_LARGE).unwrap();
+///     assert_eq!(buf.bytes_total(), BUF_SIZE_LARGE);
 ///
 ///     Ok(())
 /// })
@@ -100,10 +106,13 @@ impl FixedBufPool {
     /// use tokio_uring::buf::fixed::FixedBufPool;
     /// use std::iter;
     ///
+    /// # #[allow(non_snake_case)]
     /// # fn main() -> Result<(), std::io::Error> {
+    /// # let (memlock_limit, _) = rlimit::Resource::MEMLOCK.get()?;
+    /// # let BUF_SIZE = memlock_limit as usize / 32;
     /// tokio_uring::start(async {
     ///     let pool = FixedBufPool::new(
-    ///         iter::repeat(Vec::with_capacity(4096)).take(16)
+    ///         iter::repeat(Vec::with_capacity(BUF_SIZE)).take(16)
     ///     );
     ///     pool.register()?;
     ///     // ...
@@ -118,10 +127,13 @@ impl FixedBufPool {
     /// use tokio_uring::buf::fixed::FixedBufPool;
     /// use std::iter;
     ///
+    /// # #[allow(non_snake_case)]
     /// # fn main() -> Result<(), std::io::Error> {
+    /// # let (memlock_limit, _) = rlimit::Resource::MEMLOCK.get()?;
+    /// # let BUF_SIZE = memlock_limit as usize / 32;
     /// tokio_uring::start(async {
     ///     let pool = FixedBufPool::new(
-    ///         iter::repeat_with(|| Vec::with_capacity(4096)).take(16)
+    ///         iter::repeat_with(|| Vec::with_capacity(BUF_SIZE)).take(16)
     ///     );
     ///     pool.register()?;
     ///     // ...
