@@ -1,4 +1,5 @@
 use crate::{
+    buf::fixed::FixedBuf,
     buf::{BoundedBuf, BoundedBufMut},
     io::{SharedFd, Socket},
 };
@@ -94,6 +95,34 @@ impl UdpSocket {
     pub async fn bind(socket_addr: SocketAddr) -> io::Result<UdpSocket> {
         let socket = Socket::bind(socket_addr, libc::SOCK_DGRAM)?;
         Ok(UdpSocket { inner: socket })
+    }
+
+    /// Returns the local address that this UDP socket is bound to.
+    ///
+    /// This can be useful, for example, when binding to port 0 to
+    /// figure out which port was actually bound.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+    /// use tokio_uring::net::UdpSocket;
+    ///
+    /// tokio_uring::start(async {
+    ///     let socket = UdpSocket::bind("127.0.0.1:8080".parse().unwrap()).await.unwrap();
+    ///     let addr = socket.local_addr().expect("Couldn't get local address");
+    ///     assert_eq!(addr, SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 8080)));
+    /// });
+    /// ```
+    pub fn local_addr(&self) -> io::Result<SocketAddr> {
+        let fd = self.inner.as_raw_fd();
+        // SAFETY: Our fd is the handle the kernel has given us for a UdpSocket.
+        // Create a std::net::UdpSocket long enough to call its local_addr method
+        // and then forget it so the socket is not closed here.
+        let s = unsafe { std::net::UdpSocket::from_raw_fd(fd) };
+        let local_addr = s.local_addr();
+        std::mem::forget(s);
+        local_addr
     }
 
     /// Creates new `UdpSocket` from a previously bound `std::net::UdpSocket`.
@@ -206,10 +235,46 @@ impl UdpSocket {
         self.inner.read(buf).await
     }
 
+    /// Like [`read`], but using a pre-mapped buffer
+    /// registered with [`FixedBufRegistry`].
+    ///
+    /// [`read`]: Self::read
+    /// [`FixedBufRegistry`]: crate::buf::fixed::FixedBufRegistry
+    ///
+    /// # Errors
+    ///
+    /// In addition to errors that can be reported by `read`,
+    /// this operation fails if the buffer is not registered in the
+    /// current `tokio-uring` runtime.
+    pub async fn read_fixed<T>(&self, buf: T) -> crate::BufResult<usize, T>
+    where
+        T: BoundedBufMut<BufMut = FixedBuf>,
+    {
+        self.inner.read_fixed(buf).await
+    }
+
     /// Write some data to the socket from the buffer, returning the original buffer and
     /// quantity of data written.
     pub async fn write<T: BoundedBuf>(&self, buf: T) -> crate::BufResult<usize, T> {
         self.inner.write(buf).await
+    }
+
+    /// Like [`write`], but using a pre-mapped buffer
+    /// registered with [`FixedBufRegistry`].
+    ///
+    /// [`write`]: Self::write
+    /// [`FixedBufRegistry`]: crate::buf::fixed::FixedBufRegistry
+    ///
+    /// # Errors
+    ///
+    /// In addition to errors that can be reported by `write`,
+    /// this operation fails if the buffer is not registered in the
+    /// current `tokio-uring` runtime.
+    pub async fn write_fixed<T>(&self, buf: T) -> crate::BufResult<usize, T>
+    where
+        T: BoundedBuf<Buf = FixedBuf>,
+    {
+        self.inner.write_fixed(buf).await
     }
 
     /// Shuts down the read, write, or both halves of this connection.
