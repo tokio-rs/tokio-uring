@@ -38,6 +38,40 @@ use std::slice;
 /// [`try_next`]: Self::try_next
 /// [`FixedBufRegistry`]: super::FixedBufRegistry
 /// [`Runtime`]: crate::Runtime
+///
+/// # Examples
+///
+/// ```
+/// use tokio_uring::buf::fixed::FixedBufPool;
+/// use tokio_uring::buf::IoBuf;
+/// use std::iter;
+/// use std::mem;
+///
+/// # fn main() -> Result<(), std::io::Error> {
+/// let pool = FixedBufPool::new(
+///     iter::once(Vec::with_capacity(4096))
+///         .chain(iter::repeat_with(|| Vec::with_capacity(256)).take(16))
+/// );
+///
+/// tokio_uring::start(async {
+///     pool.register()?;
+///
+///     let buf = pool.try_next(4096).unwrap();
+///     assert_eq!(buf.bytes_total(), 4096);
+///     let next = pool.try_next(4096);
+///     assert!(next.is_none());
+///     let buf1 = pool.try_next(256).unwrap();
+///     assert_eq!(buf1.bytes_total(), 256);
+///     let buf2 = pool.try_next(256).unwrap();
+///     assert_eq!(buf2.bytes_total(), 256);
+///     mem::drop(buf);
+///     let buf = pool.try_next(4096).unwrap();
+///     assert_eq!(buf.bytes_total(), 4096);
+///
+///     Ok(())
+/// })
+/// # }
+/// ```
 #[derive(Clone)]
 pub struct FixedBufPool {
     inner: Rc<RefCell<Inner>>,
@@ -55,11 +89,45 @@ impl FixedBufPool {
     ///
     /// # Examples
     ///
+    /// When providing uninitialized vectors for the collection, take care to
+    /// not replicate a vector with `.clone()` as that does not preserve the
+    /// capacity and the resulting buffer pointer will be rejected by the kernel.
+    /// This means that the following use of [`iter::repeat`] would not work:
+    ///
+    /// [`iter::repeat`]: std::iter::repeat
+    ///
+    /// ```should_panic
+    /// use tokio_uring::buf::fixed::FixedBufPool;
+    /// use std::iter;
+    ///
+    /// # fn main() -> Result<(), std::io::Error> {
+    /// tokio_uring::start(async {
+    ///     let pool = FixedBufPool::new(
+    ///         iter::repeat(Vec::with_capacity(4096)).take(16)
+    ///     );
+    ///     pool.register()?;
+    ///     // ...
+    ///     Ok(())
+    /// })
+    /// # }
+    /// ```
+    ///
+    /// Instead, create the vectors with requested capacity directly:
+    ///
     /// ```
     /// use tokio_uring::buf::fixed::FixedBufPool;
     /// use std::iter;
     ///
-    /// let registry = FixedBufPool::new(iter::repeat(vec![0; 4096]).take(10));
+    /// # fn main() -> Result<(), std::io::Error> {
+    /// tokio_uring::start(async {
+    ///     let pool = FixedBufPool::new(
+    ///         iter::repeat_with(|| Vec::with_capacity(4096)).take(16)
+    ///     );
+    ///     pool.register()?;
+    ///     // ...
+    ///     Ok(())
+    /// })
+    /// # }
     /// ```
     pub fn new(bufs: impl IntoIterator<Item = Vec<u8>>) -> Self {
         FixedBufPool {
