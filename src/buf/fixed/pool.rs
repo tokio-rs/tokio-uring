@@ -133,7 +133,7 @@ impl FixedBufPool {
     /// # let BUF_SIZE = memlock_limit as usize / 32;
     /// tokio_uring::start(async {
     ///     let pool = FixedBufPool::new(
-    ///         iter::repeat_with(|| Vec::with_capacity(BUF_SIZE)).take(16)
+    ///         iter::repeat_with(|| Vec::with_capacity(BUF_SIZE)).take(8)
     ///     );
     ///     pool.register()?;
     ///     // ...
