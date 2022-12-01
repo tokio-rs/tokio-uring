@@ -212,7 +212,7 @@ impl FixedBufPool {
 }
 
 // Internal state shared by FixedBufPool and FixedBuf handles.
-pub(crate) struct Inner {
+struct Inner {
     // Pointer to an allocated array of iovec records referencing
     // the allocated buffers. The number of initialized records is the
     // same as the length of the states array.
