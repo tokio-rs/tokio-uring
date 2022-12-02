@@ -49,11 +49,55 @@ impl FixedBufRegistry {
     ///
     /// # Examples
     ///
+    /// When providing uninitialized vectors for the collection, take care to
+    /// not replicate a vector with `.clone()` as that does not preserve the
+    /// capacity and the resulting buffer pointer will be rejected by the kernel.
+    /// This means that the following use of [`iter::repeat`] would not work:
+    ///
+    /// [`iter::repeat`]: std::iter::repeat
+    ///
+    /// ```should_panic
+    /// use tokio_uring::buf::fixed::FixedBufRegistry;
+    /// use std::iter;
+    ///
+    /// # #[allow(non_snake_case)]
+    /// # fn main() -> Result<(), std::io::Error> {
+    /// # let (memlock_limit, _) = rlimit::Resource::MEMLOCK.get()?;
+    /// # let NUM_BUFFERS = std::cmp::max(memlock_limit as usize / 4096 / 8, 1);
+    /// # let BUF_SIZE = 4096;
+    /// let registry = FixedBufRegistry::new(
+    ///     iter::repeat(Vec::with_capacity(BUF_SIZE)).take(NUM_BUFFERS)
+    /// );
+    ///
+    /// tokio_uring::start(async {
+    ///     registry.register()?;
+    ///     // ...
+    ///     Ok(())
+    /// })
+    /// # }
+    /// ```
+    ///
+    /// Instead, create the vectors with requested capacity directly:
+    ///
     /// ```
     /// use tokio_uring::buf::fixed::FixedBufRegistry;
     /// use std::iter;
     ///
-    /// let registry = FixedBufRegistry::new(iter::repeat(vec![0; 4096]).take(10));
+    /// # #[allow(non_snake_case)]
+    /// # fn main() -> Result<(), std::io::Error> {
+    /// # let (memlock_limit, _) = rlimit::Resource::MEMLOCK.get()?;
+    /// # let NUM_BUFFERS = std::cmp::max(memlock_limit as usize / 4096 / 8, 1);
+    /// # let BUF_SIZE = 4096;
+    /// let registry = FixedBufRegistry::new(
+    ///     iter::repeat_with(|| Vec::with_capacity(BUF_SIZE)).take(NUM_BUFFERS)
+    /// );
+    ///
+    /// tokio_uring::start(async {
+    ///     registry.register()?;
+    ///     // ...
+    ///     Ok(())
+    /// })
+    /// # }
     /// ```
     pub fn new(bufs: impl IntoIterator<Item = Vec<u8>>) -> Self {
         FixedBufRegistry {
