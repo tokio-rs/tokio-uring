@@ -2,7 +2,7 @@ use crate::buf::IoBuf;
 
 /// A mutable`io-uring` compatible buffer.
 ///
-/// The `IoBufMut` trait is implemented by buffer types that can be passed to
+/// The `IoBufMut` trait is implemented by buffer types that can be used with
 /// io-uring operations. Users will not need to use this trait directly.
 ///
 /// # Safety
@@ -23,7 +23,8 @@ pub unsafe trait IoBufMut: IoBuf {
 
     /// Updates the number of initialized bytes.
     ///
-    /// The specified `pos` becomes the new value returned by
+    /// If the specified `pos` is greater than the value returned by
+    /// [`IoBuf::bytes_init`], it becomes the new water mark as returned by
     /// `IoBuf::bytes_init`.
     ///
     /// # Safety

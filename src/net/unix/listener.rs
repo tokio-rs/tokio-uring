@@ -1,5 +1,5 @@
 use super::UnixStream;
-use crate::driver::Socket;
+use crate::io::Socket;
 use std::{io, path::Path};
 
 /// A Unix socket server, listening for connections.
@@ -17,11 +17,18 @@ use std::{io, path::Path};
 /// let listener = UnixListener::bind(&sock_file).unwrap();
 ///
 /// tokio_uring::start(async move {
-///     let tx_fut = UnixStream::connect(&sock_file);
+///     let (tx_ch, rx_ch) = tokio::sync::oneshot::channel();
 ///
-///     let rx_fut = listener.accept();
+///     tokio_uring::spawn(async move {
+///         let rx = listener.accept().await.unwrap();
+///         if let Err(_) = tx_ch.send(rx) {
+///             panic!("The receiver dropped");
+///         }
+///     });
+///     tokio::task::yield_now().await; // Ensure the listener.accept().await has been kicked off.
 ///
-///     let (tx, rx) = tokio::try_join!(tx_fut, rx_fut).unwrap();
+///     let tx = UnixStream::connect(&sock_file).await.unwrap();
+///     let rx = rx_ch.await.expect("The spawned task expected to send a UnixStream");
 ///
 ///     tx.write(b"test" as &'static [u8]).await.0.unwrap();
 ///

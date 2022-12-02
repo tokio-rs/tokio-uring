@@ -1,10 +1,10 @@
 use crate::buf::IoBufMut;
-use crate::driver::{Op, SharedFd};
 use crate::BufResult;
 
+use crate::io::SharedFd;
+use crate::runtime::driver::op::{Completable, CqeResult, Op};
 use libc::iovec;
 use std::io;
-use std::task::{Context, Poll};
 
 pub(crate) struct Readv<T> {
     /// Holds a strong ref to the FD, preventing the file from being closed
@@ -53,21 +53,19 @@ impl<T: IoBufMut> Op<Readv<T>> {
             },
         )
     }
+}
 
-    pub(crate) async fn readv(mut self) -> BufResult<usize, Vec<T>> {
-        crate::future::poll_fn(move |cx| self.poll_readv(cx)).await
-    }
+impl<T> Completable for Readv<T>
+where
+    T: IoBufMut,
+{
+    type Output = BufResult<usize, Vec<T>>;
 
-    pub(crate) fn poll_readv(&mut self, cx: &mut Context<'_>) -> Poll<BufResult<usize, Vec<T>>> {
-        use std::future::Future;
-        use std::pin::Pin;
-
-        let complete = ready!(Pin::new(self).poll(cx));
-
+    fn complete(self, cqe: CqeResult) -> Self::Output {
         // Convert the operation result to `usize`
-        let res = complete.result.map(|v| v as usize);
-        // Recover the buffers
-        let mut bufs = complete.data.bufs;
+        let res = cqe.result.map(|v| v as usize);
+        // Recover the buffer
+        let mut bufs = self.bufs;
 
         // If the operation was successful, advance the initialized cursor.
         if let Ok(n) = res {
@@ -86,6 +84,6 @@ impl<T: IoBufMut> Op<Readv<T>> {
             assert_eq!(count, 0);
         }
 
-        Poll::Ready((res, bufs))
+        (res, bufs)
     }
 }

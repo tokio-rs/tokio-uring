@@ -2,8 +2,8 @@
 #[allow(warnings)]
 mod future;
 
-use tokio_uring::fs;
 use tokio_test::assert_ok;
+use tokio_uring::fs;
 
 use tempfile::tempdir;
 

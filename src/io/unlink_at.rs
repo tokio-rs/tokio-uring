@@ -1,5 +1,4 @@
-use crate::driver::{self, Op};
-
+use crate::runtime::driver::op::{Completable, CqeResult, Op};
 use std::ffi::CString;
 use std::io;
 use std::path::Path;
@@ -24,7 +23,7 @@ impl Op<Unlink> {
     pub(crate) fn unlink(path: &Path, flags: i32) -> io::Result<Op<Unlink>> {
         use io_uring::{opcode, types};
 
-        let path = driver::util::cstr(path)?;
+        let path = super::util::cstr(path)?;
 
         Op::submit_with(Unlink { path }, |unlink| {
             // Get a reference to the memory. The string will be held by the
@@ -35,5 +34,13 @@ impl Op<Unlink> {
                 .flags(flags)
                 .build()
         })
+    }
+}
+
+impl Completable for Unlink {
+    type Output = io::Result<()>;
+
+    fn complete(self, cqe: CqeResult) -> Self::Output {
+        cqe.result.map(|_| ())
     }
 }

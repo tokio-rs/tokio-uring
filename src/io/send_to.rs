@@ -1,9 +1,9 @@
-use crate::buf::IoBuf;
-use crate::driver::{Op, SharedFd};
+use crate::buf::BoundedBuf;
+use crate::io::SharedFd;
+use crate::runtime::driver::op::{Completable, CqeResult, Op};
 use crate::BufResult;
 use socket2::SockAddr;
 use std::io::IoSlice;
-use std::task::{Context, Poll};
 use std::{boxed::Box, io, net::SocketAddr};
 
 pub(crate) struct SendTo<T> {
@@ -17,7 +17,7 @@ pub(crate) struct SendTo<T> {
     pub(crate) msghdr: Box<libc::msghdr>,
 }
 
-impl<T: IoBuf> Op<SendTo<T>> {
+impl<T: BoundedBuf> Op<SendTo<T>> {
     pub(crate) fn send_to(
         fd: &SharedFd,
         buf: T,
@@ -54,18 +54,17 @@ impl<T: IoBuf> Op<SendTo<T>> {
             },
         )
     }
+}
 
-    pub(crate) async fn send(mut self) -> BufResult<usize, T> {
-        use crate::future::poll_fn;
+impl<T> Completable for SendTo<T> {
+    type Output = BufResult<usize, T>;
 
-        poll_fn(move |cx| self.poll_send(cx)).await
-    }
+    fn complete(self, cqe: CqeResult) -> Self::Output {
+        // Convert the operation result to `usize`
+        let res = cqe.result.map(|v| v as usize);
+        // Recover the buffer
+        let buf = self.buf;
 
-    pub(crate) fn poll_send(&mut self, cx: &mut Context<'_>) -> Poll<BufResult<usize, T>> {
-        use std::future::Future;
-        use std::pin::Pin;
-
-        let complete = ready!(Pin::new(self).poll(cx));
-        Poll::Ready((complete.result.map(|v| v as _), complete.data.buf))
+        (res, buf)
     }
 }

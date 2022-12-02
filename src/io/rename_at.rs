@@ -1,5 +1,4 @@
-use crate::driver::{self, Op};
-
+use crate::runtime::driver::op::{Completable, CqeResult, Op};
 use std::ffi::CString;
 use std::io;
 use std::path::Path;
@@ -19,8 +18,8 @@ impl Op<RenameAt> {
     pub(crate) fn rename_at(from: &Path, to: &Path, flags: u32) -> io::Result<Op<RenameAt>> {
         use io_uring::{opcode, types};
 
-        let from = driver::util::cstr(from)?;
-        let to = driver::util::cstr(to)?;
+        let from = super::util::cstr(from)?;
+        let to = super::util::cstr(to)?;
 
         Op::submit_with(RenameAt { from, to }, |rename| {
             // Get a reference to the memory. The string will be held by the
@@ -37,5 +36,13 @@ impl Op<RenameAt> {
             .flags(flags)
             .build()
         })
+    }
+}
+
+impl Completable for RenameAt {
+    type Output = io::Result<()>;
+
+    fn complete(self, cqe: CqeResult) -> Self::Output {
+        cqe.result.map(|_| ())
     }
 }

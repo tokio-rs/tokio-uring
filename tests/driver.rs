@@ -90,6 +90,38 @@ fn too_many_submissions() {
     });
 }
 
+#[test]
+fn completion_overflow() {
+    use std::process;
+    use std::{thread, time};
+    use tokio::task::JoinSet;
+
+    let spawn_cnt = 50;
+    let squeue_entries = 2;
+    let cqueue_entries = 2 * squeue_entries;
+
+    std::thread::spawn(|| {
+        thread::sleep(time::Duration::from_secs(8)); // 1000 times longer than it takes on a slow machine
+        eprintln!("Timeout reached. The uring completions are hung.");
+        process::exit(1);
+    });
+
+    tokio_uring::builder()
+        .entries(squeue_entries)
+        .uring_builder(tokio_uring::uring_builder().setup_cqsize(cqueue_entries))
+        .start(async move {
+            let mut js = JoinSet::new();
+
+            for _ in 0..spawn_cnt {
+                js.spawn_local(tokio_uring::no_op());
+            }
+
+            while let Some(res) = js.join_next().await {
+                res.unwrap().unwrap();
+            }
+        });
+}
+
 fn tempfile() -> NamedTempFile {
     NamedTempFile::new().unwrap()
 }

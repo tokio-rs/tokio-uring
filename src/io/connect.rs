@@ -1,11 +1,14 @@
-use crate::driver::{Op, SharedFd};
+use crate::io::SharedFd;
+use crate::runtime::driver::op::{Completable, CqeResult, Op};
 use socket2::SockAddr;
 use std::io;
 
 /// Open a file
 pub(crate) struct Connect {
     fd: SharedFd,
-    socket_addr: SockAddr,
+    // this avoids a UAF (UAM?) if the future is moved, but not if the future is
+    // dropped. no Op can be dropped before completion in tokio-uring land right now.
+    socket_addr: Box<SockAddr>,
 }
 
 impl Op<Connect> {
@@ -16,7 +19,7 @@ impl Op<Connect> {
         Op::submit_with(
             Connect {
                 fd: fd.clone(),
-                socket_addr,
+                socket_addr: Box::new(socket_addr),
             },
             |connect| {
                 opcode::Connect::new(
@@ -27,5 +30,13 @@ impl Op<Connect> {
                 .build()
             },
         )
+    }
+}
+
+impl Completable for Connect {
+    type Output = io::Result<()>;
+
+    fn complete(self, cqe: CqeResult) -> Self::Output {
+        cqe.result.map(|_| ())
     }
 }

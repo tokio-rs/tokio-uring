@@ -71,15 +71,18 @@ macro_rules! syscall {
 
 #[macro_use]
 mod future;
-mod driver;
+mod io;
 mod runtime;
+mod util;
 
 pub mod buf;
 pub mod fs;
 pub mod net;
 
 pub use runtime::spawn;
+pub use runtime::Runtime;
 
+use crate::runtime::driver::op::Op;
 use std::future::Future;
 
 /// Start an `io_uring` enabled Tokio runtime.
@@ -140,8 +143,94 @@ use std::future::Future;
 /// }
 /// ```
 pub fn start<F: Future>(future: F) -> F::Output {
-    let mut rt = runtime::Runtime::new().unwrap();
+    let rt = runtime::Runtime::new(&builder()).unwrap();
     rt.block_on(future)
+}
+
+/// Create and return an io_uring::Builder that can then be modified
+/// through its implementation methods.
+///
+/// This function is provided to avoid requiring the user of this crate from
+/// having to use the io_uring crate as well. Refer to Builder::start example
+/// for its intended usage.
+pub fn uring_builder() -> io_uring::Builder {
+    io_uring::IoUring::builder()
+}
+
+/// Builder API to allow starting the runtime and creating the io_uring driver with non-default
+/// parameters.
+// #[derive(Clone, Default)]
+pub struct Builder {
+    entries: u32,
+    urb: io_uring::Builder,
+}
+
+/// Return a Builder to allow setting parameters before calling the start method.
+/// Returns a Builder with our default values, all of which can be replaced with the methods below.
+///
+/// Refer to Builder::start for an example.
+pub fn builder() -> Builder {
+    Builder {
+        entries: 256,
+        urb: io_uring::IoUring::builder(),
+    }
+}
+
+impl Builder {
+    /// Set number of submission queue entries in uring.
+    ///
+    /// The kernel will ensure it uses a power of two and will round this up if necessary.
+    /// The kernel requires the number of completion queue entries to be larger than
+    /// the submission queue entries so generally will double the sq entries count.
+    ///
+    /// The caller can specify even a larger cq entries count by using the uring_builder
+    /// as shown in the start example below.
+    pub fn entries(&mut self, e: u32) -> &mut Self {
+        self.entries = e;
+        self
+    }
+
+    /// Replace the default io_uring Builder. This allows the caller to craft the io_uring Builder
+    /// using the io_uring crate's Builder API.
+    ///
+    /// Refer to the Builder start method for an example.
+    /// Refer to the io_uring::builder documentation for all the supported methods.
+    pub fn uring_builder(&mut self, b: &io_uring::Builder) -> &mut Self {
+        self.urb = b.clone();
+        self
+    }
+
+    /// Start an `io_uring` enabled Tokio runtime.
+    ///
+    /// # Examples
+    ///
+    /// Creating a uring driver with only 64 submission queue entries but
+    /// many more completion queue entries.
+    ///
+    /// ```no_run
+    /// use tokio::net::TcpListener;
+    ///
+    /// fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ///     tokio_uring::builder()
+    ///         .entries(64)
+    ///         .uring_builder(tokio_uring::uring_builder()
+    ///             .setup_cqsize(1024)
+    ///             )
+    ///         .start(async {
+    ///             let listener = TcpListener::bind("127.0.0.1:8080").await?;
+    ///
+    ///             loop {
+    ///                 let (socket, _) = listener.accept().await?;
+    ///                 // process socket
+    ///             }
+    ///         }
+    ///     )
+    /// }
+    /// ```
+    pub fn start<F: Future>(&self, future: F) -> F::Output {
+        let rt = runtime::Runtime::new(self).unwrap();
+        rt.block_on(future)
+    }
 }
 
 /// A specialized `Result` type for `io-uring` operations with buffers.
@@ -176,3 +265,23 @@ pub fn start<F: Future>(future: F) -> F::Output {
 /// }
 /// ```
 pub type BufResult<T, B> = (std::io::Result<T>, B);
+
+/// The simplest possible operation. Just posts a completion event, nothing else.
+///
+/// This has a place in benchmarking and sanity checking uring.
+///
+/// # Examples
+///
+/// ```no_run
+/// fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     tokio_uring::start(async {
+///         // Place a NoOp on the ring, and await completion event
+///         tokio_uring::no_op().await?;
+///         Ok(())
+///     })
+/// }
+/// ```
+pub async fn no_op() -> std::io::Result<()> {
+    let op = Op::<io::NoOp>::no_op().unwrap();
+    op.await
+}

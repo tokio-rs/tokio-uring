@@ -1,12 +1,13 @@
 use std::{
     io,
     net::SocketAddr,
-    os::unix::prelude::{AsRawFd, RawFd},
+    os::unix::prelude::{AsRawFd, FromRawFd, RawFd},
 };
 
 use crate::{
-    buf::{IoBuf, IoBufMut},
-    driver::Socket,
+    buf::fixed::FixedBuf,
+    buf::{BoundedBuf, BoundedBufMut, IoBuf},
+    io::{SharedFd, Socket},
 };
 
 /// A TCP stream between a local and a remote socket.
@@ -50,16 +51,177 @@ impl TcpStream {
         Ok(tcp_stream)
     }
 
+    /// Creates new `TcpStream` from a previously bound `std::net::TcpStream`.
+    ///
+    /// This function is intended to be used to wrap a TCP stream from the
+    /// standard library in the tokio-uring equivalent. The conversion assumes nothing
+    /// about the underlying socket; it is left up to the user to decide what socket
+    /// options are appropriate for their use case.
+    ///
+    /// This can be used in conjunction with socket2's `Socket` interface to
+    /// configure a socket before it's handed off, such as setting options like
+    /// `reuse_address` or binding to multiple addresses.
+    pub fn from_std(socket: std::net::TcpStream) -> Self {
+        let inner = Socket::from_std(socket);
+        Self { inner }
+    }
+
+    pub(crate) fn from_socket(inner: Socket) -> Self {
+        Self { inner }
+    }
+
     /// Read some data from the stream into the buffer, returning the original buffer and
     /// quantity of data read.
-    pub async fn read<T: IoBufMut>(&self, buf: T) -> crate::BufResult<usize, T> {
+    pub async fn read<T: BoundedBufMut>(&self, buf: T) -> crate::BufResult<usize, T> {
         self.inner.read(buf).await
+    }
+
+    /// Like [`read`], but using a pre-mapped buffer
+    /// registered with [`FixedBufRegistry`].
+    ///
+    /// [`read`]: Self::read
+    /// [`FixedBufRegistry`]: crate::buf::fixed::FixedBufRegistry
+    ///
+    /// # Errors
+    ///
+    /// In addition to errors that can be reported by `read`,
+    /// this operation fails if the buffer is not registered in the
+    /// current `tokio-uring` runtime.
+    pub async fn read_fixed<T>(&self, buf: T) -> crate::BufResult<usize, T>
+    where
+        T: BoundedBufMut<BufMut = FixedBuf>,
+    {
+        self.inner.read_fixed(buf).await
     }
 
     /// Write some data to the stream from the buffer, returning the original buffer and
     /// quantity of data written.
-    pub async fn write<T: IoBuf>(&self, buf: T) -> crate::BufResult<usize, T> {
+    pub async fn write<T: BoundedBuf>(&self, buf: T) -> crate::BufResult<usize, T> {
         self.inner.write(buf).await
+    }
+
+    /// Like [`write`], but using a pre-mapped buffer
+    /// registered with [`FixedBufRegistry`].
+    ///
+    /// [`write`]: Self::write
+    /// [`FixedBufRegistry`]: crate::buf::fixed::FixedBufRegistry
+    ///
+    /// # Errors
+    ///
+    /// In addition to errors that can be reported by `write`,
+    /// this operation fails if the buffer is not registered in the
+    /// current `tokio-uring` runtime.
+    pub async fn write_fixed<T>(&self, buf: T) -> crate::BufResult<usize, T>
+    where
+        T: BoundedBuf<Buf = FixedBuf>,
+    {
+        self.inner.write_fixed(buf).await
+    }
+
+    /// Attempts to write an entire buffer to the stream.
+    ///
+    /// This method will continuously call [`write`] until there is no more data to be
+    /// written or an error is returned. This method will not return until the entire
+    /// buffer has been successfully written or an error has occurred.
+    ///
+    /// If the buffer contains no data, this will never call [`write`].
+    ///
+    /// # Errors
+    ///
+    /// This function will return the first error that [`write`] returns.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use std::net::SocketAddr;
+    /// use tokio_uring::net::TcpListener;
+    /// use tokio_uring::buf::BoundedBuf;
+    ///
+    /// let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
+    ///
+    /// tokio_uring::start(async {
+    ///     let listener = TcpListener::bind(addr).unwrap();
+    ///
+    ///     println!("Listening on {}", listener.local_addr().unwrap());
+    ///
+    ///     loop {
+    ///         let (stream, _) = listener.accept().await.unwrap();
+    ///         tokio_uring::spawn(async move {
+    ///             let mut n = 0;
+    ///             let mut buf = vec![0u8; 4096];
+    ///             loop {
+    ///                 let (result, nbuf) = stream.read(buf).await;
+    ///                 buf = nbuf;
+    ///                 let read = result.unwrap();
+    ///                 if read == 0 {
+    ///                     break;
+    ///                 }
+    ///
+    ///                 let (res, slice) = stream.write_all(buf.slice(..read)).await;
+    ///                 let _ = res.unwrap();
+    ///                 buf = slice.into_inner();
+    ///                 n += read;
+    ///             }
+    ///         });
+    ///     }
+    /// });
+    /// ```
+    ///
+    /// [`write`]: Self::write
+    pub async fn write_all<T: BoundedBuf>(&self, buf: T) -> crate::BufResult<(), T> {
+        self.inner.write_all(buf).await
+    }
+
+    /// Write data from buffers into this socket returning how many bytes were
+    /// written.
+    ///
+    /// This function will attempt to write the entire contents of `bufs`, but
+    /// the entire write may not succeed, or the write may also generate an
+    /// error. The bytes will be written starting at the specified offset.
+    ///
+    /// # Return
+    ///
+    /// The method returns the operation result and the same array of buffers
+    /// passed in as an argument. A return value of `0` typically means that the
+    /// underlying socket is no longer able to accept bytes and will likely not
+    /// be able to in the future as well, or that the buffer provided is empty.
+    ///
+    /// # Errors
+    ///
+    /// Each call to `write` may generate an I/O error indicating that the
+    /// operation could not be completed. If an error is returned then no bytes
+    /// in the buffer were written to this writer.
+    ///
+    /// It is **not** considered an error if the entire buffer could not be
+    /// written to this writer.
+    ///
+    /// [`Ok(n)`]: Ok
+    pub async fn writev<T: IoBuf>(&self, buf: Vec<T>) -> crate::BufResult<usize, Vec<T>> {
+        self.inner.writev(buf).await
+    }
+
+    /// Shuts down the read, write, or both halves of this connection.
+    ///
+    /// This function will cause all pending and future I/O on the specified portions to return
+    /// immediately with an appropriate value.
+    pub fn shutdown(&self, how: std::net::Shutdown) -> io::Result<()> {
+        self.inner.shutdown(how)
+    }
+
+    /// Sets the value of the TCP_NODELAY option on this socket.
+    ///
+    /// If set, this option disables the Nagle algorithm. This means that segments are always sent
+    /// as soon as possible, even if there is only a small amount of data. When not set, data is
+    /// buffered until there is a sufficient amount to send out, thereby avoiding the frequent
+    /// sending of small packets.
+    pub fn set_nodelay(&self, nodelay: bool) -> io::Result<()> {
+        self.inner.set_nodelay(nodelay)
+    }
+}
+
+impl FromRawFd for TcpStream {
+    unsafe fn from_raw_fd(fd: RawFd) -> Self {
+        TcpStream::from_socket(Socket::from_shared_fd(SharedFd::new(fd)))
     }
 }
 

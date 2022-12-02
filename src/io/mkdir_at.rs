@@ -1,4 +1,6 @@
-use crate::driver::{self, Op};
+use crate::runtime::driver::op::{Completable, CqeResult, Op};
+
+use super::util::cstr;
 
 use std::ffi::CString;
 use std::io;
@@ -15,7 +17,7 @@ impl Op<Mkdir> {
     pub(crate) fn make_dir(path: &Path) -> io::Result<Op<Mkdir>> {
         use io_uring::{opcode, types};
 
-        let _path = driver::util::cstr(path)?;
+        let _path = cstr(path)?;
 
         // Get a reference to the memory. The string will be held by the
         // operation state and will not be accessed again until the operation
@@ -23,8 +25,16 @@ impl Op<Mkdir> {
         let p_ref = _path.as_c_str().as_ptr();
 
         Op::submit_with(Mkdir { _path }, |_| {
-            opcode::MkDirAt::new(types::Fd(libc::AT_FDCWD), p_ref)
-                .build()
+            opcode::MkDirAt::new(types::Fd(libc::AT_FDCWD), p_ref).build()
         })
+    }
+}
+
+impl Completable for Mkdir {
+    type Output = io::Result<()>;
+
+    fn complete(self, cqe: CqeResult) -> Self::Output {
+        cqe.result?;
+        Ok(())
     }
 }
