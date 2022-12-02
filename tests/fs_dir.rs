@@ -8,7 +8,7 @@ use tokio_uring::fs;
 use tempfile::tempdir;
 
 #[test]
-fn create_dir() {
+fn basic_create_dir() {
     tokio_uring::start(async {
         let base_dir = tempdir().unwrap();
         let new_dir = base_dir.path().join("foo");
