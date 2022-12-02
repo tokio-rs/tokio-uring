@@ -206,6 +206,11 @@ impl Socket {
         std::mem::forget(s);
         result
     }
+
+    pub fn set_nodelay(&self, nodelay: bool) -> io::Result<()> {
+        let socket_ref = socket2::SockRef::from(self);
+        socket_ref.set_nodelay(nodelay)
+    }
 }
 
 impl AsRawFd for Socket {
