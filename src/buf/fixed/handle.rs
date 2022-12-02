@@ -45,7 +45,7 @@ impl Drop for FixedBuf {
 }
 
 impl FixedBuf {
-    // Safety: Validity constrants must apply to CheckedOutBuf members:
+    // Safety: Validity constraints must apply to CheckedOutBuf members:
     // - iovec must refer to an array allocated by Vec<u8>;
     // - the array will not be deallocated until the buffer is checked in;
     // - the data in the array must be initialized up to the number of bytes
