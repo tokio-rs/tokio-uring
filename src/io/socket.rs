@@ -208,15 +208,8 @@ impl Socket {
     }
 
     pub fn set_nodelay(&self, nodelay: bool) -> io::Result<()> {
-        use std::os::unix::io::FromRawFd;
-
-        let fd = self.as_raw_fd();
-
-        // SAFETY: See note for Self::shutdown
-        let s = unsafe { socket2::Socket::from_raw_fd(fd) };
-        let result = s.set_nodelay(nodelay);
-        std::mem::forget(s);
-        result
+        let socket_ref = socket2::SockRef::from(self);
+        socket_ref.set_nodelay(nodelay)
     }
 }
 
