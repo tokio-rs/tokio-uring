@@ -20,7 +20,7 @@ pub(crate) struct Driver {
     /// Reference to the currently registered buffers.
     /// Ensures that the buffers are not dropped until
     /// after the io-uring runtime has terminated.
-    pub(crate) fixed_buffers: Option<Rc<RefCell<FixedBuffers>>>,
+    pub(crate) fixed_buffers: Option<Rc<RefCell<dyn FixedBuffers>>>,
 }
 
 struct Ops {

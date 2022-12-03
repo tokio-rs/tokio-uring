@@ -227,6 +227,16 @@ impl TcpStream {
     pub fn shutdown(&self, how: std::net::Shutdown) -> io::Result<()> {
         self.inner.shutdown(how)
     }
+
+    /// Sets the value of the TCP_NODELAY option on this socket.
+    ///
+    /// If set, this option disables the Nagle algorithm. This means that segments are always sent
+    /// as soon as possible, even if there is only a small amount of data. When not set, data is
+    /// buffered until there is a sufficient amount to send out, thereby avoiding the frequent
+    /// sending of small packets.
+    pub fn set_nodelay(&self, nodelay: bool) -> io::Result<()> {
+        self.inner.set_nodelay(nodelay)
+    }
 }
 
 impl FromRawFd for TcpStream {
