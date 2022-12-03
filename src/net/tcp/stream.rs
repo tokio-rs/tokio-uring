@@ -5,8 +5,9 @@ use std::{
 };
 
 use crate::{
-    buf::{IoBuf, IoBufMut},
-    driver::{SharedFd, Socket},
+    buf::fixed::FixedBuf,
+    buf::{BoundedBuf, BoundedBufMut, IoBuf},
+    io::{SharedFd, Socket},
 };
 
 /// A TCP stream between a local and a remote socket.
@@ -71,14 +72,50 @@ impl TcpStream {
 
     /// Read some data from the stream into the buffer, returning the original buffer and
     /// quantity of data read.
-    pub async fn read<T: IoBufMut>(&self, buf: T) -> crate::BufResult<usize, T> {
+    pub async fn read<T: BoundedBufMut>(&self, buf: T) -> crate::BufResult<usize, T> {
         self.inner.read(buf).await
+    }
+
+    /// Like [`read`], but using a pre-mapped buffer
+    /// registered with [`FixedBufRegistry`].
+    ///
+    /// [`read`]: Self::read
+    /// [`FixedBufRegistry`]: crate::buf::fixed::FixedBufRegistry
+    ///
+    /// # Errors
+    ///
+    /// In addition to errors that can be reported by `read`,
+    /// this operation fails if the buffer is not registered in the
+    /// current `tokio-uring` runtime.
+    pub async fn read_fixed<T>(&self, buf: T) -> crate::BufResult<usize, T>
+    where
+        T: BoundedBufMut<BufMut = FixedBuf>,
+    {
+        self.inner.read_fixed(buf).await
     }
 
     /// Write some data to the stream from the buffer, returning the original buffer and
     /// quantity of data written.
-    pub async fn write<T: IoBuf>(&self, buf: T) -> crate::BufResult<usize, T> {
+    pub async fn write<T: BoundedBuf>(&self, buf: T) -> crate::BufResult<usize, T> {
         self.inner.write(buf).await
+    }
+
+    /// Like [`write`], but using a pre-mapped buffer
+    /// registered with [`FixedBufRegistry`].
+    ///
+    /// [`write`]: Self::write
+    /// [`FixedBufRegistry`]: crate::buf::fixed::FixedBufRegistry
+    ///
+    /// # Errors
+    ///
+    /// In addition to errors that can be reported by `write`,
+    /// this operation fails if the buffer is not registered in the
+    /// current `tokio-uring` runtime.
+    pub async fn write_fixed<T>(&self, buf: T) -> crate::BufResult<usize, T>
+    where
+        T: BoundedBuf<Buf = FixedBuf>,
+    {
+        self.inner.write_fixed(buf).await
     }
 
     /// Attempts to write an entire buffer to the stream.
@@ -98,7 +135,7 @@ impl TcpStream {
     /// ```no_run
     /// use std::net::SocketAddr;
     /// use tokio_uring::net::TcpListener;
-    /// use tokio_uring::buf::IoBuf;
+    /// use tokio_uring::buf::BoundedBuf;
     ///
     /// let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
     ///
@@ -131,37 +168,8 @@ impl TcpStream {
     /// ```
     ///
     /// [`write`]: Self::write
-    pub async fn write_all<T: IoBuf>(&self, mut buf: T) -> crate::BufResult<(), T> {
-        let mut n = 0;
-        while n < buf.bytes_init() {
-            let res = self.write(buf.slice(n..)).await;
-            match res {
-                (Ok(0), slice) => {
-                    return (
-                        Err(std::io::Error::new(
-                            std::io::ErrorKind::WriteZero,
-                            "failed to write whole buffer",
-                        )),
-                        slice.into_inner(),
-                    )
-                }
-                (Ok(m), slice) => {
-                    n += m;
-                    buf = slice.into_inner();
-                }
-
-                // This match on an EINTR error is not performed because this
-                // crate's design ensures we are not calling the 'wait' option
-                // in the ENTER syscall. Only an Enter with 'wait' can generate
-                // an EINTR according to the io_uring man pages.
-                // (Err(ref e), slice) if e.kind() == std::io::ErrorKind::Interrupted => {
-                //     buf = slice.into_inner();
-                // },
-                (Err(e), slice) => return (Err(e), slice.into_inner()),
-            }
-        }
-
-        (Ok(()), buf)
+    pub async fn write_all<T: BoundedBuf>(&self, buf: T) -> crate::BufResult<(), T> {
+        self.inner.write_all(buf).await
     }
 
     /// Write data from buffers into this socket returning how many bytes were
@@ -198,6 +206,16 @@ impl TcpStream {
     /// immediately with an appropriate value.
     pub fn shutdown(&self, how: std::net::Shutdown) -> io::Result<()> {
         self.inner.shutdown(how)
+    }
+
+    /// Sets the value of the TCP_NODELAY option on this socket.
+    ///
+    /// If set, this option disables the Nagle algorithm. This means that segments are always sent
+    /// as soon as possible, even if there is only a small amount of data. When not set, data is
+    /// buffered until there is a sufficient amount to send out, thereby avoiding the frequent
+    /// sending of small packets.
+    pub fn set_nodelay(&self, nodelay: bool) -> io::Result<()> {
+        self.inner.set_nodelay(nodelay)
     }
 }
 

@@ -17,6 +17,12 @@ provides new resource types that work with [`io-uring`].
 Using `tokio-uring` requires starting a [`tokio-uring`] runtime. This
 runtime internally manages the main Tokio runtime and a `io-uring` driver.
 
+In your Cargo.toml:
+```toml
+[dependencies]
+tokio-uring = { version = "0.4.0" }
+```
+In your main.rs:
 ```rust
 use tokio_uring::fs::File;
 

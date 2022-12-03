@@ -11,7 +11,7 @@ mod slab_list;
 use slab::Slab;
 use slab_list::{SlabListEntry, SlabListIndices};
 
-use crate::driver;
+use crate::runtime;
 use crate::runtime::CONTEXT;
 use crate::util::PhantomUnsendUnsync;
 
@@ -25,7 +25,7 @@ pub(crate) type Completion = SlabListEntry<CqeResult>;
 /// In-flight operation
 pub(crate) struct Op<T: 'static, CqeType = SingleCQE> {
     // Operation index in the slab
-    pub(super) index: usize,
+    pub(crate) index: usize,
 
     // Per-operation data
     data: Option<T>,
@@ -40,9 +40,20 @@ pub(crate) struct Op<T: 'static, CqeType = SingleCQE> {
 /// A Marker for Ops which expect only a single completion event
 pub(crate) struct SingleCQE;
 
+/// A Marker for Operations will process multiple completion events,
+/// which combined resolve to a single Future value
+pub(crate) struct MultiCQEFuture;
+
 pub(crate) trait Completable {
     type Output;
+    /// `complete` will be called for cqe's do not have the `more` flag set
     fn complete(self, cqe: CqeResult) -> Self::Output;
+}
+
+pub(crate) trait Updateable: Completable {
+    /// Update will be called for cqe's which have the `more` flag set.
+    /// The Op should update any internal state as required.
+    fn update(&mut self, cqe: CqeResult);
 }
 
 pub(crate) enum Lifecycle {
@@ -88,7 +99,7 @@ where
     T: Completable,
 {
     /// Create a new operation
-    fn new(data: T, inner: &mut driver::Driver) -> Self {
+    fn new(data: T, inner: &mut runtime::driver::Driver) -> Self {
         Op {
             index: inner.ops.insert(),
             data: Some(data),
@@ -101,7 +112,7 @@ where
     ///
     /// `state` is stored during the operation tracking any state submitted to
     /// the kernel.
-    pub(super) fn submit_with<F>(data: T, f: F) -> io::Result<Self>
+    pub(crate) fn submit_with<F>(data: T, f: F) -> io::Result<Self>
     where
         F: FnOnce(&mut T) -> squeue::Entry,
     {
@@ -122,18 +133,6 @@ where
                 Ok(op)
             })
         })
-    }
-
-    /// Try submitting an operation to uring
-    pub(super) fn try_submit_with<F>(data: T, f: F) -> io::Result<Self>
-    where
-        F: FnOnce(&mut T) -> squeue::Entry,
-    {
-        if CONTEXT.with(|cx| cx.is_set()) {
-            Op::submit_with(data, f)
-        } else {
-            Err(io::ErrorKind::Other.into())
-        }
     }
 }
 
@@ -176,6 +175,78 @@ where
                     }
                     Lifecycle::CompletionList(..) => {
                         unreachable!("No `more` flag set for SingleCQE")
+                    }
+                }
+            })
+        })
+    }
+}
+
+impl<T> Future for Op<T, MultiCQEFuture>
+where
+    T: Unpin + 'static + Completable + Updateable,
+{
+    type Output = T::Output;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        use std::mem;
+
+        let me = &mut *self;
+
+        CONTEXT.with(|runtime_context| {
+            runtime_context.with_driver_mut(|driver| {
+                let (lifecycle, completions) = driver
+                    .ops
+                    .get_mut(me.index)
+                    .expect("invalid internal state");
+
+                match mem::replace(lifecycle, Lifecycle::Submitted) {
+                    Lifecycle::Submitted => {
+                        *lifecycle = Lifecycle::Waiting(cx.waker().clone());
+                        Poll::Pending
+                    }
+                    Lifecycle::Waiting(waker) if !waker.will_wake(cx.waker()) => {
+                        *lifecycle = Lifecycle::Waiting(cx.waker().clone());
+                        Poll::Pending
+                    }
+                    Lifecycle::Waiting(waker) => {
+                        *lifecycle = Lifecycle::Waiting(waker);
+                        Poll::Pending
+                    }
+                    Lifecycle::Ignored(..) => unreachable!(),
+                    Lifecycle::Completed(cqe) => {
+                        // This is possible. We may have previously polled a CompletionList,
+                        // and the final CQE registered as Completed
+                        driver.ops.remove(me.index);
+                        me.index = usize::MAX;
+                        Poll::Ready(me.data.take().unwrap().complete(cqe))
+                    }
+                    Lifecycle::CompletionList(indices) => {
+                        let mut data = me.data.take().unwrap();
+                        let mut status = Poll::Pending;
+                        // Consume the CqeResult list, calling update on the Op on all Cqe's flagged `more`
+                        // If the final Cqe is present, clean up and return Poll::Ready
+                        for cqe in indices.into_list(completions) {
+                            if io_uring::cqueue::more(cqe.flags) {
+                                data.update(cqe);
+                            } else {
+                                status = Poll::Ready(cqe);
+                                break;
+                            }
+                        }
+                        match status {
+                            Poll::Pending => {
+                                // We need more CQE's. Restore the op state
+                                let _ = me.data.insert(data);
+                                *lifecycle = Lifecycle::Waiting(cx.waker().clone());
+                                Poll::Pending
+                            }
+                            Poll::Ready(cqe) => {
+                                driver.ops.remove(me.index);
+                                me.index = usize::MAX;
+                                Poll::Ready(data.complete(cqe))
+                            }
+                        }
                     }
                 }
             })
@@ -231,7 +302,7 @@ impl<T, CqeType> Drop for Op<T, CqeType> {
 }
 
 impl Lifecycle {
-    pub(super) fn complete(&mut self, completions: &mut Slab<Completion>, cqe: CqeResult) -> bool {
+    pub(crate) fn complete(&mut self, completions: &mut Slab<Completion>, cqe: CqeResult) -> bool {
         use std::mem;
 
         match mem::replace(self, Lifecycle::Submitted) {
@@ -434,7 +505,7 @@ mod test {
     }
 
     fn init() -> (Op<Rc<()>>, Rc<()>) {
-        use crate::driver::Driver;
+        use crate::runtime::driver::Driver;
 
         let driver = Driver::new(&crate::builder()).unwrap();
         let data = Rc::new(());

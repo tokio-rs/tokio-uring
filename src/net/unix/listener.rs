@@ -1,5 +1,5 @@
 use super::UnixStream;
-use crate::driver::Socket;
+use crate::io::Socket;
 use std::{io, path::Path};
 
 /// A Unix socket server, listening for connections.

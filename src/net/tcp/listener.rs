@@ -1,5 +1,5 @@
 use super::TcpStream;
-use crate::driver::Socket;
+use crate::io::Socket;
 use std::{io, net::SocketAddr};
 
 /// A TCP socket server, listening for connections.

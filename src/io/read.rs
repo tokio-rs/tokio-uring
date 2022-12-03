@@ -1,8 +1,8 @@
-use crate::buf::IoBufMut;
-use crate::driver::{Op, SharedFd};
+use crate::buf::BoundedBufMut;
+use crate::io::SharedFd;
 use crate::BufResult;
 
-use crate::driver::op::{self, Completable};
+use crate::runtime::driver::op::{Completable, CqeResult, Op};
 use std::io;
 
 pub(crate) struct Read<T> {
@@ -15,7 +15,7 @@ pub(crate) struct Read<T> {
     pub(crate) buf: T,
 }
 
-impl<T: IoBufMut> Op<Read<T>> {
+impl<T: BoundedBufMut> Op<Read<T>> {
     pub(crate) fn read_at(fd: &SharedFd, buf: T, offset: u64) -> io::Result<Op<Read<T>>> {
         use io_uring::{opcode, types};
 
@@ -38,11 +38,11 @@ impl<T: IoBufMut> Op<Read<T>> {
 
 impl<T> Completable for Read<T>
 where
-    T: IoBufMut,
+    T: BoundedBufMut,
 {
     type Output = BufResult<usize, T>;
 
-    fn complete(self, cqe: op::CqeResult) -> Self::Output {
+    fn complete(self, cqe: CqeResult) -> Self::Output {
         // Convert the operation result to `usize`
         let res = cqe.result.map(|v| v as usize);
         // Recover the buffer

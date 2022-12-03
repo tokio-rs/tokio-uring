@@ -1,7 +1,9 @@
-use crate::buf::{IoBuf, IoBufMut};
-use crate::driver::{Op, SharedFd};
+use crate::buf::fixed::FixedBuf;
+use crate::buf::{BoundedBuf, BoundedBufMut, IoBuf, IoBufMut, Slice};
 use crate::fs::OpenOptions;
+use crate::io::SharedFd;
 
+use crate::runtime::driver::op::Op;
 use std::fmt;
 use std::io;
 use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
@@ -173,7 +175,7 @@ impl File {
     ///     })
     /// }
     /// ```
-    pub async fn read_at<T: IoBufMut>(&self, buf: T, pos: u64) -> crate::BufResult<usize, T> {
+    pub async fn read_at<T: BoundedBufMut>(&self, buf: T, pos: u64) -> crate::BufResult<usize, T> {
         // Submit the read operation
         let op = Op::read_at(&self.fd, buf, pos).unwrap();
         op.await
@@ -290,6 +292,153 @@ impl File {
         op.await
     }
 
+    /// Read the exact number of bytes required to fill `buf` at the specified
+    /// offset from the file.
+    ///
+    /// This function reads as many as bytes as necessary to completely fill the
+    /// specified buffer `buf`.
+    ///
+    /// # Return
+    ///
+    /// The method returns the operation result and the same buffer value passed
+    /// as an argument.
+    ///
+    /// If the method returns [`Ok(())`], then the read was successful.
+    ///
+    /// # Errors
+    ///
+    /// If this function encounters an "end of file" before completely filling
+    /// the buffer, it returns an error of the kind [`ErrorKind::UnexpectedEof`].
+    /// The buffer is returned on error.
+    ///
+    /// If this function encounters any form of I/O or other error, an error
+    /// variant will be returned. The buffer is returned on error.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use tokio_uring::fs::File;
+    ///
+    /// fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ///     tokio_uring::start(async {
+    ///         let f = File::open("foo.txt").await?;
+    ///         let buffer = Vec::with_capacity(10);
+    ///
+    ///         // Read up to 10 bytes
+    ///         let (res, buffer) = f.read_exact_at(buffer, 0).await;
+    ///         res?;
+    ///
+    ///         println!("The bytes: {:?}", buffer);
+    ///
+    ///         // Close the file
+    ///         f.close().await?;
+    ///         Ok(())
+    ///     })
+    /// }
+    /// ```
+    ///
+    /// [`ErrorKind::UnexpectedEof`]: std::io::ErrorKind::UnexpectedEof
+    pub async fn read_exact_at<T>(&self, buf: T, pos: u64) -> crate::BufResult<(), T>
+    where
+        T: BoundedBufMut,
+    {
+        let orig_bounds = buf.bounds();
+        let (res, buf) = self.read_exact_slice_at(buf.slice_full(), pos).await;
+        (res, T::from_buf_bounds(buf, orig_bounds))
+    }
+
+    async fn read_exact_slice_at<T: IoBufMut>(
+        &self,
+        mut buf: Slice<T>,
+        mut pos: u64,
+    ) -> crate::BufResult<(), T> {
+        if pos.checked_add(buf.bytes_total() as u64).is_none() {
+            return (
+                Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "buffer too large for file",
+                )),
+                buf.into_inner(),
+            );
+        }
+
+        while buf.bytes_total() != 0 {
+            let (res, slice) = self.read_at(buf, pos).await;
+            match res {
+                Ok(0) => {
+                    return (
+                        Err(io::Error::new(
+                            io::ErrorKind::UnexpectedEof,
+                            "failed to fill whole buffer",
+                        )),
+                        slice.into_inner(),
+                    )
+                }
+                Ok(n) => {
+                    pos += n as u64;
+                    buf = slice.slice(n..);
+                }
+
+                // No match on an EINTR error is performed because this
+                // crate's design ensures we are not calling the 'wait' option
+                // in the ENTER syscall. Only an Enter with 'wait' can generate
+                // an EINTR according to the io_uring man pages.
+                Err(e) => return (Err(e), slice.into_inner()),
+            };
+        }
+
+        (Ok(()), buf.into_inner())
+    }
+
+    /// Like [`read_at`], but using a pre-mapped buffer
+    /// registered with [`FixedBufRegistry`].
+    ///
+    /// [`read_at`]: Self::read_at
+    /// [`FixedBufRegistry`]: crate::buf::fixed::FixedBufRegistry
+    ///
+    /// # Errors
+    ///
+    /// In addition to errors that can be reported by `read_at`,
+    /// this operation fails if the buffer is not registered in the
+    /// current `tokio-uring` runtime.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    ///# fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// use tokio_uring::fs::File;
+    /// use tokio_uring::buf::fixed::FixedBufRegistry;
+    /// use tokio_uring::buf::IoBuf;
+    /// use std::iter;
+    ///
+    /// tokio_uring::start(async {
+    ///     let registry = FixedBufRegistry::new(iter::repeat(vec![0; 10]).take(10));
+    ///     registry.register()?;
+    ///
+    ///     let f = File::open("foo.txt").await?;
+    ///     let buffer = registry.check_out(2).unwrap();
+    ///
+    ///     // Read up to 10 bytes
+    ///     let (res, buffer) = f.read_fixed_at(buffer, 0).await;
+    ///     let n = res?;
+    ///
+    ///     println!("The bytes: {:?}", &buffer[..n]);
+    ///
+    ///     // Close the file
+    ///     f.close().await?;
+    ///     Ok(())
+    /// })
+    ///# }
+    /// ```
+    pub async fn read_fixed_at<T>(&self, buf: T, pos: u64) -> crate::BufResult<usize, T>
+    where
+        T: BoundedBufMut<BufMut = FixedBuf>,
+    {
+        // Submit the read operation
+        let op = Op::read_fixed_at(&self.fd, buf, pos).unwrap();
+        op.await
+    }
+
     /// Write a buffer into this file at the specified offset, returning how
     /// many bytes were written.
     ///
@@ -336,8 +485,150 @@ impl File {
     /// ```
     ///
     /// [`Ok(n)`]: Ok
-    pub async fn write_at<T: IoBuf>(&self, buf: T, pos: u64) -> crate::BufResult<usize, T> {
+    pub async fn write_at<T: BoundedBuf>(&self, buf: T, pos: u64) -> crate::BufResult<usize, T> {
         let op = Op::write_at(&self.fd, buf, pos).unwrap();
+        op.await
+    }
+
+    /// Attempts to write an entire buffer into this file at the specified offset.
+    ///
+    /// This method will continuously call [`write_at`] until there is no more data
+    /// to be written or an error is returned.
+    /// This method will not return until the entire buffer has been successfully
+    /// written or an error occurs.
+    ///
+    /// If the buffer contains no data, this will never call [`write_at`].
+    ///
+    /// # Return
+    ///
+    /// The method returns the operation result and the same buffer value passed
+    /// in as an argument.
+    ///
+    /// # Errors
+    ///
+    /// This function will return the first error that [`write_at`] returns.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use tokio_uring::fs::File;
+    ///
+    /// fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ///     tokio_uring::start(async {
+    ///         let file = File::create("foo.txt").await?;
+    ///
+    ///         // Writes some prefix of the byte string, not necessarily all of it.
+    ///         let (res, _) = file.write_all_at(&b"some bytes"[..], 0).await;
+    ///         res?;
+    ///
+    ///         println!("wrote all bytes");
+    ///
+    ///         // Close the file
+    ///         file.close().await?;
+    ///         Ok(())
+    ///     })
+    /// }
+    /// ```
+    ///
+    /// [`write_at`]: File::write_at
+    pub async fn write_all_at<T>(&self, buf: T, pos: u64) -> crate::BufResult<(), T>
+    where
+        T: BoundedBuf,
+    {
+        let orig_bounds = buf.bounds();
+        let (res, buf) = self.write_all_slice_at(buf.slice_full(), pos).await;
+        (res, T::from_buf_bounds(buf, orig_bounds))
+    }
+
+    async fn write_all_slice_at<T: IoBuf>(
+        &self,
+        mut buf: Slice<T>,
+        mut pos: u64,
+    ) -> crate::BufResult<(), T> {
+        if pos.checked_add(buf.bytes_init() as u64).is_none() {
+            return (
+                Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "buffer too large for file",
+                )),
+                buf.into_inner(),
+            );
+        }
+
+        while buf.bytes_init() != 0 {
+            let (res, slice) = self.write_at(buf, pos).await;
+            match res {
+                Ok(0) => {
+                    return (
+                        Err(io::Error::new(
+                            io::ErrorKind::WriteZero,
+                            "failed to write whole buffer",
+                        )),
+                        slice.into_inner(),
+                    )
+                }
+                Ok(n) => {
+                    pos += n as u64;
+                    buf = slice.slice(n..);
+                }
+
+                // No match on an EINTR error is performed because this
+                // crate's design ensures we are not calling the 'wait' option
+                // in the ENTER syscall. Only an Enter with 'wait' can generate
+                // an EINTR according to the io_uring man pages.
+                Err(e) => return (Err(e), slice.into_inner()),
+            };
+        }
+
+        (Ok(()), buf.into_inner())
+    }
+
+    /// Like [`write_at`], but using a pre-mapped buffer
+    /// registered with [`FixedBufRegistry`].
+    ///
+    /// [`write_at`]: Self::write_at
+    /// [`FixedBufRegistry`]: crate::buf::fixed::FixedBufRegistry
+    ///
+    /// # Errors
+    ///
+    /// In addition to errors that can be reported by `write_at`,
+    /// this operation fails if the buffer is not registered in the
+    /// current `tokio-uring` runtime.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    ///# fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// use tokio_uring::fs::File;
+    /// use tokio_uring::buf::fixed::FixedBufRegistry;
+    /// use tokio_uring::buf::IoBuf;
+    ///
+    /// tokio_uring::start(async {
+    ///     let registry = FixedBufRegistry::new([b"some bytes".to_vec()]);
+    ///     registry.register()?;
+    ///
+    ///     let file = File::create("foo.txt").await?;
+    ///
+    ///     let buffer = registry.check_out(0).unwrap();
+    ///
+    ///     // Writes some prefix of the buffer content,
+    ///     // not necessarily all of it.
+    ///     let (res, _) = file.write_fixed_at(buffer, 0).await;
+    ///     let n = res?;
+    ///
+    ///     println!("wrote {} bytes", n);
+    ///
+    ///     // Close the file
+    ///     file.close().await?;
+    ///     Ok(())
+    /// })
+    ///# }
+    /// ```
+    pub async fn write_fixed_at<T>(&self, buf: T, pos: u64) -> crate::BufResult<usize, T>
+    where
+        T: BoundedBuf<Buf = FixedBuf>,
+    {
+        let op = Op::write_fixed_at(&self.fd, buf, pos).unwrap();
         op.await
     }
 

@@ -1,6 +1,5 @@
-use crate::driver::Op;
-
-use crate::driver::op::{self, Completable};
+use crate::runtime::driver::op;
+use crate::runtime::driver::op::{Completable, Op};
 use std::io;
 use std::os::unix::io::RawFd;
 
@@ -12,7 +11,7 @@ impl Op<Close> {
     pub(crate) fn close(fd: RawFd) -> io::Result<Op<Close>> {
         use io_uring::{opcode, types};
 
-        Op::try_submit_with(Close { fd }, |close| {
+        Op::submit_with(Close { fd }, |close| {
             opcode::Close::new(types::Fd(close.fd)).build()
         })
     }

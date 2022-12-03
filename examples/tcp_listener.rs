@@ -22,7 +22,7 @@ fn main() {
             tokio_uring::spawn(async move {
                 // implement ping-pong loop
 
-                use tokio_uring::buf::IoBuf; // for slice()
+                use tokio_uring::buf::BoundedBuf; // for slice()
 
                 println!("{} connected", socket_addr);
                 let mut n = 0;

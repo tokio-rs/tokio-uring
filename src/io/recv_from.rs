@@ -1,9 +1,5 @@
-use crate::driver::op::{self, Completable};
-use crate::{
-    buf::IoBufMut,
-    driver::{Op, SharedFd},
-    BufResult,
-};
+use crate::runtime::driver::op::{Completable, CqeResult, Op};
+use crate::{buf::BoundedBufMut, io::SharedFd, BufResult};
 use socket2::SockAddr;
 use std::{
     io::IoSliceMut,
@@ -19,7 +15,7 @@ pub(crate) struct RecvFrom<T> {
     pub(crate) msghdr: Box<libc::msghdr>,
 }
 
-impl<T: IoBufMut> Op<RecvFrom<T>> {
+impl<T: BoundedBufMut> Op<RecvFrom<T>> {
     pub(crate) fn recv_from(fd: &SharedFd, mut buf: T) -> io::Result<Op<RecvFrom<T>>> {
         use io_uring::{opcode, types};
 
@@ -56,11 +52,11 @@ impl<T: IoBufMut> Op<RecvFrom<T>> {
 
 impl<T> Completable for RecvFrom<T>
 where
-    T: IoBufMut,
+    T: BoundedBufMut,
 {
     type Output = BufResult<(usize, SocketAddr), T>;
 
-    fn complete(self, cqe: op::CqeResult) -> Self::Output {
+    fn complete(self, cqe: CqeResult) -> Self::Output {
         // Convert the operation result to `usize`
         let res = cqe.result.map(|v| v as usize);
         // Recover the buffer

@@ -1,12 +1,14 @@
-use crate::driver::Driver;
+use driver::Driver;
 
 use std::future::Future;
 use std::io;
-use std::os::unix::io::{AsRawFd, RawFd};
+use std::mem::ManuallyDrop;
+use std::os::unix::io::AsRawFd;
 use tokio::io::unix::AsyncFd;
 use tokio::task::LocalSet;
 
 mod context;
+pub(crate) mod driver;
 
 pub(crate) use context::RuntimeContext;
 
@@ -16,23 +18,11 @@ thread_local! {
 
 /// The Runtime executor
 pub struct Runtime {
-    /// io-uring driver
-    uring_fd: RawFd,
-
     /// LocalSet for !Send tasks
-    local: LocalSet,
+    local: ManuallyDrop<LocalSet>,
 
     /// Tokio runtime, always current-thread
-    rt: tokio::runtime::Runtime,
-
-    /// This is here for drop order reasons.
-    ///
-    /// We can't unset the driver in the runtime drop method, because the inner runtime needs to
-    /// be dropped first so that there are no tasks running.
-    ///
-    /// The rust drop order rules guarantee that the inner runtime will be dropped first, and
-    /// this last.
-    _driver_guard: RuntimeContextGuard,
+    rt: ManuallyDrop<tokio::runtime::Runtime>,
 }
 
 /// Spawns a new asynchronous task, returning a [`JoinHandle`] for it.
@@ -77,7 +67,9 @@ impl Runtime {
             .enable_all()
             .build()?;
 
-        let local = LocalSet::new();
+        let rt = ManuallyDrop::new(rt);
+
+        let local = ManuallyDrop::new(LocalSet::new());
 
         let driver = Driver::new(b)?;
 
@@ -85,22 +77,9 @@ impl Runtime {
 
         CONTEXT.with(|cx| cx.set_driver(driver));
 
-        Ok(Runtime {
-            uring_fd: driver_fd,
-            local,
-            rt,
-            _driver_guard: RuntimeContextGuard,
-        })
-    }
-
-    /// Runs a future to completion on the current runtime
-    pub fn block_on<F>(&self, future: F) -> F::Output
-    where
-        F: Future,
-    {
         let drive = {
-            let _guard = self.rt.enter();
-            let driver = AsyncFd::new(self.uring_fd).unwrap();
+            let _guard = rt.enter();
+            let driver = AsyncFd::new(driver_fd).unwrap();
 
             async move {
                 loop {
@@ -112,9 +91,17 @@ impl Runtime {
             }
         };
 
-        tokio::pin!(future);
+        local.spawn_local(drive);
 
-        self.local.spawn_local(drive);
+        Ok(Runtime { local, rt })
+    }
+
+    /// Runs a future to completion on the current runtime
+    pub fn block_on<F>(&self, future: F) -> F::Output
+    where
+        F: Future,
+    {
+        tokio::pin!(future);
 
         self.rt
             .block_on(self.local.run_until(crate::future::poll_fn(|cx| {
@@ -124,10 +111,36 @@ impl Runtime {
     }
 }
 
-struct RuntimeContextGuard;
-
-impl Drop for RuntimeContextGuard {
+impl Drop for Runtime {
     fn drop(&mut self) {
+        // drop tasks
+        unsafe {
+            ManuallyDrop::drop(&mut self.local);
+            ManuallyDrop::drop(&mut self.rt);
+        }
+
+        // once tasks are dropped, we can unset the driver
+        // this will block until all completions are received
         CONTEXT.with(|rc| rc.unset_driver())
+    }
+}
+
+#[cfg(test)]
+mod test {
+
+    use super::*;
+    use crate::builder;
+
+    #[test]
+    fn block_on() {
+        let rt = Runtime::new(&builder()).unwrap();
+        rt.block_on(async move { () });
+    }
+
+    #[test]
+    fn block_on_twice() {
+        let rt = Runtime::new(&builder()).unwrap();
+        rt.block_on(async move { () });
+        rt.block_on(async move { () });
     }
 }

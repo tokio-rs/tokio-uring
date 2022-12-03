@@ -1,6 +1,8 @@
+use crate::runtime::driver::op::Op;
 use crate::{
-    buf::{IoBuf, IoBufMut},
-    driver::{Op, SharedFd},
+    buf::fixed::FixedBuf,
+    buf::{BoundedBuf, BoundedBufMut, IoBuf, Slice},
+    io::SharedFd,
 };
 use std::{
     io,
@@ -39,9 +41,51 @@ impl Socket {
         Ok(Socket { fd })
     }
 
-    pub(crate) async fn write<T: IoBuf>(&self, buf: T) -> crate::BufResult<usize, T> {
+    pub(crate) async fn write<T: BoundedBuf>(&self, buf: T) -> crate::BufResult<usize, T> {
         let op = Op::write_at(&self.fd, buf, 0).unwrap();
         op.await
+    }
+
+    pub(crate) async fn write_fixed<T>(&self, buf: T) -> crate::BufResult<usize, T>
+    where
+        T: BoundedBuf<Buf = FixedBuf>,
+    {
+        let op = Op::write_fixed_at(&self.fd, buf, 0).unwrap();
+        op.await
+    }
+
+    pub async fn write_all<T: BoundedBuf>(&self, buf: T) -> crate::BufResult<(), T> {
+        let orig_bounds = buf.bounds();
+        let (res, buf) = self.write_all_slice(buf.slice_full()).await;
+        (res, T::from_buf_bounds(buf, orig_bounds))
+    }
+
+    async fn write_all_slice<T: IoBuf>(&self, mut buf: Slice<T>) -> crate::BufResult<(), T> {
+        while buf.bytes_init() != 0 {
+            let res = self.write(buf).await;
+            match res {
+                (Ok(0), slice) => {
+                    return (
+                        Err(std::io::Error::new(
+                            std::io::ErrorKind::WriteZero,
+                            "failed to write whole buffer",
+                        )),
+                        slice.into_inner(),
+                    )
+                }
+                (Ok(n), slice) => {
+                    buf = slice.slice(n..);
+                }
+
+                // No match on an EINTR error is performed because this
+                // crate's design ensures we are not calling the 'wait' option
+                // in the ENTER syscall. Only an Enter with 'wait' can generate
+                // an EINTR according to the io_uring man pages.
+                (Err(e), slice) => return (Err(e), slice.into_inner()),
+            }
+        }
+
+        (Ok(()), buf.into_inner())
     }
 
     pub async fn writev<T: IoBuf>(&self, buf: Vec<T>) -> crate::BufResult<usize, Vec<T>> {
@@ -49,7 +93,7 @@ impl Socket {
         op.await
     }
 
-    pub(crate) async fn send_to<T: IoBuf>(
+    pub(crate) async fn send_to<T: BoundedBuf>(
         &self,
         buf: T,
         socket_addr: SocketAddr,
@@ -58,12 +102,25 @@ impl Socket {
         op.await
     }
 
-    pub(crate) async fn read<T: IoBufMut>(&self, buf: T) -> crate::BufResult<usize, T> {
+    pub(crate) async fn send_zc<T: BoundedBuf>(&self, buf: T) -> crate::BufResult<usize, T> {
+        let op = Op::send_zc(&self.fd, buf).unwrap();
+        op.await
+    }
+
+    pub(crate) async fn read<T: BoundedBufMut>(&self, buf: T) -> crate::BufResult<usize, T> {
         let op = Op::read_at(&self.fd, buf, 0).unwrap();
         op.await
     }
 
-    pub(crate) async fn recv_from<T: IoBufMut>(
+    pub(crate) async fn read_fixed<T>(&self, buf: T) -> crate::BufResult<usize, T>
+    where
+        T: BoundedBufMut<BufMut = FixedBuf>,
+    {
+        let op = Op::read_fixed_at(&self.fd, buf, 0).unwrap();
+        op.await
+    }
+
+    pub(crate) async fn recv_from<T: BoundedBufMut>(
         &self,
         buf: T,
     ) -> crate::BufResult<(usize, SocketAddr), T> {
@@ -148,6 +205,11 @@ impl Socket {
         let result = s.shutdown(how);
         std::mem::forget(s);
         result
+    }
+
+    pub fn set_nodelay(&self, nodelay: bool) -> io::Result<()> {
+        let socket_ref = socket2::SockRef::from(self);
+        socket_ref.set_nodelay(nodelay)
     }
 }
 
