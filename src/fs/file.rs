@@ -632,6 +632,77 @@ impl File {
         op.await
     }
 
+    /// Attempts to write an entire buffer into this file at the specified offset.
+    ///
+    /// This method will continuously call [`write_fixed_at`] until there is no more data
+    /// to be written or an error is returned.
+    /// This method will not return until the entire buffer has been successfully
+    /// written or an error occurs.
+    ///
+    /// If the buffer contains no data, this will never call [`write_fixed_at`].
+    ///
+    /// # Return
+    ///
+    /// The method returns the operation result and the same buffer value passed
+    /// in as an argument.
+    ///
+    /// # Errors
+    ///
+    /// This function will return the first error that [`write_fixed_at`] returns.
+    ///
+    /// [`write_fixed_at`]: Self::write_fixed_at
+    pub async fn write_fixed_all_at<T>(&self, buf: T, pos: u64) -> crate::BufResult<(), T>
+    where
+        T: BoundedBuf<Buf = FixedBuf>,
+    {
+        let orig_bounds = buf.bounds();
+        let (res, buf) = self.write_fixed_all_at_slice(buf.slice_full(), pos).await;
+        (res, T::from_buf_bounds(buf, orig_bounds))
+    }
+
+    async fn write_fixed_all_at_slice(
+        &self,
+        mut buf: Slice<FixedBuf>,
+        mut pos: u64,
+    ) -> crate::BufResult<(), FixedBuf> {
+        if pos.checked_add(buf.bytes_init() as u64).is_none() {
+            return (
+                Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "buffer too large for file",
+                )),
+                buf.into_inner(),
+            );
+        }
+
+        while buf.bytes_init() != 0 {
+            let (res, slice) = self.write_fixed_at(buf, pos).await;
+            match res {
+                Ok(0) => {
+                    return (
+                        Err(io::Error::new(
+                            io::ErrorKind::WriteZero,
+                            "failed to write whole buffer",
+                        )),
+                        slice.into_inner(),
+                    )
+                }
+                Ok(n) => {
+                    pos += n as u64;
+                    buf = slice.slice(n..);
+                }
+
+                // No match on an EINTR error is performed because this
+                // crate's design ensures we are not calling the 'wait' option
+                // in the ENTER syscall. Only an Enter with 'wait' can generate
+                // an EINTR according to the io_uring man pages.
+                Err(e) => return (Err(e), slice.into_inner()),
+            };
+        }
+
+        (Ok(()), buf.into_inner())
+    }
+
     /// Attempts to sync all OS-internal metadata to disk.
     ///
     /// This function will attempt to ensure that all in-memory data reaches the
