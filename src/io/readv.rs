@@ -3,6 +3,7 @@ use crate::BufResult;
 
 use crate::io::SharedFd;
 use crate::runtime::driver::op::{Completable, CqeResult, Op};
+use crate::runtime::CONTEXT;
 use libc::iovec;
 use std::io;
 
@@ -36,22 +37,24 @@ impl<T: IoBufMut> Op<Readv<T>> {
             })
             .collect();
 
-        Op::submit_with(
-            Readv {
-                fd: fd.clone(),
-                bufs,
-                iovs,
-            },
-            |read| {
-                opcode::Readv::new(
-                    types::Fd(fd.raw_fd()),
-                    read.iovs.as_ptr(),
-                    read.iovs.len() as u32,
-                )
-                .offset(offset as _)
-                .build()
-            },
-        )
+        CONTEXT.with(|x| {
+            x.handle().expect("Not in a runtime context").submit_op(
+                Readv {
+                    fd: fd.clone(),
+                    bufs,
+                    iovs,
+                },
+                |read| {
+                    opcode::Readv::new(
+                        types::Fd(fd.raw_fd()),
+                        read.iovs.as_ptr(),
+                        read.iovs.len() as u32,
+                    )
+                    .offset(offset as _)
+                    .build()
+                },
+            )
+        })
     }
 }
 

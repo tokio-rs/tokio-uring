@@ -1,6 +1,7 @@
 use crate::buf::BoundedBuf;
 use crate::io::SharedFd;
 use crate::runtime::driver::op::{Completable, CqeResult, Op};
+use crate::runtime::CONTEXT;
 use crate::BufResult;
 use socket2::SockAddr;
 use std::io::IoSlice;
@@ -37,22 +38,24 @@ impl<T: BoundedBuf> Op<SendTo<T>> {
         msghdr.msg_name = socket_addr.as_ptr() as *mut libc::c_void;
         msghdr.msg_namelen = socket_addr.len();
 
-        Op::submit_with(
-            SendTo {
-                fd: fd.clone(),
-                buf,
-                io_slices,
-                socket_addr,
-                msghdr,
-            },
-            |send_to| {
-                opcode::SendMsg::new(
-                    types::Fd(send_to.fd.raw_fd()),
-                    send_to.msghdr.as_ref() as *const _,
-                )
-                .build()
-            },
-        )
+        CONTEXT.with(|x| {
+            x.handle().expect("Not in a runtime context").submit_op(
+                SendTo {
+                    fd: fd.clone(),
+                    buf,
+                    io_slices,
+                    socket_addr,
+                    msghdr,
+                },
+                |send_to| {
+                    opcode::SendMsg::new(
+                        types::Fd(send_to.fd.raw_fd()),
+                        send_to.msghdr.as_ref() as *const _,
+                    )
+                    .build()
+                },
+            )
+        })
     }
 }
 

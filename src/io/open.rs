@@ -2,6 +2,7 @@ use crate::fs::{File, OpenOptions};
 use crate::io::SharedFd;
 
 use crate::runtime::driver::op::{Completable, CqeResult, Op};
+use crate::runtime::CONTEXT;
 use std::ffi::CString;
 use std::io;
 use std::path::Path;
@@ -23,16 +24,20 @@ impl Op<Open> {
             | options.creation_mode()?
             | (options.custom_flags & !libc::O_ACCMODE);
 
-        Op::submit_with(Open { path, flags }, |open| {
-            // Get a reference to the memory. The string will be held by the
-            // operation state and will not be accessed again until the operation
-            // completes.
-            let p_ref = open.path.as_c_str().as_ptr();
+        CONTEXT.with(|x| {
+            x.handle()
+                .expect("Not in a runtime context")
+                .submit_op(Open { path, flags }, |open| {
+                    // Get a reference to the memory. The string will be held by the
+                    // operation state and will not be accessed again until the operation
+                    // completes.
+                    let p_ref = open.path.as_c_str().as_ptr();
 
-            opcode::OpenAt::new(types::Fd(libc::AT_FDCWD), p_ref)
-                .flags(flags)
-                .mode(options.mode)
-                .build()
+                    opcode::OpenAt::new(types::Fd(libc::AT_FDCWD), p_ref)
+                        .flags(flags)
+                        .mode(options.mode)
+                        .build()
+                })
         })
     }
 }

@@ -8,6 +8,9 @@ use std::io;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::rc::Rc;
 
+pub(crate) use handle::*;
+
+mod handle;
 pub(crate) mod op;
 
 pub(crate) struct Driver {

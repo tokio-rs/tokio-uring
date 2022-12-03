@@ -1,12 +1,10 @@
-use crate::runtime::driver::Driver;
-use crate::util::PhantomUnsendUnsync;
+use crate::runtime::driver;
+use crate::runtime::driver::Handle;
 use std::cell::RefCell;
-use std::marker::PhantomData;
 
 /// Owns the driver and resides in thread-local storage.
 pub(crate) struct RuntimeContext {
-    driver: RefCell<Option<Driver>>,
-    _phantom: PhantomUnsendUnsync,
+    driver: RefCell<Option<driver::Handle>>,
 }
 
 impl RuntimeContext {
@@ -14,17 +12,16 @@ impl RuntimeContext {
     pub(crate) const fn new() -> Self {
         Self {
             driver: RefCell::new(None),
-            _phantom: PhantomData,
         }
     }
 
     /// Initialize the driver.
-    pub(crate) fn set_driver(&self, driver: Driver) {
+    pub(crate) fn set_handle(&self, handle: Handle) {
         let mut guard = self.driver.borrow_mut();
 
         assert!(guard.is_none(), "Attempted to initialize the driver twice");
 
-        *guard = Some(driver);
+        *guard = Some(handle);
     }
 
     pub(crate) fn unset_driver(&self) {
@@ -43,10 +40,14 @@ impl RuntimeContext {
             .unwrap_or(false)
     }
 
+    pub(crate) fn handle(&self) -> Option<Handle> {
+        self.driver.borrow().clone()
+    }
+
     /// Execute a function which requires mutable access to the driver.
-    pub(crate) fn with_driver_mut<F, R>(&self, f: F) -> R
+    pub(crate) fn with_handle_mut<F, R>(&self, f: F) -> R
     where
-        F: FnOnce(&mut Driver) -> R,
+        F: FnOnce(&mut driver::Handle) -> R,
     {
         let mut guard = self.driver.borrow_mut();
 

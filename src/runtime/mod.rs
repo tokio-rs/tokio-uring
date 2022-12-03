@@ -1,5 +1,3 @@
-use driver::Driver;
-
 use std::future::Future;
 use std::io;
 use std::mem::ManuallyDrop;
@@ -61,7 +59,10 @@ impl Runtime {
         let rt = tokio::runtime::Builder::new_current_thread()
             .on_thread_park(|| {
                 CONTEXT.with(|x| {
-                    let _ = x.with_driver_mut(|d| d.uring.submit());
+                    let _ = x
+                        .handle()
+                        .expect("Internal error, driver context not present when invoking hooks")
+                        .flush();
                 });
             })
             .enable_all()
@@ -71,11 +72,11 @@ impl Runtime {
 
         let local = ManuallyDrop::new(LocalSet::new());
 
-        let driver = Driver::new(b)?;
+        let driver = driver::Handle::new(b)?;
 
         let driver_fd = driver.as_raw_fd();
 
-        CONTEXT.with(|cx| cx.set_driver(driver));
+        CONTEXT.with(|cx| cx.set_handle(driver));
 
         let drive = {
             let _guard = rt.enter();
@@ -85,7 +86,7 @@ impl Runtime {
                 loop {
                     // Wait for read-readiness
                     let mut guard = driver.readable().await.unwrap();
-                    CONTEXT.with(|cx| cx.with_driver_mut(|driver| driver.tick()));
+                    CONTEXT.with(|cx| cx.with_handle_mut(|driver| driver.tick()));
                     guard.clear_ready();
                 }
             }
