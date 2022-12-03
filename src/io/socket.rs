@@ -234,19 +234,17 @@ impl Socket {
     /// This function will cause all pending and future I/O on the specified portions to return
     /// immediately with an appropriate value.
     pub fn shutdown(&self, how: std::net::Shutdown) -> io::Result<()> {
-        use std::os::unix::io::FromRawFd;
-
-        let fd = self.as_raw_fd();
-        // SAFETY: Our fd is the handle the kernel has given us for a socket,
-        // TCP or Unix, Listener or Stream, so it is a valid file descriptor/socket.
-        // Create a socket2::Socket long enough to call its shutdown method
-        // and then forget it so the socket is not otherwise dropped here.
-        let s = unsafe { socket2::Socket::from_raw_fd(fd) };
-        let result = s.shutdown(how);
-        std::mem::forget(s);
-        result
+        let socket_ref = socket2::SockRef::from(self);
+        socket_ref.shutdown(how)
     }
 
+    /// Set the value of the `TCP_NODELAY` option on this socket.
+    ///
+    /// If set, this option disables the Nagle algorithm. This means that
+    /// segments are always sent as soon as possible, even if there is only a
+    /// small amount of data. When not set, data is buffered until there is a
+    /// sufficient amount to send out, thereby avoiding the frequent sending of
+    /// small packets.
     pub fn set_nodelay(&self, nodelay: bool) -> io::Result<()> {
         let socket_ref = socket2::SockRef::from(self);
         socket_ref.set_nodelay(nodelay)
