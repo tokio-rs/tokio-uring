@@ -243,6 +243,18 @@ impl Inner {
             index: index as u16,
         })
     }
+
+    fn check_in_internal(&mut self, index: u16, init_len: usize) {
+        let state = self
+            .states
+            .get_mut(index as usize)
+            .expect("invalid buffer index");
+        debug_assert!(
+            matches!(state, BufState::CheckedOut),
+            "the buffer must be checked out"
+        );
+        *state = BufState::Free { init_len };
+    }
 }
 
 impl FixedBuffers for Inner {
@@ -253,16 +265,8 @@ impl FixedBuffers for Inner {
         unsafe { slice::from_raw_parts(self.raw_bufs.as_ptr(), self.states.len()) }
     }
 
-    fn check_in(&mut self, index: u16, init_len: usize) {
-        let state = self
-            .states
-            .get_mut(index as usize)
-            .expect("invalid buffer index");
-        debug_assert!(
-            matches!(state, BufState::CheckedOut),
-            "the buffer must be checked out"
-        );
-        *state = BufState::Free { init_len };
+    unsafe fn check_in(&mut self, index: u16, init_len: usize) {
+        self.check_in_internal(index, init_len)
     }
 }
 

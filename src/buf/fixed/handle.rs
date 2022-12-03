@@ -40,7 +40,12 @@ pub struct FixedBuf {
 impl Drop for FixedBuf {
     fn drop(&mut self) {
         let mut registry = self.registry.borrow_mut();
-        registry.check_in(self.index, self.buf.len());
+        // Safety: the length of the initialized data in the buffer has been
+        // maintained accordingly to the safety contracts on
+        // Self::new and IoBufMut.
+        unsafe {
+            registry.check_in(self.index, self.buf.len());
+        }
     }
 }
 

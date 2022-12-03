@@ -322,17 +322,8 @@ impl Inner {
             index: index as u16,
         })
     }
-}
 
-impl FixedBuffers for Inner {
-    fn iovecs(&self) -> &[iovec] {
-        // Safety: the raw_bufs pointer is valid for the lifetime of self,
-        // the length of the states array is also the length of buffers array
-        // by construction.
-        unsafe { slice::from_raw_parts(self.raw_bufs.as_ptr(), self.states.len()) }
-    }
-
-    fn check_in(&mut self, index: u16, init_len: usize) {
+    fn check_in_internal(&mut self, index: u16, init_len: usize) {
         let cap = self.iovecs()[index as usize].iov_len;
         let state = &mut self.states[index as usize];
         debug_assert!(
@@ -346,6 +337,19 @@ impl FixedBuffers for Inner {
         let next = self.free_buf_head_by_cap.insert(cap, index);
 
         *state = BufState::Free { init_len, next };
+    }
+}
+
+impl FixedBuffers for Inner {
+    fn iovecs(&self) -> &[iovec] {
+        // Safety: the raw_bufs pointer is valid for the lifetime of self,
+        // the length of the states array is also the length of buffers array
+        // by construction.
+        unsafe { slice::from_raw_parts(self.raw_bufs.as_ptr(), self.states.len()) }
+    }
+
+    unsafe fn check_in(&mut self, index: u16, init_len: usize) {
+        self.check_in_internal(index, init_len)
     }
 }
 
