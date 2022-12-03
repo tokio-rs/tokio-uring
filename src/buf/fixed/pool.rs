@@ -49,7 +49,8 @@ use std::slice;
 ///
 /// # #[allow(non_snake_case)]
 /// # fn main() -> Result<(), std::io::Error> {
-/// # let (memlock_limit, _) = rlimit::Resource::MEMLOCK.get()?;
+/// # use nix::sys::resource::{getrlimit, Resource};
+/// # let (memlock_limit, _) = getrlimit(Resource::RLIMIT_MEMLOCK)?;
 /// # let BUF_SIZE_LARGE = memlock_limit as usize / 8;
 /// # let BUF_SIZE_SMALL = memlock_limit as usize / 16;
 /// let pool = FixedBufPool::new(
@@ -108,7 +109,8 @@ impl FixedBufPool {
     ///
     /// # #[allow(non_snake_case)]
     /// # fn main() -> Result<(), std::io::Error> {
-    /// # let (memlock_limit, _) = rlimit::Resource::MEMLOCK.get()?;
+    /// # use nix::sys::resource::{getrlimit, Resource};
+    /// # let (memlock_limit, _) = getrlimit(Resource::RLIMIT_MEMLOCK)?;
     /// # let NUM_BUFFERS = std::cmp::max(memlock_limit as usize / 4096 / 8, 1);
     /// # let BUF_SIZE = 4096;
     /// tokio_uring::start(async {
@@ -130,7 +132,8 @@ impl FixedBufPool {
     ///
     /// # #[allow(non_snake_case)]
     /// # fn main() -> Result<(), std::io::Error> {
-    /// # let (memlock_limit, _) = rlimit::Resource::MEMLOCK.get()?;
+    /// # use nix::sys::resource::{getrlimit, Resource};
+    /// # let (memlock_limit, _) = getrlimit(Resource::RLIMIT_MEMLOCK)?;
     /// # let NUM_BUFFERS = std::cmp::max(memlock_limit as usize / 4096 / 8, 1);
     /// # let BUF_SIZE = 4096;
     /// tokio_uring::start(async {

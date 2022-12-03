@@ -62,7 +62,8 @@ impl FixedBufRegistry {
     ///
     /// # #[allow(non_snake_case)]
     /// # fn main() -> Result<(), std::io::Error> {
-    /// # let (memlock_limit, _) = rlimit::Resource::MEMLOCK.get()?;
+    /// # use nix::sys::resource::{getrlimit, Resource};
+    /// # let (memlock_limit, _) = getrlimit(Resource::RLIMIT_MEMLOCK)?;
     /// # let NUM_BUFFERS = std::cmp::max(memlock_limit as usize / 4096 / 8, 1);
     /// # let BUF_SIZE = 4096;
     /// let registry = FixedBufRegistry::new(
@@ -85,7 +86,8 @@ impl FixedBufRegistry {
     ///
     /// # #[allow(non_snake_case)]
     /// # fn main() -> Result<(), std::io::Error> {
-    /// # let (memlock_limit, _) = rlimit::Resource::MEMLOCK.get()?;
+    /// # use nix::sys::resource::{getrlimit, Resource};
+    /// # let (memlock_limit, _) = getrlimit(Resource::RLIMIT_MEMLOCK)?;
     /// # let NUM_BUFFERS = std::cmp::max(memlock_limit as usize / 4096 / 8, 1);
     /// # let BUF_SIZE = 4096;
     /// let registry = FixedBufRegistry::new(
