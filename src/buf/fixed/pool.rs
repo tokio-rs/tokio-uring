@@ -255,7 +255,12 @@ impl Inner {
         let mut free_buf_head_by_cap = HashMap::new();
         for (index, mut buf) in bufs.enumerate() {
             let cap = buf.capacity();
+
+            // Link the buffer as the head of the free list for its capacity.
+            // This constructs the free buffer list to be initially retrieved
+            // back to front, which should be of no difference to the user.
             let next = free_buf_head_by_cap.insert(cap, index as u16);
+
             iovecs.push(iovec {
                 iov_base: buf.as_mut_ptr() as *mut _,
                 iov_len: cap,
@@ -295,6 +300,7 @@ impl Inner {
             BufState::CheckedOut => panic!("buffer is checked out"),
         };
 
+        // Update the head of the free list for this capacity.
         match next {
             Some(i) => {
                 *free_head = i;
@@ -333,7 +339,12 @@ impl FixedBuffers for Inner {
             matches!(state, BufState::CheckedOut),
             "the buffer must be checked out"
         );
+
+        // Link the buffer as the new head of the free list for its capacity.
+        // Recently checked in buffers will be first to be reused,
+        // improving cache locality.
         let next = self.free_buf_head_by_cap.insert(cap, index);
+
         *state = BufState::Free { init_len, next };
     }
 }
