@@ -104,7 +104,7 @@ impl Runtime {
         tokio::pin!(future);
 
         self.rt
-            .block_on(self.local.run_until(crate::future::poll_fn(|cx| {
+            .block_on(self.local.run_until(std::future::poll_fn(|cx| {
                 // assert!(drive.as_mut().poll(cx).is_pending());
                 future.as_mut().poll(cx)
             })))

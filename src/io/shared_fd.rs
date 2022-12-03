@@ -1,5 +1,5 @@
-use crate::future::poll_fn;
 use crate::io::Close;
+use std::future::poll_fn;
 
 use std::cell::RefCell;
 use std::os::unix::io::{FromRawFd, RawFd};

@@ -287,7 +287,7 @@ fn tempfile() -> NamedTempFile {
 }
 
 async fn poll_once(future: impl std::future::Future) {
-    use future::poll_fn;
+    use std::future::poll_fn;
     // use std::future::Future;
     use std::task::Poll;
     use tokio::pin;
