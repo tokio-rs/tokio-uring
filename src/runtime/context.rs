@@ -1,5 +1,5 @@
 use crate::runtime::driver;
-use crate::runtime::driver::Handle;
+use crate::runtime::driver::{Handle, WeakHandle};
 use std::cell::RefCell;
 
 /// Owns the driver and resides in thread-local storage.
@@ -44,17 +44,7 @@ impl RuntimeContext {
         self.driver.borrow().clone()
     }
 
-    /// Execute a function which requires mutable access to the driver.
-    pub(crate) fn with_handle_mut<F, R>(&self, f: F) -> R
-    where
-        F: FnOnce(&mut driver::Handle) -> R,
-    {
-        let mut guard = self.driver.borrow_mut();
-
-        let driver = guard
-            .as_mut()
-            .expect("Attempted to access driver in invalid context");
-
-        f(driver)
+    pub(crate) fn weak(&self) -> Option<WeakHandle> {
+        self.driver.borrow().as_ref().map(Into::into)
     }
 }

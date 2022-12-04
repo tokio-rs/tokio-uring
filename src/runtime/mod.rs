@@ -1,7 +1,6 @@
 use std::future::Future;
 use std::io;
 use std::mem::ManuallyDrop;
-use std::os::unix::io::AsRawFd;
 use tokio::io::unix::AsyncFd;
 use tokio::task::LocalSet;
 
@@ -16,14 +15,14 @@ thread_local! {
 
 /// The Runtime executor
 pub struct Runtime {
+    /// Tokio runtime, always current-thread
+    tokio_rt: ManuallyDrop<tokio::runtime::Runtime>,
+
     /// LocalSet for !Send tasks
     local: ManuallyDrop<LocalSet>,
 
     /// Strong reference to the driver.
     driver: driver::Handle,
-
-    /// Tokio runtime, always current-thread
-    rt: ManuallyDrop<tokio::runtime::Runtime>,
 }
 
 /// Spawns a new asynchronous task, returning a [`JoinHandle`] for it.
@@ -71,31 +70,17 @@ impl Runtime {
             .enable_all()
             .build()?;
 
-        let rt = ManuallyDrop::new(rt);
-
+        let tokio_rt = ManuallyDrop::new(rt);
         let local = ManuallyDrop::new(LocalSet::new());
-
         let driver = driver::Handle::new(b)?;
 
-        let driver_fd = driver.as_raw_fd();
+        start_uring_wakes_task(&tokio_rt, &local, driver.clone());
 
-        let drive = {
-            let _guard = rt.enter();
-            let driver = AsyncFd::new(driver_fd).unwrap();
-
-            async move {
-                loop {
-                    // Wait for read-readiness
-                    let mut guard = driver.readable().await.unwrap();
-                    CONTEXT.with(|cx| cx.with_handle_mut(|driver| driver.tick()));
-                    guard.clear_ready();
-                }
-            }
-        };
-
-        local.spawn_local(drive);
-
-        Ok(Runtime { local, rt, driver })
+        Ok(Runtime {
+            local,
+            tokio_rt,
+            driver,
+        })
     }
 
     /// Runs a future to completion on the current runtime
@@ -118,7 +103,7 @@ impl Runtime {
         tokio::pin!(future);
 
         let res = self
-            .rt
+            .tokio_rt
             .block_on(self.local.run_until(std::future::poll_fn(|cx| {
                 // assert!(drive.as_mut().poll(cx).is_pending());
                 future.as_mut().poll(cx)
@@ -130,11 +115,33 @@ impl Runtime {
 
 impl Drop for Runtime {
     fn drop(&mut self) {
-        // drop tasks
+        // drop tasks in correct order
         unsafe {
             ManuallyDrop::drop(&mut self.local);
-            ManuallyDrop::drop(&mut self.rt);
+            ManuallyDrop::drop(&mut self.tokio_rt);
         }
+    }
+}
+
+fn start_uring_wakes_task(
+    tokio_rt: &tokio::runtime::Runtime,
+    local: &LocalSet,
+    driver: driver::Handle,
+) {
+    let _guard = tokio_rt.enter();
+    let async_driver_handle = AsyncFd::new(driver).unwrap();
+
+    local.spawn_local(drive_uring_wakes(async_driver_handle));
+}
+
+async fn drive_uring_wakes(driver: AsyncFd<driver::Handle>) {
+    loop {
+        // Wait for read-readiness
+        let mut guard = driver.readable().await.unwrap();
+
+        guard.get_inner().dispatch_completions();
+
+        guard.clear_ready();
     }
 }
 
