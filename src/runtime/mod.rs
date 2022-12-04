@@ -19,6 +19,7 @@ pub struct Runtime {
     /// LocalSet for !Send tasks
     local: ManuallyDrop<LocalSet>,
 
+    /// Strong reference to the driver.
     driver: driver::Handle,
 
     /// Tokio runtime, always current-thread
@@ -102,7 +103,17 @@ impl Runtime {
     where
         F: Future,
     {
+        struct ContextGuard;
+
+        impl Drop for ContextGuard {
+            fn drop(&mut self) {
+                CONTEXT.with(|cx| cx.unset_driver());
+            }
+        }
+
         CONTEXT.with(|cx| cx.set_handle(self.driver.clone()));
+
+        let _guard = ContextGuard;
 
         tokio::pin!(future);
 
@@ -112,8 +123,6 @@ impl Runtime {
                 // assert!(drive.as_mut().poll(cx).is_pending());
                 future.as_mut().poll(cx)
             })));
-
-        CONTEXT.with(|cx| cx.unset_driver());
 
         res
     }
