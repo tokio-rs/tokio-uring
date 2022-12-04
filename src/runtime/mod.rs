@@ -1,5 +1,3 @@
-use driver::Driver;
-
 use std::future::Future;
 use std::io;
 use std::mem::ManuallyDrop;
@@ -20,6 +18,9 @@ thread_local! {
 pub struct Runtime {
     /// LocalSet for !Send tasks
     local: ManuallyDrop<LocalSet>,
+
+    /// Strong reference to the driver.
+    driver: driver::Handle,
 
     /// Tokio runtime, always current-thread
     rt: ManuallyDrop<tokio::runtime::Runtime>,
@@ -61,7 +62,10 @@ impl Runtime {
         let rt = tokio::runtime::Builder::new_current_thread()
             .on_thread_park(|| {
                 CONTEXT.with(|x| {
-                    let _ = x.with_driver_mut(|d| d.uring.submit());
+                    let _ = x
+                        .handle()
+                        .expect("Internal error, driver context not present when invoking hooks")
+                        .flush();
                 });
             })
             .enable_all()
@@ -71,11 +75,9 @@ impl Runtime {
 
         let local = ManuallyDrop::new(LocalSet::new());
 
-        let driver = Driver::new(b)?;
+        let driver = driver::Handle::new(b)?;
 
         let driver_fd = driver.as_raw_fd();
-
-        CONTEXT.with(|cx| cx.set_driver(driver));
 
         let drive = {
             let _guard = rt.enter();
@@ -85,7 +87,7 @@ impl Runtime {
                 loop {
                     // Wait for read-readiness
                     let mut guard = driver.readable().await.unwrap();
-                    CONTEXT.with(|cx| cx.with_driver_mut(|driver| driver.tick()));
+                    CONTEXT.with(|cx| cx.with_handle_mut(|driver| driver.tick()));
                     guard.clear_ready();
                 }
             }
@@ -93,7 +95,7 @@ impl Runtime {
 
         local.spawn_local(drive);
 
-        Ok(Runtime { local, rt })
+        Ok(Runtime { local, rt, driver })
     }
 
     /// Runs a future to completion on the current runtime
@@ -101,13 +103,28 @@ impl Runtime {
     where
         F: Future,
     {
+        struct ContextGuard;
+
+        impl Drop for ContextGuard {
+            fn drop(&mut self) {
+                CONTEXT.with(|cx| cx.unset_driver());
+            }
+        }
+
+        CONTEXT.with(|cx| cx.set_handle(self.driver.clone()));
+
+        let _guard = ContextGuard;
+
         tokio::pin!(future);
 
-        self.rt
+        let res = self
+            .rt
             .block_on(self.local.run_until(std::future::poll_fn(|cx| {
                 // assert!(drive.as_mut().poll(cx).is_pending());
                 future.as_mut().poll(cx)
-            })))
+            })));
+
+        res
     }
 }
 
@@ -118,10 +135,6 @@ impl Drop for Runtime {
             ManuallyDrop::drop(&mut self.local);
             ManuallyDrop::drop(&mut self.rt);
         }
-
-        // once tasks are dropped, we can unset the driver
-        // this will block until all completions are received
-        CONTEXT.with(|rc| rc.unset_driver())
     }
 }
 

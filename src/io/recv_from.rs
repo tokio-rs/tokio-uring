@@ -1,4 +1,5 @@
 use crate::runtime::driver::op::{Completable, CqeResult, Op};
+use crate::runtime::CONTEXT;
 use crate::{buf::BoundedBufMut, io::SharedFd, BufResult};
 use socket2::SockAddr;
 use std::{
@@ -31,22 +32,24 @@ impl<T: BoundedBufMut> Op<RecvFrom<T>> {
         msghdr.msg_name = socket_addr.as_ptr() as *mut libc::c_void;
         msghdr.msg_namelen = socket_addr.len();
 
-        Op::submit_with(
-            RecvFrom {
-                fd: fd.clone(),
-                buf,
-                io_slices,
-                socket_addr,
-                msghdr,
-            },
-            |recv_from| {
-                opcode::RecvMsg::new(
-                    types::Fd(recv_from.fd.raw_fd()),
-                    recv_from.msghdr.as_mut() as *mut _,
-                )
-                .build()
-            },
-        )
+        CONTEXT.with(|x| {
+            x.handle().expect("Not in a runtime context").submit_op(
+                RecvFrom {
+                    fd: fd.clone(),
+                    buf,
+                    io_slices,
+                    socket_addr,
+                    msghdr,
+                },
+                |recv_from| {
+                    opcode::RecvMsg::new(
+                        types::Fd(recv_from.fd.raw_fd()),
+                        recv_from.msghdr.as_mut() as *mut _,
+                    )
+                    .build()
+                },
+            )
+        })
     }
 }
 

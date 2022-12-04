@@ -4,16 +4,14 @@ use std::marker::PhantomData;
 use std::pin::Pin;
 use std::task::{Context, Poll, Waker};
 
-use io_uring::{cqueue, squeue};
+use io_uring::cqueue;
 
 mod slab_list;
 
 use slab::Slab;
 use slab_list::{SlabListEntry, SlabListIndices};
 
-use crate::runtime;
-use crate::runtime::CONTEXT;
-use crate::util::PhantomUnsendUnsync;
+use crate::runtime::driver;
 
 /// A SlabList is used to hold unserved completions.
 ///
@@ -24,17 +22,15 @@ pub(crate) type Completion = SlabListEntry<CqeResult>;
 
 /// In-flight operation
 pub(crate) struct Op<T: 'static, CqeType = SingleCQE> {
+    driver: driver::WeakHandle,
     // Operation index in the slab
     pub(crate) index: usize,
 
     // Per-operation data
-    data: Option<T>,
+    pub(crate) data: Option<T>,
 
     // CqeType marker
     _cqe_type: PhantomData<CqeType>,
-
-    // Make !Send + !Sync
-    _phantom: PhantomUnsendUnsync,
 }
 
 /// A Marker for Ops which expect only a single completion event
@@ -99,40 +95,13 @@ where
     T: Completable,
 {
     /// Create a new operation
-    fn new(data: T, inner: &mut runtime::driver::Driver) -> Self {
+    pub(crate) fn new(driver: driver::WeakHandle, data: T, index: usize) -> Self {
         Op {
-            index: inner.ops.insert(),
+            driver,
+            index,
             data: Some(data),
             _cqe_type: PhantomData,
-            _phantom: PhantomData,
         }
-    }
-
-    /// Submit an operation to uring.
-    ///
-    /// `state` is stored during the operation tracking any state submitted to
-    /// the kernel.
-    pub(crate) fn submit_with<F>(data: T, f: F) -> io::Result<Self>
-    where
-        F: FnOnce(&mut T) -> squeue::Entry,
-    {
-        CONTEXT.with(|cx| {
-            cx.with_driver_mut(|driver| {
-                // Create the operation
-                let mut op = Op::new(data, driver);
-
-                // Configure the SQE
-                let sqe = f(op.data.as_mut().unwrap()).user_data(op.index as _);
-
-                // Push the new operation
-                while unsafe { driver.uring.submission().push(&sqe).is_err() } {
-                    // If the submission queue is full, flush it to the kernel
-                    driver.submit()?;
-                }
-
-                Ok(op)
-            })
-        })
     }
 }
 
@@ -142,43 +111,11 @@ where
 {
     type Output = T::Output;
 
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        use std::mem;
-
-        let me = &mut *self;
-
-        CONTEXT.with(|runtime_context| {
-            runtime_context.with_driver_mut(|driver| {
-                let (lifecycle, _) = driver
-                    .ops
-                    .get_mut(me.index)
-                    .expect("invalid internal state");
-
-                match mem::replace(lifecycle, Lifecycle::Submitted) {
-                    Lifecycle::Submitted => {
-                        *lifecycle = Lifecycle::Waiting(cx.waker().clone());
-                        Poll::Pending
-                    }
-                    Lifecycle::Waiting(waker) if !waker.will_wake(cx.waker()) => {
-                        *lifecycle = Lifecycle::Waiting(cx.waker().clone());
-                        Poll::Pending
-                    }
-                    Lifecycle::Waiting(waker) => {
-                        *lifecycle = Lifecycle::Waiting(waker);
-                        Poll::Pending
-                    }
-                    Lifecycle::Ignored(..) => unreachable!(),
-                    Lifecycle::Completed(cqe) => {
-                        driver.ops.remove(me.index);
-                        me.index = usize::MAX;
-                        Poll::Ready(me.data.take().unwrap().complete(cqe))
-                    }
-                    Lifecycle::CompletionList(..) => {
-                        unreachable!("No `more` flag set for SingleCQE")
-                    }
-                }
-            })
-        })
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        self.driver
+            .upgrade()
+            .expect("Not in runtime context")
+            .poll_op(self.get_mut(), cx)
     }
 }
 
@@ -188,69 +125,11 @@ where
 {
     type Output = T::Output;
 
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        use std::mem;
-
-        let me = &mut *self;
-
-        CONTEXT.with(|runtime_context| {
-            runtime_context.with_driver_mut(|driver| {
-                let (lifecycle, completions) = driver
-                    .ops
-                    .get_mut(me.index)
-                    .expect("invalid internal state");
-
-                match mem::replace(lifecycle, Lifecycle::Submitted) {
-                    Lifecycle::Submitted => {
-                        *lifecycle = Lifecycle::Waiting(cx.waker().clone());
-                        Poll::Pending
-                    }
-                    Lifecycle::Waiting(waker) if !waker.will_wake(cx.waker()) => {
-                        *lifecycle = Lifecycle::Waiting(cx.waker().clone());
-                        Poll::Pending
-                    }
-                    Lifecycle::Waiting(waker) => {
-                        *lifecycle = Lifecycle::Waiting(waker);
-                        Poll::Pending
-                    }
-                    Lifecycle::Ignored(..) => unreachable!(),
-                    Lifecycle::Completed(cqe) => {
-                        // This is possible. We may have previously polled a CompletionList,
-                        // and the final CQE registered as Completed
-                        driver.ops.remove(me.index);
-                        me.index = usize::MAX;
-                        Poll::Ready(me.data.take().unwrap().complete(cqe))
-                    }
-                    Lifecycle::CompletionList(indices) => {
-                        let mut data = me.data.take().unwrap();
-                        let mut status = Poll::Pending;
-                        // Consume the CqeResult list, calling update on the Op on all Cqe's flagged `more`
-                        // If the final Cqe is present, clean up and return Poll::Ready
-                        for cqe in indices.into_list(completions) {
-                            if io_uring::cqueue::more(cqe.flags) {
-                                data.update(cqe);
-                            } else {
-                                status = Poll::Ready(cqe);
-                                break;
-                            }
-                        }
-                        match status {
-                            Poll::Pending => {
-                                // We need more CQE's. Restore the op state
-                                let _ = me.data.insert(data);
-                                *lifecycle = Lifecycle::Waiting(cx.waker().clone());
-                                Poll::Pending
-                            }
-                            Poll::Ready(cqe) => {
-                                driver.ops.remove(me.index);
-                                me.index = usize::MAX;
-                                Poll::Ready(data.complete(cqe))
-                            }
-                        }
-                    }
-                }
-            })
-        })
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        self.driver
+            .upgrade()
+            .expect("Not in runtime context")
+            .poll_multishot_op(self.get_mut(), cx)
     }
 }
 
@@ -260,44 +139,10 @@ where
 /// the Op has been dropped.
 impl<T, CqeType> Drop for Op<T, CqeType> {
     fn drop(&mut self) {
-        use std::mem;
-
-        CONTEXT.with(|runtime_context| {
-            runtime_context.with_driver_mut(|driver| {
-                // Get the Op Lifecycle state from the driver
-                let (lifecycle, completions) = match driver.ops.get_mut(self.index) {
-                    Some(val) => val,
-                    None => {
-                        // Op dropped after the driver
-                        return;
-                    }
-                };
-
-                match mem::replace(lifecycle, Lifecycle::Submitted) {
-                    Lifecycle::Submitted | Lifecycle::Waiting(_) => {
-                        *lifecycle = Lifecycle::Ignored(Box::new(self.data.take()));
-                    }
-                    Lifecycle::Completed(..) => {
-                        driver.ops.remove(self.index);
-                    }
-                    Lifecycle::CompletionList(indices) => {
-                        // Deallocate list entries, recording if more CQE's are expected
-                        let more = {
-                            let mut list = indices.into_list(completions);
-                            io_uring::cqueue::more(list.peek_end().unwrap().flags)
-                            // Dropping list deallocates the list entries
-                        };
-                        if more {
-                            // If more are expected, we have to keep the op around
-                            *lifecycle = Lifecycle::Ignored(Box::new(self.data.take()));
-                        } else {
-                            driver.ops.remove(self.index);
-                        }
-                    }
-                    Lifecycle::Ignored(..) => unreachable!(),
-                }
-            })
-        })
+        self.driver
+            .upgrade()
+            .expect("Not in runtime context")
+            .remove_op(self)
     }
 }
 
@@ -351,191 +196,5 @@ impl Lifecycle {
                 false
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use std::rc::Rc;
-
-    use tokio_test::{assert_pending, assert_ready, task};
-
-    use super::*;
-
-    #[derive(Debug)]
-    pub(crate) struct Completion {
-        result: io::Result<u32>,
-        flags: u32,
-        data: Rc<()>,
-    }
-
-    impl Completable for Rc<()> {
-        type Output = Completion;
-
-        fn complete(self, cqe: CqeResult) -> Self::Output {
-            Completion {
-                result: cqe.result,
-                flags: cqe.flags,
-                data: self.clone(),
-            }
-        }
-    }
-
-    #[test]
-    fn op_stays_in_slab_on_drop() {
-        let (op, data) = init();
-        drop(op);
-
-        assert_eq!(2, Rc::strong_count(&data));
-
-        assert_eq!(1, num_operations());
-        release();
-    }
-
-    #[test]
-    fn poll_op_once() {
-        let (op, data) = init();
-        let mut op = task::spawn(op);
-        assert_pending!(op.poll());
-        assert_eq!(2, Rc::strong_count(&data));
-
-        complete(&op, Ok(1));
-        assert_eq!(1, num_operations());
-        assert_eq!(2, Rc::strong_count(&data));
-
-        assert!(op.is_woken());
-        let Completion {
-            result,
-            flags,
-            data: d,
-        } = assert_ready!(op.poll());
-        assert_eq!(2, Rc::strong_count(&data));
-        assert_eq!(1, result.unwrap());
-        assert_eq!(0, flags);
-
-        drop(d);
-        assert_eq!(1, Rc::strong_count(&data));
-
-        drop(op);
-        assert_eq!(0, num_operations());
-
-        release();
-    }
-
-    #[test]
-    fn poll_op_twice() {
-        {
-            let (op, ..) = init();
-            let mut op = task::spawn(op);
-            assert_pending!(op.poll());
-            assert_pending!(op.poll());
-
-            complete(&op, Ok(1));
-
-            assert!(op.is_woken());
-            let Completion { result, flags, .. } = assert_ready!(op.poll());
-            assert_eq!(1, result.unwrap());
-            assert_eq!(0, flags);
-        }
-
-        release();
-    }
-
-    #[test]
-    fn poll_change_task() {
-        {
-            let (op, ..) = init();
-            let mut op = task::spawn(op);
-            assert_pending!(op.poll());
-
-            let op = op.into_inner();
-            let mut op = task::spawn(op);
-            assert_pending!(op.poll());
-
-            complete(&op, Ok(1));
-
-            assert!(op.is_woken());
-            let Completion { result, flags, .. } = assert_ready!(op.poll());
-            assert_eq!(1, result.unwrap());
-            assert_eq!(0, flags);
-        }
-
-        release();
-    }
-
-    #[test]
-    fn complete_before_poll() {
-        let (op, data) = init();
-        let mut op = task::spawn(op);
-        complete(&op, Ok(1));
-        assert_eq!(1, num_operations());
-        assert_eq!(2, Rc::strong_count(&data));
-
-        let Completion { result, flags, .. } = assert_ready!(op.poll());
-        assert_eq!(1, result.unwrap());
-        assert_eq!(0, flags);
-
-        drop(op);
-        assert_eq!(0, num_operations());
-
-        release();
-    }
-
-    #[test]
-    fn complete_after_drop() {
-        let (op, data) = init();
-        let index = op.index;
-        drop(op);
-
-        assert_eq!(2, Rc::strong_count(&data));
-
-        assert_eq!(1, num_operations());
-
-        let cqe = CqeResult {
-            result: Ok(1),
-            flags: 0,
-        };
-
-        CONTEXT.with(|cx| cx.with_driver_mut(|driver| driver.ops.complete(index, cqe)));
-
-        assert_eq!(1, Rc::strong_count(&data));
-        assert_eq!(0, num_operations());
-
-        release();
-    }
-
-    fn init() -> (Op<Rc<()>>, Rc<()>) {
-        use crate::runtime::driver::Driver;
-
-        let driver = Driver::new(&crate::builder()).unwrap();
-        let data = Rc::new(());
-
-        let op = CONTEXT.with(|cx| {
-            cx.set_driver(driver);
-
-            cx.with_driver_mut(|driver| Op::new(data.clone(), driver))
-        });
-
-        (op, data)
-    }
-
-    fn num_operations() -> usize {
-        CONTEXT.with(|cx| cx.with_driver_mut(|driver| driver.num_operations()))
-    }
-
-    fn complete(op: &Op<Rc<()>>, result: io::Result<u32>) {
-        let cqe = CqeResult { result, flags: 0 };
-        CONTEXT.with(|cx| cx.with_driver_mut(|driver| driver.ops.complete(op.index, cqe)));
-    }
-
-    fn release() {
-        CONTEXT.with(|cx| {
-            cx.with_driver_mut(|driver| {
-                driver.ops.lifecycle.clear();
-                driver.ops.completions.clear();
-            });
-
-            cx.unset_driver();
-        });
     }
 }

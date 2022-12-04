@@ -2,6 +2,7 @@ use std::io;
 
 use crate::io::SharedFd;
 use crate::runtime::driver::op::{Completable, CqeResult, Op};
+use crate::runtime::CONTEXT;
 use io_uring::{opcode, types};
 
 pub(crate) struct Fsync {
@@ -10,16 +11,25 @@ pub(crate) struct Fsync {
 
 impl Op<Fsync> {
     pub(crate) fn fsync(fd: &SharedFd) -> io::Result<Op<Fsync>> {
-        Op::submit_with(Fsync { fd: fd.clone() }, |fsync| {
-            opcode::Fsync::new(types::Fd(fsync.fd.raw_fd())).build()
+        CONTEXT.with(|x| {
+            x.handle()
+                .expect("Not in a runtime context")
+                .submit_op(Fsync { fd: fd.clone() }, |fsync| {
+                    opcode::Fsync::new(types::Fd(fsync.fd.raw_fd())).build()
+                })
         })
     }
 
     pub(crate) fn datasync(fd: &SharedFd) -> io::Result<Op<Fsync>> {
-        Op::submit_with(Fsync { fd: fd.clone() }, |fsync| {
-            opcode::Fsync::new(types::Fd(fsync.fd.raw_fd()))
-                .flags(types::FsyncFlags::DATASYNC)
-                .build()
+        CONTEXT.with(|x| {
+            x.handle().expect("Not in a runtime context").submit_op(
+                Fsync { fd: fd.clone() },
+                |fsync| {
+                    opcode::Fsync::new(types::Fd(fsync.fd.raw_fd()))
+                        .flags(types::FsyncFlags::DATASYNC)
+                        .build()
+                },
+            )
         })
     }
 }

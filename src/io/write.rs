@@ -1,4 +1,5 @@
 use crate::runtime::driver::op::{Completable, CqeResult, Op};
+use crate::runtime::CONTEXT;
 use crate::{buf::BoundedBuf, io::SharedFd, BufResult};
 use std::io;
 
@@ -15,21 +16,23 @@ impl<T: BoundedBuf> Op<Write<T>> {
     pub(crate) fn write_at(fd: &SharedFd, buf: T, offset: u64) -> io::Result<Op<Write<T>>> {
         use io_uring::{opcode, types};
 
-        Op::submit_with(
-            Write {
-                fd: fd.clone(),
-                buf,
-            },
-            |write| {
-                // Get raw buffer info
-                let ptr = write.buf.stable_ptr();
-                let len = write.buf.bytes_init();
+        CONTEXT.with(|x| {
+            x.handle().expect("Not in a runtime context").submit_op(
+                Write {
+                    fd: fd.clone(),
+                    buf,
+                },
+                |write| {
+                    // Get raw buffer info
+                    let ptr = write.buf.stable_ptr();
+                    let len = write.buf.bytes_init();
 
-                opcode::Write::new(types::Fd(fd.raw_fd()), ptr, len as _)
-                    .offset(offset as _)
-                    .build()
-            },
-        )
+                    opcode::Write::new(types::Fd(fd.raw_fd()), ptr, len as _)
+                        .offset(offset as _)
+                        .build()
+                },
+            )
+        })
     }
 }
 

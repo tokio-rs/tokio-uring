@@ -1,4 +1,5 @@
 use crate::runtime::driver::op::{Completable, CqeResult, Op};
+use crate::runtime::CONTEXT;
 use std::io;
 
 /// No operation. Just posts a completion event, nothing else.
@@ -10,7 +11,11 @@ impl Op<NoOp> {
     pub fn no_op() -> io::Result<Op<NoOp>> {
         use io_uring::opcode;
 
-        Op::submit_with(NoOp {}, |_| opcode::Nop::new().build())
+        CONTEXT.with(|x| {
+            x.handle()
+                .expect("Not in a runtime context")
+                .submit_op(NoOp {}, |_| opcode::Nop::new().build())
+        })
     }
 }
 
