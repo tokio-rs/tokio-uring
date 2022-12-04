@@ -11,7 +11,7 @@ use crate::runtime::driver::Driver;
 
 #[derive(Clone)]
 pub(crate) struct Handle {
-    inner: Rc<RefCell<Driver>>,
+    pub(super) inner: Rc<RefCell<Driver>>,
 }
 
 #[derive(Clone)]
