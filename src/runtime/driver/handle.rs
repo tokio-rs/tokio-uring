@@ -12,7 +12,7 @@
 //! The weak handle should be used by anything which is stored in the driver or does not need to
 //! keep the driver alive for it's duration.
 
-use io_uring::squeue;
+use io_uring::{cqueue, squeue};
 use std::cell::RefCell;
 use std::io;
 use std::os::unix::io::{AsRawFd, RawFd};
@@ -191,7 +191,7 @@ impl Handle {
                 // Consume the CqeResult list, calling update on the Op on all Cqe's flagged `more`
                 // If the final Cqe is present, clean up and return Poll::Ready
                 for cqe in indices.into_list(completions) {
-                    if io_uring::cqueue::more(cqe.flags) {
+                    if cqueue::more(cqe.flags) {
                         data.update(cqe);
                     } else {
                         status = Poll::Ready(cqe);
@@ -240,7 +240,7 @@ impl Handle {
                 // Deallocate list entries, recording if more CQE's are expected
                 let more = {
                     let mut list = indices.into_list(completions);
-                    io_uring::cqueue::more(list.peek_end().unwrap().flags)
+                    cqueue::more(list.peek_end().unwrap().flags)
                     // Dropping list deallocates the list entries
                 };
                 if more {
