@@ -55,12 +55,12 @@ use std::slice;
 /// # let (memlock_limit, _) = getrlimit(Resource::RLIMIT_MEMLOCK)?;
 /// # let BUF_SIZE_LARGE = memlock_limit as usize / 8;
 /// # let BUF_SIZE_SMALL = memlock_limit as usize / 16;
-/// let pool = FixedBufPool::new(
-///     iter::once(Vec::with_capacity(BUF_SIZE_LARGE))
-///         .chain(iter::repeat_with(|| Vec::with_capacity(BUF_SIZE_SMALL)).take(2))
-/// );
-///
 /// tokio_uring::start(async {
+///     let pool = FixedBufPool::new(
+///          iter::once(Vec::with_capacity(BUF_SIZE_LARGE))
+///              .chain(iter::repeat_with(|| Vec::with_capacity(BUF_SIZE_SMALL)).take(2))
+///      );
+///
 ///     pool.register()?;
 ///
 ///     let buf = pool.try_next(BUF_SIZE_LARGE).unwrap();

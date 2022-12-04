@@ -19,6 +19,8 @@ pub struct Runtime {
     /// LocalSet for !Send tasks
     local: ManuallyDrop<LocalSet>,
 
+    driver: driver::Handle,
+
     /// Tokio runtime, always current-thread
     rt: ManuallyDrop<tokio::runtime::Runtime>,
 }
@@ -76,8 +78,6 @@ impl Runtime {
 
         let driver_fd = driver.as_raw_fd();
 
-        CONTEXT.with(|cx| cx.set_handle(driver));
-
         let drive = {
             let _guard = rt.enter();
             let driver = AsyncFd::new(driver_fd).unwrap();
@@ -94,7 +94,7 @@ impl Runtime {
 
         local.spawn_local(drive);
 
-        Ok(Runtime { local, rt })
+        Ok(Runtime { local, rt, driver })
     }
 
     /// Runs a future to completion on the current runtime
@@ -102,13 +102,20 @@ impl Runtime {
     where
         F: Future,
     {
+        CONTEXT.with(|cx| cx.set_handle(self.driver.clone()));
+
         tokio::pin!(future);
 
-        self.rt
+        let res = self
+            .rt
             .block_on(self.local.run_until(std::future::poll_fn(|cx| {
                 // assert!(drive.as_mut().poll(cx).is_pending());
                 future.as_mut().poll(cx)
-            })))
+            })));
+
+        CONTEXT.with(|cx| cx.unset_driver());
+
+        res
     }
 }
 
@@ -119,10 +126,6 @@ impl Drop for Runtime {
             ManuallyDrop::drop(&mut self.local);
             ManuallyDrop::drop(&mut self.rt);
         }
-
-        // once tasks are dropped, we can unset the driver
-        // this will block until all completions are received
-        CONTEXT.with(|rc| rc.unset_driver())
     }
 }
 

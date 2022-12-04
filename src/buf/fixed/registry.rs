@@ -93,11 +93,10 @@ impl FixedBufRegistry {
     /// # let (memlock_limit, _) = getrlimit(Resource::RLIMIT_MEMLOCK)?;
     /// # let NUM_BUFFERS = std::cmp::max(memlock_limit as usize / 4096 / 8, 1);
     /// # let BUF_SIZE = 4096;
-    /// let registry = FixedBufRegistry::new(
-    ///     iter::repeat_with(|| Vec::with_capacity(BUF_SIZE)).take(NUM_BUFFERS)
-    /// );
-    ///
     /// tokio_uring::start(async {
+    ///     let registry = FixedBufRegistry::new(
+    ///         iter::repeat_with(|| Vec::with_capacity(BUF_SIZE)).take(NUM_BUFFERS)
+    ///     );
     ///     registry.register()?;
     ///     // ...
     ///     Ok(())
