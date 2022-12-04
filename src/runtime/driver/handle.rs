@@ -1,3 +1,17 @@
+//! Internal, reference-counted handle to the driver.
+//!
+//! The driver was previously managed exclusively by thread-local context, but this proved
+//! untenable.
+//!
+//! The new system uses a handle which reference-counts the driver to track ownership and access to
+//! the driver.
+//!
+//! There are two handles.
+//! The strong handle is owning, and the weak handle is non-owning.
+//! This is important for avoiding reference cycles.
+//! The weak handle should be used by anything which is stored in the driver or does not need to
+//! keep the driver alive for it's duration.
+
 use io_uring::squeue;
 use std::cell::RefCell;
 use std::io;
