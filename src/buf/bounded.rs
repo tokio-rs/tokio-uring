@@ -154,7 +154,7 @@ pub trait BoundedBufMut: BoundedBuf<Buf = Self::BufMut> {
     /// to `pos` are initialized and owned by the buffer.
     unsafe fn set_init(&mut self, pos: usize);
 
-    /// Copies the given byte slice slice into the buffer, starting at
+    /// Copies the given byte slice into the buffer, starting at
     /// this view's offset.
     ///
     /// # Panics
