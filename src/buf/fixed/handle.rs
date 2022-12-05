@@ -9,7 +9,7 @@ use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 
 // Data to construct a `FixedBuf` handle from.
-pub(super) struct CheckedOutBuf {
+pub(crate) struct CheckedOutBuf {
     // Pointer and size of the buffer.
     pub iovec: iovec,
     // Length of the initialized part.
