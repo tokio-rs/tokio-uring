@@ -6,6 +6,7 @@ use crate::runtime::CONTEXT;
 use std::cell::RefCell;
 use std::io;
 use std::rc::Rc;
+use std::task::{Context, Poll};
 
 /// A dynamic collection of I/O buffers pre-registered with the kernel.
 ///
@@ -222,5 +223,20 @@ impl FixedBufPool {
             // plumbing::Pool::try_next
             unsafe { FixedBuf::new(registry, data) }
         })
+    }
+
+    /// Attempts to obtain a buffer of requested capacity from this pool
+    /// that is not currently owned by any other [`FixedBuf`] handle.
+    /// Registers the current task for wakeup if no such free buffer is
+    /// available. The task is woken up when a `FixedBuf` handle belonging
+    /// to this pool is dropped.
+    pub fn poll_next(&mut self, cap: usize, cx: &mut Context<'_>) -> Poll<FixedBuf> {
+        let mut inner = self.inner.borrow_mut();
+        let data = ready!(inner.poll_next(cap, cx));
+        let registry = Rc::clone(&self.inner);
+        // Safety: the validity of buffer data is ensured by
+        // plumbing::Pool::poll_next
+        let buf = unsafe { FixedBuf::new(registry, data) };
+        Poll::Ready(buf)
     }
 }

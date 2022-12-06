@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::mem;
 use std::ptr;
 use std::slice;
+use std::task::{Context, Poll, Waker};
 
 // Internal state shared by FixedBufPool and FixedBuf handles.
 pub(crate) struct Pool {
@@ -20,6 +21,8 @@ pub(crate) struct Pool {
     states: Vec<BufState>,
     // Table of head indices of the free buffer lists in each size bucket.
     free_buf_head_by_cap: HashMap<usize, u16>,
+    // Wakers for tasks pending on poll_next
+    waiting_on_next: Vec<Waker>,
 }
 
 // State information of a buffer in the registry,
@@ -73,6 +76,7 @@ impl Pool {
             orig_cap,
             states,
             free_buf_head_by_cap,
+            waiting_on_next: vec![],
         }
     }
 
@@ -114,6 +118,17 @@ impl Pool {
         })
     }
 
+    pub(crate) fn poll_next(&mut self, cap: usize, cx: &mut Context<'_>) -> Poll<CheckedOutBuf> {
+        if let Some(buf) = self.try_next(cap) {
+            return Poll::Ready(buf);
+        }
+        let waker = cx.waker();
+        if !self.waiting_on_next.iter().any(|w| w.will_wake(waker)) {
+            self.waiting_on_next.push(waker.clone());
+        }
+        Poll::Pending
+    }
+
     fn check_in_internal(&mut self, index: u16, init_len: usize) {
         let cap = self.iovecs()[index as usize].iov_len;
         let state = &mut self.states[index as usize];
@@ -128,6 +143,13 @@ impl Pool {
         let next = self.free_buf_head_by_cap.insert(cap, index);
 
         *state = BufState::Free { init_len, next };
+
+        if !self.waiting_on_next.is_empty() {
+            // Wake up tasks pending on poll_next
+            for waker in mem::take(&mut self.waiting_on_next) {
+                waker.wake()
+            }
+        }
     }
 }
 
