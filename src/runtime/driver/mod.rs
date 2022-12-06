@@ -149,6 +149,43 @@ impl Driver {
         Ok(op)
     }
 
+    pub(crate) fn remove_op<T, CqeType>(&mut self, op: &mut Op<T, CqeType>) {
+        use std::mem;
+
+        // Get the Op Lifecycle state from the driver
+        let (lifecycle, completions) = match self.ops.get_mut(op.index()) {
+            Some(val) => val,
+            None => {
+                // Op dropped after the driver
+                return;
+            }
+        };
+
+        match mem::replace(lifecycle, Lifecycle::Submitted) {
+            Lifecycle::Submitted | Lifecycle::Waiting(_) => {
+                *lifecycle = Lifecycle::Ignored(Box::new(op.take_data()));
+            }
+            Lifecycle::Completed(..) => {
+                self.ops.remove(op.index());
+            }
+            Lifecycle::CompletionList(indices) => {
+                // Deallocate list entries, recording if more CQE's are expected
+                let more = {
+                    let mut list = indices.into_list(completions);
+                    cqueue::more(list.peek_end().unwrap().flags)
+                    // Dropping list deallocates the list entries
+                };
+                if more {
+                    // If more are expected, we have to keep the op around
+                    *lifecycle = Lifecycle::Ignored(Box::new(op.take_data()));
+                } else {
+                    self.ops.remove(op.index());
+                }
+            }
+            Lifecycle::Ignored(..) => unreachable!(),
+        }
+    }
+
     pub(crate) fn poll_op<T>(&mut self, op: &mut Op<T>, cx: &mut Context<'_>) -> Poll<T::Output>
     where
         T: Unpin + 'static + Completable,
@@ -245,43 +282,6 @@ impl Driver {
                     }
                 }
             }
-        }
-    }
-
-    pub(crate) fn remove_op<T, CqeType>(&mut self, op: &mut Op<T, CqeType>) {
-        use std::mem;
-
-        // Get the Op Lifecycle state from the driver
-        let (lifecycle, completions) = match self.ops.get_mut(op.index()) {
-            Some(val) => val,
-            None => {
-                // Op dropped after the driver
-                return;
-            }
-        };
-
-        match mem::replace(lifecycle, Lifecycle::Submitted) {
-            Lifecycle::Submitted | Lifecycle::Waiting(_) => {
-                *lifecycle = Lifecycle::Ignored(Box::new(op.take_data()));
-            }
-            Lifecycle::Completed(..) => {
-                self.ops.remove(op.index());
-            }
-            Lifecycle::CompletionList(indices) => {
-                // Deallocate list entries, recording if more CQE's are expected
-                let more = {
-                    let mut list = indices.into_list(completions);
-                    cqueue::more(list.peek_end().unwrap().flags)
-                    // Dropping list deallocates the list entries
-                };
-                if more {
-                    // If more are expected, we have to keep the op around
-                    *lifecycle = Lifecycle::Ignored(Box::new(op.take_data()));
-                } else {
-                    self.ops.remove(op.index());
-                }
-            }
-            Lifecycle::Ignored(..) => unreachable!(),
         }
     }
 }
