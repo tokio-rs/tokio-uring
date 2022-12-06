@@ -101,12 +101,7 @@ impl FixedBufRegistry {
     pub fn new(bufs: impl IntoIterator<Item = Vec<u8>>) -> Self {
         FixedBufRegistry {
             inner: Rc::new(RefCell::new(plumbing::Registry::new(bufs.into_iter()))),
-            driver: CONTEXT.with(|x| {
-                x.handle()
-                    .as_ref()
-                    .expect("Not in a runtime context")
-                    .into()
-            }),
+            driver: CONTEXT.with(|x| x.weak().expect("Not in a runtime context")),
         }
     }
 

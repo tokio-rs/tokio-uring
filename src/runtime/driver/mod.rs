@@ -1,12 +1,13 @@
 use crate::buf::fixed::FixedBuffers;
-use crate::runtime::driver::op::Lifecycle;
+use crate::runtime::driver::op::{Completable, Lifecycle, MultiCQEFuture, Op, Updateable};
 use io_uring::opcode::AsyncCancel;
-use io_uring::IoUring;
+use io_uring::{cqueue, squeue, IoUring};
 use slab::Slab;
 use std::cell::RefCell;
 use std::io;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::rc::Rc;
+use std::task::{Context, Poll};
 
 pub(crate) use handle::*;
 
@@ -18,12 +19,12 @@ pub(crate) struct Driver {
     ops: Ops,
 
     /// IoUring bindings
-    pub(crate) uring: IoUring,
+    uring: IoUring,
 
     /// Reference to the currently registered buffers.
     /// Ensures that the buffers are not dropped until
     /// after the io-uring runtime has terminated.
-    pub(crate) fixed_buffers: Option<Rc<RefCell<dyn FixedBuffers>>>,
+    fixed_buffers: Option<Rc<RefCell<dyn FixedBuffers>>>,
 }
 
 struct Ops {
@@ -56,7 +57,25 @@ impl Driver {
         self.ops.lifecycle.len()
     }
 
-    pub(crate) fn tick(&mut self) {
+    pub(crate) fn submit(&mut self) -> io::Result<()> {
+        loop {
+            match self.uring.submit() {
+                Ok(_) => {
+                    self.uring.submission().sync();
+                    return Ok(());
+                }
+                Err(ref e) if e.raw_os_error() == Some(libc::EBUSY) => {
+                    self.dispatch_completions();
+                }
+                Err(e) if e.raw_os_error() != Some(libc::EINTR) => {
+                    return Err(e);
+                }
+                _ => continue,
+            }
+        }
+    }
+
+    pub(crate) fn dispatch_completions(&mut self) {
         let mut cq = self.uring.completion();
         cq.sync();
 
@@ -74,20 +93,194 @@ impl Driver {
         }
     }
 
-    pub(crate) fn submit(&mut self) -> io::Result<()> {
-        loop {
-            match self.uring.submit() {
-                Ok(_) => {
-                    self.uring.submission().sync();
-                    return Ok(());
+    pub(crate) fn register_buffers(
+        &mut self,
+        buffers: Rc<RefCell<dyn FixedBuffers>>,
+    ) -> io::Result<()> {
+        self.uring
+            .submitter()
+            .register_buffers(buffers.borrow().iovecs())?;
+
+        self.fixed_buffers = Some(buffers);
+        Ok(())
+    }
+
+    pub(crate) fn unregister_buffers(
+        &mut self,
+        buffers: Rc<RefCell<dyn FixedBuffers>>,
+    ) -> io::Result<()> {
+        if let Some(currently_registered) = &self.fixed_buffers {
+            if Rc::ptr_eq(&buffers, currently_registered) {
+                self.uring.submitter().unregister_buffers()?;
+                self.fixed_buffers = None;
+                return Ok(());
+            }
+        }
+        Err(io::Error::new(
+            io::ErrorKind::Other,
+            "fixed buffers are not currently registered",
+        ))
+    }
+
+    pub(crate) fn submit_op<T, S, F>(
+        &mut self,
+        mut data: T,
+        f: F,
+        handle: WeakHandle,
+    ) -> io::Result<Op<T, S>>
+    where
+        T: Completable,
+        F: FnOnce(&mut T) -> squeue::Entry,
+    {
+        let index = self.ops.insert();
+
+        // Configure the SQE
+        let sqe = f(&mut data).user_data(index as _);
+
+        // Create the operation
+        let op = Op::new(handle, data, index);
+
+        // Push the new operation
+        while unsafe { self.uring.submission().push(&sqe).is_err() } {
+            // If the submission queue is full, flush it to the kernel
+            self.submit()?;
+        }
+
+        Ok(op)
+    }
+
+    pub(crate) fn remove_op<T, CqeType>(&mut self, op: &mut Op<T, CqeType>) {
+        use std::mem;
+
+        // Get the Op Lifecycle state from the driver
+        let (lifecycle, completions) = match self.ops.get_mut(op.index()) {
+            Some(val) => val,
+            None => {
+                // Op dropped after the driver
+                return;
+            }
+        };
+
+        match mem::replace(lifecycle, Lifecycle::Submitted) {
+            Lifecycle::Submitted | Lifecycle::Waiting(_) => {
+                *lifecycle = Lifecycle::Ignored(Box::new(op.take_data()));
+            }
+            Lifecycle::Completed(..) => {
+                self.ops.remove(op.index());
+            }
+            Lifecycle::CompletionList(indices) => {
+                // Deallocate list entries, recording if more CQE's are expected
+                let more = {
+                    let mut list = indices.into_list(completions);
+                    cqueue::more(list.peek_end().unwrap().flags)
+                    // Dropping list deallocates the list entries
+                };
+                if more {
+                    // If more are expected, we have to keep the op around
+                    *lifecycle = Lifecycle::Ignored(Box::new(op.take_data()));
+                } else {
+                    self.ops.remove(op.index());
                 }
-                Err(ref e) if e.raw_os_error() == Some(libc::EBUSY) => {
-                    self.tick();
+            }
+            Lifecycle::Ignored(..) => unreachable!(),
+        }
+    }
+
+    pub(crate) fn poll_op<T>(&mut self, op: &mut Op<T>, cx: &mut Context<'_>) -> Poll<T::Output>
+    where
+        T: Unpin + 'static + Completable,
+    {
+        use std::mem;
+
+        let (lifecycle, _) = self
+            .ops
+            .get_mut(op.index())
+            .expect("invalid internal state");
+
+        match mem::replace(lifecycle, Lifecycle::Submitted) {
+            Lifecycle::Submitted => {
+                *lifecycle = Lifecycle::Waiting(cx.waker().clone());
+                Poll::Pending
+            }
+            Lifecycle::Waiting(waker) if !waker.will_wake(cx.waker()) => {
+                *lifecycle = Lifecycle::Waiting(cx.waker().clone());
+                Poll::Pending
+            }
+            Lifecycle::Waiting(waker) => {
+                *lifecycle = Lifecycle::Waiting(waker);
+                Poll::Pending
+            }
+            Lifecycle::Ignored(..) => unreachable!(),
+            Lifecycle::Completed(cqe) => {
+                self.ops.remove(op.index());
+                Poll::Ready(op.take_data().unwrap().complete(cqe))
+            }
+            Lifecycle::CompletionList(..) => {
+                unreachable!("No `more` flag set for SingleCQE")
+            }
+        }
+    }
+
+    pub(crate) fn poll_multishot_op<T>(
+        &mut self,
+        op: &mut Op<T, MultiCQEFuture>,
+        cx: &mut Context<'_>,
+    ) -> Poll<T::Output>
+    where
+        T: Unpin + 'static + Completable + Updateable,
+    {
+        use std::mem;
+
+        let (lifecycle, completions) = self
+            .ops
+            .get_mut(op.index())
+            .expect("invalid internal state");
+
+        match mem::replace(lifecycle, Lifecycle::Submitted) {
+            Lifecycle::Submitted => {
+                *lifecycle = Lifecycle::Waiting(cx.waker().clone());
+                Poll::Pending
+            }
+            Lifecycle::Waiting(waker) if !waker.will_wake(cx.waker()) => {
+                *lifecycle = Lifecycle::Waiting(cx.waker().clone());
+                Poll::Pending
+            }
+            Lifecycle::Waiting(waker) => {
+                *lifecycle = Lifecycle::Waiting(waker);
+                Poll::Pending
+            }
+            Lifecycle::Ignored(..) => unreachable!(),
+            Lifecycle::Completed(cqe) => {
+                // This is possible. We may have previously polled a CompletionList,
+                // and the final CQE registered as Completed
+                self.ops.remove(op.index());
+                Poll::Ready(op.take_data().unwrap().complete(cqe))
+            }
+            Lifecycle::CompletionList(indices) => {
+                let mut data = op.take_data().unwrap();
+                let mut status = Poll::Pending;
+                // Consume the CqeResult list, calling update on the Op on all Cqe's flagged `more`
+                // If the final Cqe is present, clean up and return Poll::Ready
+                for cqe in indices.into_list(completions) {
+                    if cqueue::more(cqe.flags) {
+                        data.update(cqe);
+                    } else {
+                        status = Poll::Ready(cqe);
+                        break;
+                    }
                 }
-                Err(e) if e.raw_os_error() != Some(libc::EINTR) => {
-                    return Err(e);
+                match status {
+                    Poll::Pending => {
+                        // We need more CQE's. Restore the op state
+                        op.insert_data(data);
+                        *lifecycle = Lifecycle::Waiting(cx.waker().clone());
+                        Poll::Pending
+                    }
+                    Poll::Ready(cqe) => {
+                        self.ops.remove(op.index());
+                        Poll::Ready(data.complete(cqe))
+                    }
                 }
-                _ => continue,
             }
         }
     }
@@ -179,7 +372,7 @@ impl Drop for Driver {
                     // If waiting fails, ignore the error. The wait will be attempted
                     // again on the next loop.
                     let _ = self.wait();
-                    self.tick();
+                    self.dispatch_completions();
                 }
 
                 Some(_) => {
@@ -370,7 +563,7 @@ mod test {
     #[test]
     fn complete_after_drop() {
         let (op, data) = init();
-        let index = op.index;
+        let index = op.index();
         drop(op);
 
         assert_eq!(2, Rc::strong_count(&data));
@@ -383,7 +576,12 @@ mod test {
         };
 
         CONTEXT.with(|cx| {
-            cx.with_handle_mut(|driver| driver.inner.borrow_mut().ops.complete(index, cqe))
+            cx.handle()
+                .unwrap()
+                .inner
+                .borrow_mut()
+                .ops
+                .complete(index, cqe)
         });
 
         assert_eq!(1, Rc::strong_count(&data));
@@ -399,33 +597,36 @@ mod test {
         let op = CONTEXT.with(|cx| {
             cx.set_handle(driver.into());
 
-            cx.with_handle_mut(|driver| {
-                let index = driver.inner.borrow_mut().ops.insert();
+            let driver = cx.handle().unwrap();
 
-                Op::new((&*driver).into(), data.clone(), index)
-            })
+            let index = driver.inner.borrow_mut().ops.insert();
+
+            Op::new((&driver).into(), data.clone(), index)
         });
 
         (op, data)
     }
 
     fn num_operations() -> usize {
-        CONTEXT.with(|cx| cx.with_handle_mut(|driver| driver.inner.borrow().num_operations()))
+        CONTEXT.with(|cx| cx.handle().unwrap().inner.borrow().num_operations())
     }
 
     fn complete(op: &Op<Rc<()>>, result: io::Result<u32>) {
         let cqe = CqeResult { result, flags: 0 };
+
         CONTEXT.with(|cx| {
-            cx.with_handle_mut(|driver| driver.inner.borrow_mut().ops.complete(op.index, cqe))
+            let driver = cx.handle().unwrap();
+
+            driver.inner.borrow_mut().ops.complete(op.index(), cqe);
         });
     }
 
     fn release() {
         CONTEXT.with(|cx| {
-            cx.with_handle_mut(|driver| {
-                driver.inner.borrow_mut().ops.lifecycle.clear();
-                driver.inner.borrow_mut().ops.completions.clear();
-            });
+            let driver = cx.handle().unwrap();
+
+            driver.inner.borrow_mut().ops.lifecycle.clear();
+            driver.inner.borrow_mut().ops.completions.clear();
 
             cx.unset_driver();
         });

@@ -24,10 +24,10 @@ pub(crate) type Completion = SlabListEntry<CqeResult>;
 pub(crate) struct Op<T: 'static, CqeType = SingleCQE> {
     driver: driver::WeakHandle,
     // Operation index in the slab
-    pub(crate) index: usize,
+    index: usize,
 
     // Per-operation data
-    pub(crate) data: Option<T>,
+    data: Option<T>,
 
     // CqeType marker
     _cqe_type: PhantomData<CqeType>,
@@ -90,18 +90,27 @@ impl From<cqueue::Entry> for CqeResult {
     }
 }
 
-impl<T, CqeType> Op<T, CqeType>
-where
-    T: Completable,
-{
+impl<T, CqeType> Op<T, CqeType> {
     /// Create a new operation
-    pub(crate) fn new(driver: driver::WeakHandle, data: T, index: usize) -> Self {
+    pub(super) fn new(driver: driver::WeakHandle, data: T, index: usize) -> Self {
         Op {
             driver,
             index,
             data: Some(data),
             _cqe_type: PhantomData,
         }
+    }
+
+    pub(super) fn index(&self) -> usize {
+        self.index
+    }
+
+    pub(super) fn take_data(&mut self) -> Option<T> {
+        self.data.take()
+    }
+
+    pub(super) fn insert_data(&mut self, data: T) {
+        self.data = Some(data);
     }
 }
 
