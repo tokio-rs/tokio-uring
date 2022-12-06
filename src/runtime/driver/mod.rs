@@ -57,24 +57,6 @@ impl Driver {
         self.ops.lifecycle.len()
     }
 
-    pub(crate) fn dispatch_completions(&mut self) {
-        let mut cq = self.uring.completion();
-        cq.sync();
-
-        for cqe in cq {
-            if cqe.user_data() == u64::MAX {
-                // Result of the cancellation action. There isn't anything we
-                // need to do here. We must wait for the CQE for the operation
-                // that was canceled.
-                continue;
-            }
-
-            let index = cqe.user_data() as _;
-
-            self.ops.complete(index, cqe.into());
-        }
-    }
-
     pub(crate) fn submit(&mut self) -> io::Result<()> {
         loop {
             match self.uring.submit() {
@@ -90,6 +72,24 @@ impl Driver {
                 }
                 _ => continue,
             }
+        }
+    }
+
+    pub(crate) fn dispatch_completions(&mut self) {
+        let mut cq = self.uring.completion();
+        cq.sync();
+
+        for cqe in cq {
+            if cqe.user_data() == u64::MAX {
+                // Result of the cancellation action. There isn't anything we
+                // need to do here. We must wait for the CQE for the operation
+                // that was canceled.
+                continue;
+            }
+
+            let index = cqe.user_data() as _;
+
+            self.ops.complete(index, cqe.into());
         }
     }
 
