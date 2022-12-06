@@ -23,7 +23,7 @@ pub(crate) use buffers::FixedBuffers;
 
 mod plumbing;
 
-mod pool;
+pub mod pool;
 pub use pool::FixedBufPool;
 
 mod registry;

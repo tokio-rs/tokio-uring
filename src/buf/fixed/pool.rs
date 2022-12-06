@@ -1,10 +1,20 @@
+//! A dynamic collection of I/O buffers pre-registered with the kernel.
+//!
+//! This module provides [`FixedBufPool`], a collection that implements
+//! dynamic management of sets of interchangeable memory buffers
+//! registered with the kernel for `io-uring` operations. Asynchronous
+//! rotation of the buffers shared by multiple tasks is also supported
+//! by `FixedBufPool`.
+
 use super::plumbing;
 use super::FixedBuf;
 
 use crate::runtime::driver::WeakHandle;
 use crate::runtime::CONTEXT;
 use std::cell::RefCell;
+use std::future::Future;
 use std::io;
+use std::pin::Pin;
 use std::rc::Rc;
 use std::task::{Context, Poll};
 
@@ -15,7 +25,9 @@ use std::task::{Context, Poll};
 /// context using the [`register`] method. Unlike [`FixedBufRegistry`],
 /// individual buffers are not retrieved by index; instead, an available
 /// buffer matching a specified capacity can be retrieved with the [`try_next`]
-/// method. This allows some flexibility in managing sets of buffers with
+/// method. In asynchronous contexts, the [`next`] method can be used to wait
+/// until such a buffer becomes available.
+/// This allows some flexibility in managing sets of buffers with
 /// different capacity tiers. The need to maintain lists of free buffers,
 /// however, imposes additional runtime overhead.
 ///
@@ -33,6 +45,7 @@ use std::task::{Context, Poll};
 ///
 /// [`register`]: Self::register
 /// [`try_next`]: Self::try_next
+/// [`next`]: Self::next
 /// [`FixedBufRegistry`]: super::FixedBufRegistry
 /// [`Runtime`]: crate::Runtime
 ///
@@ -230,6 +243,11 @@ impl FixedBufPool {
     /// Registers the current task for wakeup if no such free buffer is
     /// available. The task is woken up when a `FixedBuf` handle belonging
     /// to this pool is dropped.
+    ///
+    /// This is a low-level method. Applications using `FixedBufPool` in
+    /// an async context should use [`next`].
+    ///
+    /// [`next`]: Self::next
     pub fn poll_next(&mut self, cap: usize, cx: &mut Context<'_>) -> Poll<FixedBuf> {
         let mut inner = self.inner.borrow_mut();
         let data = ready!(inner.poll_next(cap, cx));
@@ -238,5 +256,40 @@ impl FixedBufPool {
         // plumbing::Pool::poll_next
         let buf = unsafe { FixedBuf::new(registry, data) };
         Poll::Ready(buf)
+    }
+
+    /// Returns a future that will be resolved to a buffer of requested capacity
+    /// when it is or becomes available in this pool. This may happen when a
+    /// [`FixedBuf`] handle owning a buffer of the same capacity is dropped.
+    ///
+    /// Equivalent to:
+    ///
+    /// ```ignore
+    /// async fn next(&mut self, cap: usize) -> FixedBuf;
+    /// ```
+    ///
+    /// If no matching buffers are available and none are being released,
+    /// this asynchronous function will never resolve. Applications should take
+    /// care to wait on the returned future concurrently with some tasks that
+    /// will complete I/O operations owning the buffers, or back it up with a
+    /// timeout using, for example, `tokio::util::timeout`.
+    pub fn next(&mut self, cap: usize) -> Next<'_> {
+        Next { pool: self, cap }
+    }
+}
+
+/// The future returned by [`FixedBufPool::next`].
+pub struct Next<'a> {
+    pool: &'a mut FixedBufPool,
+    cap: usize,
+}
+
+impl<'a> Future for Next<'a> {
+    type Output = FixedBuf;
+
+    #[inline]
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<FixedBuf> {
+        let cap = self.cap;
+        self.pool.poll_next(cap, cx)
     }
 }
