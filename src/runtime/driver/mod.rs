@@ -235,7 +235,7 @@ impl Driver {
                 match status {
                     Poll::Pending => {
                         // We need more CQE's. Restore the op state
-                        let _ = op.insert_data(data);
+                        op.insert_data(data);
                         *lifecycle = Lifecycle::Waiting(cx.waker().clone());
                         Poll::Pending
                     }
