@@ -44,6 +44,7 @@ impl RuntimeContext {
         self.driver.borrow().clone()
     }
 
+    #[allow(dead_code)]
     pub(crate) fn weak(&self) -> Option<WeakHandle> {
         self.driver.borrow().as_ref().map(Into::into)
     }

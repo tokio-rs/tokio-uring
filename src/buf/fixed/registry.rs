@@ -1,7 +1,6 @@
 use super::handle::CheckedOutBuf;
 use super::{FixedBuf, FixedBuffers};
 
-use crate::runtime::driver::WeakHandle;
 use crate::runtime::CONTEXT;
 use libc::{iovec, UIO_MAXIOV};
 use std::cell::RefCell;
@@ -37,7 +36,6 @@ use std::slice;
 #[derive(Clone)]
 pub struct FixedBufRegistry {
     inner: Rc<RefCell<Inner>>,
-    driver: WeakHandle,
 }
 
 impl FixedBufRegistry {
@@ -93,10 +91,11 @@ impl FixedBufRegistry {
     /// # let (memlock_limit, _) = getrlimit(Resource::RLIMIT_MEMLOCK)?;
     /// # let NUM_BUFFERS = std::cmp::max(memlock_limit as usize / 4096 / 8, 1);
     /// # let BUF_SIZE = 4096;
+    /// let registry = FixedBufRegistry::new(
+    ///     iter::repeat_with(|| Vec::with_capacity(BUF_SIZE)).take(NUM_BUFFERS)
+    /// );
+    ///
     /// tokio_uring::start(async {
-    ///     let registry = FixedBufRegistry::new(
-    ///         iter::repeat_with(|| Vec::with_capacity(BUF_SIZE)).take(NUM_BUFFERS)
-    ///     );
     ///     registry.register()?;
     ///     // ...
     ///     Ok(())
@@ -106,7 +105,6 @@ impl FixedBufRegistry {
     pub fn new(bufs: impl IntoIterator<Item = Vec<u8>>) -> Self {
         FixedBufRegistry {
             inner: Rc::new(RefCell::new(Inner::new(bufs.into_iter()))),
-            driver: CONTEXT.with(|x| x.weak().expect("Not in a runtime context")),
         }
     }
 
@@ -130,10 +128,12 @@ impl FixedBufRegistry {
     /// of the `tokio-uring` runtime this call is made in, the function returns
     /// an error.
     pub fn register(&self) -> io::Result<()> {
-        self.driver
-            .upgrade()
-            .expect("Runtime context is no longer present")
-            .register_buffers(Rc::clone(&self.inner) as _)
+        CONTEXT.with(|x| {
+            x.handle()
+                .as_ref()
+                .expect("Not in a runtime context")
+                .register_buffers(Rc::clone(&self.inner) as _)
+        })
     }
 
     /// Unregisters this collection of buffers.
@@ -152,10 +152,12 @@ impl FixedBufRegistry {
     /// an error. Calling `unregister` when no `FixedBufRegistry` is currently
     /// registered on this runtime also returns an error.
     pub fn unregister(&self) -> io::Result<()> {
-        self.driver
-            .upgrade()
-            .expect("Runtime context is no longer present")
-            .unregister_buffers(Rc::clone(&self.inner) as _)
+        CONTEXT.with(|x| {
+            x.handle()
+                .as_ref()
+                .expect("Not in a runtime context")
+                .unregister_buffers(Rc::clone(&self.inner) as _)
+        })
     }
 
     /// Returns a buffer identified by the specified index for use by the
