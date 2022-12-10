@@ -1,7 +1,6 @@
 use super::handle::CheckedOutBuf;
 use super::{FixedBuf, FixedBuffers};
 
-use crate::runtime::driver::WeakHandle;
 use crate::runtime::CONTEXT;
 use libc::{iovec, UIO_MAXIOV};
 use std::cell::RefCell;
@@ -84,7 +83,6 @@ use std::slice;
 #[derive(Clone)]
 pub struct FixedBufPool {
     inner: Rc<RefCell<Inner>>,
-    driver: WeakHandle,
 }
 
 impl FixedBufPool {
@@ -116,10 +114,11 @@ impl FixedBufPool {
     /// # let (memlock_limit, _) = getrlimit(Resource::RLIMIT_MEMLOCK)?;
     /// # let NUM_BUFFERS = std::cmp::max(memlock_limit as usize / 4096 / 8, 1);
     /// # let BUF_SIZE = 4096;
+    /// let pool = FixedBufPool::new(
+    ///     iter::repeat(Vec::with_capacity(BUF_SIZE)).take(NUM_BUFFERS)
+    /// );
+    ///
     /// tokio_uring::start(async {
-    ///     let pool = FixedBufPool::new(
-    ///         iter::repeat(Vec::with_capacity(BUF_SIZE)).take(NUM_BUFFERS)
-    ///     );
     ///     pool.register()?;
     ///     // ...
     ///     Ok(())
@@ -139,10 +138,11 @@ impl FixedBufPool {
     /// # let (memlock_limit, _) = getrlimit(Resource::RLIMIT_MEMLOCK)?;
     /// # let NUM_BUFFERS = std::cmp::max(memlock_limit as usize / 4096 / 8, 1);
     /// # let BUF_SIZE = 4096;
+    /// let pool = FixedBufPool::new(
+    ///     iter::repeat_with(|| Vec::with_capacity(BUF_SIZE)).take(NUM_BUFFERS)
+    /// );
+    ///
     /// tokio_uring::start(async {
-    ///     let pool = FixedBufPool::new(
-    ///         iter::repeat_with(|| Vec::with_capacity(BUF_SIZE)).take(NUM_BUFFERS)
-    ///     );
     ///     pool.register()?;
     ///     // ...
     ///     Ok(())
@@ -152,7 +152,6 @@ impl FixedBufPool {
     pub fn new(bufs: impl IntoIterator<Item = Vec<u8>>) -> Self {
         FixedBufPool {
             inner: Rc::new(RefCell::new(Inner::new(bufs.into_iter()))),
-            driver: CONTEXT.with(|x| x.weak().expect("Not in a runtime context")),
         }
     }
 
@@ -176,10 +175,12 @@ impl FixedBufPool {
     /// of the `tokio-uring` runtime this call is made in, the function returns
     /// an error.
     pub fn register(&self) -> io::Result<()> {
-        self.driver
-            .upgrade()
-            .expect("Runtime context is no longer present")
-            .register_buffers(Rc::clone(&self.inner) as _)
+        CONTEXT.with(|x| {
+            x.handle()
+                .as_ref()
+                .expect("Not in a runtime context")
+                .register_buffers(Rc::clone(&self.inner) as _)
+        })
     }
 
     /// Unregisters this collection of buffers.
@@ -198,10 +199,12 @@ impl FixedBufPool {
     /// an error. Calling `unregister` when no `FixedBufPool` is currently
     /// registered on this runtime also returns an error.
     pub fn unregister(&self) -> io::Result<()> {
-        self.driver
-            .upgrade()
-            .expect("Runtime context is no longer present")
-            .unregister_buffers(Rc::clone(&self.inner) as _)
+        CONTEXT.with(|x| {
+            x.handle()
+                .as_ref()
+                .expect("Not in a runtime context")
+                .unregister_buffers(Rc::clone(&self.inner) as _)
+        })
     }
 
     /// Returns a buffer of requested capacity from this pool
