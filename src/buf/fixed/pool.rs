@@ -249,17 +249,19 @@ impl FixedBufPool {
     /// timeout using, for example, `tokio::util::timeout`.
     pub async fn next(&self, cap: usize) -> FixedBuf {
         // Fast path: get the buffer if it's already available
-        let mut inner = self.inner.borrow_mut();
-        if let Some(data) = inner.try_next(cap) {
-            // Safety: the validity of buffer data is ensured by
-            // plumbing::Pool::try_next
-            let buf = unsafe { FixedBuf::new(Rc::clone(&self.inner) as _, data) };
-            return buf;
-        }
+        let notify = {
+            let mut inner = self.inner.borrow_mut();
+            if let Some(data) = inner.try_next(cap) {
+                // Safety: the validity of buffer data is ensured by
+                // plumbing::Pool::try_next
+                let buf = unsafe { FixedBuf::new(Rc::clone(&self.inner) as _, data) };
+                return buf;
+            }
+            inner.notify_on_next(cap)
+        };
 
         // Poll for a buffer, engaging the `Notify` machinery.
-        self.next_when_notified(cap, inner.notify_on_next(cap))
-            .await
+        self.next_when_notified(cap, notify).await
     }
 
     #[cold]
