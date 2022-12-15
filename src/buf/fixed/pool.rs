@@ -8,14 +8,15 @@
 
 use super::plumbing;
 use super::FixedBuf;
-
 use crate::runtime::CONTEXT;
+
+use tokio::pin;
+use tokio::sync::Notify;
+
 use std::cell::RefCell;
-use std::future::Future;
 use std::io;
-use std::pin::Pin;
 use std::rc::Rc;
-use std::task::{Context, Poll};
+use std::sync::Arc;
 
 /// A dynamic collection of I/O buffers pre-registered with the kernel.
 ///
@@ -236,58 +237,50 @@ impl FixedBufPool {
         })
     }
 
-    /// Attempts to obtain a buffer of requested capacity from this pool
-    /// that is not currently owned by any other [`FixedBuf`] handle.
-    /// Registers the current task for wakeup if no such free buffer is
-    /// available. The task is woken up when a `FixedBuf` handle belonging
-    /// to this pool is dropped.
-    ///
-    /// This is a low-level method. Applications using `FixedBufPool` in
-    /// an async context should use [`next`].
-    ///
-    /// [`next`]: Self::next
-    pub fn poll_next(&mut self, cap: usize, cx: &mut Context<'_>) -> Poll<FixedBuf> {
-        let mut inner = self.inner.borrow_mut();
-        let data = ready!(inner.poll_next(cap, cx));
-        let registry = Rc::clone(&self.inner);
-        // Safety: the validity of buffer data is ensured by
-        // plumbing::Pool::poll_next
-        let buf = unsafe { FixedBuf::new(registry, data) };
-        Poll::Ready(buf)
-    }
-
-    /// Returns a future that will be resolved to a buffer of requested capacity
-    /// when it is or becomes available in this pool. This may happen when a
-    /// [`FixedBuf`] handle owning a buffer of the same capacity is dropped.
-    ///
-    /// Equivalent to:
-    ///
-    /// ```ignore
-    /// async fn next(&mut self, cap: usize) -> FixedBuf;
-    /// ```
+    /// Resolves to a buffer of requested capacity
+    /// when it is or becomes available in this pool.
+    /// This may happen when a [`FixedBuf`] handle owning a buffer
+    /// of the same capacity is dropped.
     ///
     /// If no matching buffers are available and none are being released,
     /// this asynchronous function will never resolve. Applications should take
     /// care to wait on the returned future concurrently with some tasks that
     /// will complete I/O operations owning the buffers, or back it up with a
     /// timeout using, for example, `tokio::util::timeout`.
-    pub fn next(&mut self, cap: usize) -> Next<'_> {
-        Next { pool: self, cap }
+    pub async fn next(&self, cap: usize) -> FixedBuf {
+        // Fast path: get the buffer if it's already available
+        let mut inner = self.inner.borrow_mut();
+        if let Some(data) = inner.try_next(cap) {
+            // Safety: the validity of buffer data is ensured by
+            // plumbing::Pool::try_next
+            let buf = unsafe { FixedBuf::new(Rc::clone(&self.inner) as _, data) };
+            return buf;
+        }
+
+        // Poll for a buffer, engaging the `Notify` machinery.
+        self.next_when_notified(cap, inner.notify_on_next(cap))
+            .await
     }
-}
 
-/// The future returned by [`FixedBufPool::next`].
-pub struct Next<'a> {
-    pool: &'a mut FixedBufPool,
-    cap: usize,
-}
+    #[cold]
+    async fn next_when_notified(&self, cap: usize, notify: Arc<Notify>) -> FixedBuf {
+        let notified = notify.notified();
+        pin!(notified);
+        loop {
+            // In the single-threaded case, no buffers could get checked in
+            // between us calling `try_next` and here, so we can't miss a wakeup.
+            notified.as_mut().await;
 
-impl<'a> Future for Next<'a> {
-    type Output = FixedBuf;
+            if let Some(data) = self.inner.borrow_mut().try_next(cap) {
+                // Safety: the validity of buffer data is ensured by
+                // plumbing::Pool::try_next
+                let buf = unsafe { FixedBuf::new(Rc::clone(&self.inner) as _, data) };
+                return buf;
+            }
 
-    #[inline]
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<FixedBuf> {
-        let cap = self.cap;
-        self.pool.poll_next(cap, cx)
+            // Reset the `Notified` future in case another call to `try_next`
+            // got the buffer before us.
+            notified.set(notify.notified());
+        }
     }
 }

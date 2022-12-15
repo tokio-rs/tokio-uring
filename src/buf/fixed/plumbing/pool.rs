@@ -1,12 +1,14 @@
 use crate::buf::fixed::{handle::CheckedOutBuf, FixedBuffers};
 
 use libc::{iovec, UIO_MAXIOV};
+use tokio::sync::Notify;
+
 use std::cmp;
 use std::collections::HashMap;
 use std::mem;
 use std::ptr;
 use std::slice;
-use std::task::{Context, Poll, Waker};
+use std::sync::Arc;
 
 // Internal state shared by FixedBufPool and FixedBuf handles.
 pub(crate) struct Pool {
@@ -21,8 +23,8 @@ pub(crate) struct Pool {
     states: Vec<BufState>,
     // Table of head indices of the free buffer lists in each size bucket.
     free_buf_head_by_cap: HashMap<usize, u16>,
-    // Wakers for tasks pending on poll_next
-    waiting_on_next: Vec<Waker>,
+    // Used to notify tasks pending on Next
+    notify_next_by_cap: HashMap<usize, Arc<Notify>>,
 }
 
 // State information of a buffer in the registry,
@@ -76,7 +78,7 @@ impl Pool {
             orig_cap,
             states,
             free_buf_head_by_cap,
-            waiting_on_next: vec![],
+            notify_next_by_cap: HashMap::new(),
         }
     }
 
@@ -118,15 +120,9 @@ impl Pool {
         })
     }
 
-    pub(crate) fn poll_next(&mut self, cap: usize, cx: &mut Context<'_>) -> Poll<CheckedOutBuf> {
-        if let Some(buf) = self.try_next(cap) {
-            return Poll::Ready(buf);
-        }
-        let waker = cx.waker();
-        if !self.waiting_on_next.iter().any(|w| w.will_wake(waker)) {
-            self.waiting_on_next.push(waker.clone());
-        }
-        Poll::Pending
+    pub(crate) fn notify_on_next(&mut self, cap: usize) -> Arc<Notify> {
+        let notify = self.notify_next_by_cap.entry(cap).or_default();
+        Arc::clone(notify)
     }
 
     fn check_in_internal(&mut self, index: u16, init_len: usize) {
@@ -144,11 +140,9 @@ impl Pool {
 
         *state = BufState::Free { init_len, next };
 
-        if !self.waiting_on_next.is_empty() {
-            // Wake up tasks pending on poll_next
-            for waker in mem::take(&mut self.waiting_on_next) {
-                waker.wake()
-            }
+        if let Some(notify) = self.notify_next_by_cap.get(&cap) {
+            // Wake up a single task pending on `next`
+            notify.notify_one();
         }
     }
 }
