@@ -23,7 +23,7 @@ pub(crate) struct Pool {
     states: Vec<BufState>,
     // Table of head indices of the free buffer lists in each size bucket.
     free_buf_head_by_cap: HashMap<usize, u16>,
-    // Used to notify tasks pending on Next
+    // Used to notify tasks pending on `next`
     notify_next_by_cap: HashMap<usize, Arc<Notify>>,
 }
 
