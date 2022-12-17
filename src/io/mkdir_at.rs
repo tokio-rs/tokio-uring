@@ -36,7 +36,6 @@ impl Completable for Mkdir {
     type Output = io::Result<()>;
 
     fn complete(self, cqe: CqeResult) -> Self::Output {
-        cqe.result?;
-        Ok(())
+        cqe.result.map(|_| ())
     }
 }
