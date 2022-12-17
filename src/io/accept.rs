@@ -1,6 +1,7 @@
 use crate::io::{SharedFd, Socket};
 use crate::runtime::driver::op;
 use crate::runtime::driver::op::{Completable, Op};
+use crate::runtime::CONTEXT;
 use std::net::SocketAddr;
 use std::{boxed::Box, io};
 
@@ -17,21 +18,23 @@ impl Op<Accept> {
             unsafe { std::mem::zeroed() },
             std::mem::size_of::<libc::sockaddr_storage>() as libc::socklen_t,
         ));
-        Op::submit_with(
-            Accept {
-                fd: fd.clone(),
-                socketaddr,
-            },
-            |accept| {
-                opcode::Accept::new(
-                    types::Fd(accept.fd.raw_fd()),
-                    &mut accept.socketaddr.0 as *mut _ as *mut _,
-                    &mut accept.socketaddr.1,
-                )
-                .flags(libc::O_CLOEXEC)
-                .build()
-            },
-        )
+        CONTEXT.with(|x| {
+            x.handle().expect("Not in a runtime context").submit_op(
+                Accept {
+                    fd: fd.clone(),
+                    socketaddr,
+                },
+                |accept| {
+                    opcode::Accept::new(
+                        types::Fd(accept.fd.raw_fd()),
+                        &mut accept.socketaddr.0 as *mut _ as *mut _,
+                        &mut accept.socketaddr.1,
+                    )
+                    .flags(libc::O_CLOEXEC)
+                    .build()
+                },
+            )
+        })
     }
 }
 

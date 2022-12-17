@@ -46,14 +46,6 @@ impl Socket {
         op.await
     }
 
-    pub(crate) async fn write_fixed<T>(&self, buf: T) -> crate::BufResult<usize, T>
-    where
-        T: BoundedBuf<Buf = FixedBuf>,
-    {
-        let op = Op::write_fixed_at(&self.fd, buf, 0).unwrap();
-        op.await
-    }
-
     pub async fn write_all<T: BoundedBuf>(&self, buf: T) -> crate::BufResult<(), T> {
         let orig_bounds = buf.bounds();
         let (res, buf) = self.write_all_slice(buf.slice_full()).await;
@@ -63,6 +55,54 @@ impl Socket {
     async fn write_all_slice<T: IoBuf>(&self, mut buf: Slice<T>) -> crate::BufResult<(), T> {
         while buf.bytes_init() != 0 {
             let res = self.write(buf).await;
+            match res {
+                (Ok(0), slice) => {
+                    return (
+                        Err(std::io::Error::new(
+                            std::io::ErrorKind::WriteZero,
+                            "failed to write whole buffer",
+                        )),
+                        slice.into_inner(),
+                    )
+                }
+                (Ok(n), slice) => {
+                    buf = slice.slice(n..);
+                }
+
+                // No match on an EINTR error is performed because this
+                // crate's design ensures we are not calling the 'wait' option
+                // in the ENTER syscall. Only an Enter with 'wait' can generate
+                // an EINTR according to the io_uring man pages.
+                (Err(e), slice) => return (Err(e), slice.into_inner()),
+            }
+        }
+
+        (Ok(()), buf.into_inner())
+    }
+
+    pub(crate) async fn write_fixed<T>(&self, buf: T) -> crate::BufResult<usize, T>
+    where
+        T: BoundedBuf<Buf = FixedBuf>,
+    {
+        let op = Op::write_fixed_at(&self.fd, buf, 0).unwrap();
+        op.await
+    }
+
+    pub(crate) async fn write_fixed_all<T>(&self, buf: T) -> crate::BufResult<(), T>
+    where
+        T: BoundedBuf<Buf = FixedBuf>,
+    {
+        let orig_bounds = buf.bounds();
+        let (res, buf) = self.write_fixed_all_slice(buf.slice_full()).await;
+        (res, T::from_buf_bounds(buf, orig_bounds))
+    }
+
+    async fn write_fixed_all_slice(
+        &self,
+        mut buf: Slice<FixedBuf>,
+    ) -> crate::BufResult<(), FixedBuf> {
+        while buf.bytes_init() != 0 {
+            let res = self.write_fixed(buf).await;
             match res {
                 (Ok(0), slice) => {
                     return (
@@ -194,19 +234,17 @@ impl Socket {
     /// This function will cause all pending and future I/O on the specified portions to return
     /// immediately with an appropriate value.
     pub fn shutdown(&self, how: std::net::Shutdown) -> io::Result<()> {
-        use std::os::unix::io::FromRawFd;
-
-        let fd = self.as_raw_fd();
-        // SAFETY: Our fd is the handle the kernel has given us for a socket,
-        // TCP or Unix, Listener or Stream, so it is a valid file descriptor/socket.
-        // Create a socket2::Socket long enough to call its shutdown method
-        // and then forget it so the socket is not otherwise dropped here.
-        let s = unsafe { socket2::Socket::from_raw_fd(fd) };
-        let result = s.shutdown(how);
-        std::mem::forget(s);
-        result
+        let socket_ref = socket2::SockRef::from(self);
+        socket_ref.shutdown(how)
     }
 
+    /// Set the value of the `TCP_NODELAY` option on this socket.
+    ///
+    /// If set, this option disables the Nagle algorithm. This means that
+    /// segments are always sent as soon as possible, even if there is only a
+    /// small amount of data. When not set, data is buffered until there is a
+    /// sufficient amount to send out, thereby avoiding the frequent sending of
+    /// small packets.
     pub fn set_nodelay(&self, nodelay: bool) -> io::Result<()> {
         let socket_ref = socket2::SockRef::from(self);
         socket_ref.set_nodelay(nodelay)

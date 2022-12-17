@@ -1,9 +1,6 @@
-use driver::Driver;
-
 use std::future::Future;
 use std::io;
 use std::mem::ManuallyDrop;
-use std::os::unix::io::AsRawFd;
 use tokio::io::unix::AsyncFd;
 use tokio::task::LocalSet;
 
@@ -18,11 +15,14 @@ thread_local! {
 
 /// The Runtime executor
 pub struct Runtime {
+    /// Tokio runtime, always current-thread
+    tokio_rt: ManuallyDrop<tokio::runtime::Runtime>,
+
     /// LocalSet for !Send tasks
     local: ManuallyDrop<LocalSet>,
 
-    /// Tokio runtime, always current-thread
-    rt: ManuallyDrop<tokio::runtime::Runtime>,
+    /// Strong reference to the driver.
+    driver: driver::Handle,
 }
 
 /// Spawns a new asynchronous task, returning a [`JoinHandle`] for it.
@@ -61,39 +61,26 @@ impl Runtime {
         let rt = tokio::runtime::Builder::new_current_thread()
             .on_thread_park(|| {
                 CONTEXT.with(|x| {
-                    let _ = x.with_driver_mut(|d| d.uring.submit());
+                    let _ = x
+                        .handle()
+                        .expect("Internal error, driver context not present when invoking hooks")
+                        .flush();
                 });
             })
             .enable_all()
             .build()?;
 
-        let rt = ManuallyDrop::new(rt);
-
+        let tokio_rt = ManuallyDrop::new(rt);
         let local = ManuallyDrop::new(LocalSet::new());
+        let driver = driver::Handle::new(b)?;
 
-        let driver = Driver::new(b)?;
+        start_uring_wakes_task(&tokio_rt, &local, driver.clone());
 
-        let driver_fd = driver.as_raw_fd();
-
-        CONTEXT.with(|cx| cx.set_driver(driver));
-
-        let drive = {
-            let _guard = rt.enter();
-            let driver = AsyncFd::new(driver_fd).unwrap();
-
-            async move {
-                loop {
-                    // Wait for read-readiness
-                    let mut guard = driver.readable().await.unwrap();
-                    CONTEXT.with(|cx| cx.with_driver_mut(|driver| driver.tick()));
-                    guard.clear_ready();
-                }
-            }
-        };
-
-        local.spawn_local(drive);
-
-        Ok(Runtime { local, rt })
+        Ok(Runtime {
+            local,
+            tokio_rt,
+            driver,
+        })
     }
 
     /// Runs a future to completion on the current runtime
@@ -101,27 +88,60 @@ impl Runtime {
     where
         F: Future,
     {
+        struct ContextGuard;
+
+        impl Drop for ContextGuard {
+            fn drop(&mut self) {
+                CONTEXT.with(|cx| cx.unset_driver());
+            }
+        }
+
+        CONTEXT.with(|cx| cx.set_handle(self.driver.clone()));
+
+        let _guard = ContextGuard;
+
         tokio::pin!(future);
 
-        self.rt
-            .block_on(self.local.run_until(crate::future::poll_fn(|cx| {
+        let res = self
+            .tokio_rt
+            .block_on(self.local.run_until(std::future::poll_fn(|cx| {
                 // assert!(drive.as_mut().poll(cx).is_pending());
                 future.as_mut().poll(cx)
-            })))
+            })));
+
+        res
     }
 }
 
 impl Drop for Runtime {
     fn drop(&mut self) {
-        // drop tasks
+        // drop tasks in correct order
         unsafe {
             ManuallyDrop::drop(&mut self.local);
-            ManuallyDrop::drop(&mut self.rt);
+            ManuallyDrop::drop(&mut self.tokio_rt);
         }
+    }
+}
 
-        // once tasks are dropped, we can unset the driver
-        // this will block until all completions are received
-        CONTEXT.with(|rc| rc.unset_driver())
+fn start_uring_wakes_task(
+    tokio_rt: &tokio::runtime::Runtime,
+    local: &LocalSet,
+    driver: driver::Handle,
+) {
+    let _guard = tokio_rt.enter();
+    let async_driver_handle = AsyncFd::new(driver).unwrap();
+
+    local.spawn_local(drive_uring_wakes(async_driver_handle));
+}
+
+async fn drive_uring_wakes(driver: AsyncFd<driver::Handle>) {
+    loop {
+        // Wait for read-readiness
+        let mut guard = driver.readable().await.unwrap();
+
+        guard.get_inner().dispatch_completions();
+
+        guard.clear_ready();
     }
 }
 

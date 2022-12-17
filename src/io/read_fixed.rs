@@ -4,6 +4,7 @@ use crate::io::SharedFd;
 use crate::runtime::driver::op::{self, Completable, Op};
 use crate::BufResult;
 
+use crate::runtime::CONTEXT;
 use std::io;
 
 pub(crate) struct ReadFixed<T> {
@@ -27,21 +28,23 @@ where
     ) -> io::Result<Op<ReadFixed<T>>> {
         use io_uring::{opcode, types};
 
-        Op::submit_with(
-            ReadFixed {
-                fd: fd.clone(),
-                buf,
-            },
-            |read_fixed| {
-                // Get raw buffer info
-                let ptr = read_fixed.buf.stable_mut_ptr();
-                let len = read_fixed.buf.bytes_total();
-                let buf_index = read_fixed.buf.get_buf().buf_index();
-                opcode::ReadFixed::new(types::Fd(fd.raw_fd()), ptr, len as _, buf_index)
-                    .offset(offset as _)
-                    .build()
-            },
-        )
+        CONTEXT.with(|x| {
+            x.handle().expect("Not in a runtime context").submit_op(
+                ReadFixed {
+                    fd: fd.clone(),
+                    buf,
+                },
+                |read_fixed| {
+                    // Get raw buffer info
+                    let ptr = read_fixed.buf.stable_mut_ptr();
+                    let len = read_fixed.buf.bytes_total();
+                    let buf_index = read_fixed.buf.get_buf().buf_index();
+                    opcode::ReadFixed::new(types::Fd(fd.raw_fd()), ptr, len as _, buf_index)
+                        .offset(offset as _)
+                        .build()
+                },
+            )
+        })
     }
 }
 

@@ -1,4 +1,5 @@
 use crate::runtime::driver::op::{Completable, CqeResult, MultiCQEFuture, Op, Updateable};
+use crate::runtime::CONTEXT;
 use crate::{buf::BoundedBuf, io::SharedFd, BufResult};
 use std::io;
 
@@ -18,20 +19,22 @@ impl<T: BoundedBuf> Op<SendZc<T>, MultiCQEFuture> {
     pub(crate) fn send_zc(fd: &SharedFd, buf: T) -> io::Result<Self> {
         use io_uring::{opcode, types};
 
-        Op::submit_with(
-            SendZc {
-                fd: fd.clone(),
-                buf,
-                bytes: 0,
-            },
-            |send| {
-                // Get raw buffer info
-                let ptr = send.buf.stable_ptr();
-                let len = send.buf.bytes_init();
+        CONTEXT.with(|x| {
+            x.handle().expect("Not in a runtime context").submit_op(
+                SendZc {
+                    fd: fd.clone(),
+                    buf,
+                    bytes: 0,
+                },
+                |send| {
+                    // Get raw buffer info
+                    let ptr = send.buf.stable_ptr();
+                    let len = send.buf.bytes_init();
 
-                opcode::SendZc::new(types::Fd(fd.raw_fd()), ptr, len as _).build()
-            },
-        )
+                    opcode::SendZc::new(types::Fd(fd.raw_fd()), ptr, len as _).build()
+                },
+            )
+        })
     }
 }
 

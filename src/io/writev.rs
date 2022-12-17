@@ -1,4 +1,5 @@
 use crate::runtime::driver::op::{Completable, CqeResult, Op};
+use crate::runtime::CONTEXT;
 use crate::{buf::IoBuf, io::SharedFd, BufResult};
 use libc::iovec;
 use std::io;
@@ -32,22 +33,24 @@ impl<T: IoBuf> Op<Writev<T>> {
             })
             .collect();
 
-        Op::submit_with(
-            Writev {
-                fd: fd.clone(),
-                bufs,
-                iovs,
-            },
-            |write| {
-                opcode::Writev::new(
-                    types::Fd(fd.raw_fd()),
-                    write.iovs.as_ptr(),
-                    write.iovs.len() as u32,
-                )
-                .offset(offset as _)
-                .build()
-            },
-        )
+        CONTEXT.with(|x| {
+            x.handle().expect("Not in a runtime context").submit_op(
+                Writev {
+                    fd: fd.clone(),
+                    bufs,
+                    iovs,
+                },
+                |write| {
+                    opcode::Writev::new(
+                        types::Fd(fd.raw_fd()),
+                        write.iovs.as_ptr(),
+                        write.iovs.len() as u32,
+                    )
+                    .offset(offset as _)
+                    .build()
+                },
+            )
+        })
     }
 }
 

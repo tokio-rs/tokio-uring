@@ -5,25 +5,30 @@ use crate::runtime::CONTEXT;
 use libc::{iovec, UIO_MAXIOV};
 use std::cell::RefCell;
 use std::cmp;
+use std::collections::HashMap;
 use std::io;
 use std::mem;
 use std::ptr;
 use std::rc::Rc;
 use std::slice;
 
-/// An indexed collection of I/O buffers pre-registered with the kernel.
+/// A dynamic collection of I/O buffers pre-registered with the kernel.
 ///
-/// `FixedBufRegistry` allows the application to manage a collection of buffers
+/// `FixedBufPool` allows the application to manage a collection of buffers
 /// allocated in memory, that can be registered in the current `tokio-uring`
-/// context using the [`register`] method. The buffers are accessed by their
-/// indices using the [`check_out`] method.
+/// context using the [`register`] method. Unlike [`FixedBufRegistry`],
+/// individual buffers are not retrieved by index; instead, an available
+/// buffer matching a specified capacity can be retrieved with the [`try_next`]
+/// method. This allows some flexibility in managing sets of buffers with
+/// different capacity tiers. The need to maintain lists of free buffers,
+/// however, imposes additional runtime overhead.
 ///
-/// A `FixedBufRegistry` value is a lightweight handle for a collection of
-/// allocated buffers. Cloning of a `FixedBufRegistry` creates a new reference to
+/// A `FixedBufPool` value is a lightweight handle for a collection of
+/// allocated buffers. Cloning of a `FixedBufPool` creates a new reference to
 /// the same collection of buffers.
 ///
 /// The buffers of the collection are not deallocated until:
-/// - all `FixedBufRegistry` references to the collection have been dropped;
+/// - all `FixedBufPool` references to the collection have been dropped;
 /// - all [`FixedBuf`] handles to individual buffers in the collection have
 ///   been dropped, including the buffer handles owned by any I/O operations
 ///   in flight;
@@ -31,14 +36,56 @@ use std::slice;
 ///   has been dropped.
 ///
 /// [`register`]: Self::register
-/// [`check_out`]: Self::check_out
+/// [`try_next`]: Self::try_next
+/// [`FixedBufRegistry`]: super::FixedBufRegistry
 /// [`Runtime`]: crate::Runtime
+///
+/// # Examples
+///
+/// ```
+/// use tokio_uring::buf::fixed::FixedBufPool;
+/// use tokio_uring::buf::IoBuf;
+/// use std::iter;
+/// use std::mem;
+///
+/// # #[allow(non_snake_case)]
+/// # fn main() -> Result<(), std::io::Error> {
+/// # use nix::sys::resource::{getrlimit, Resource};
+/// # let (memlock_limit, _) = getrlimit(Resource::RLIMIT_MEMLOCK)?;
+/// # let BUF_SIZE_LARGE = memlock_limit as usize / 8;
+/// # let BUF_SIZE_SMALL = memlock_limit as usize / 16;
+/// tokio_uring::start(async {
+///     let pool = FixedBufPool::new(
+///          iter::once(Vec::with_capacity(BUF_SIZE_LARGE))
+///              .chain(iter::repeat_with(|| Vec::with_capacity(BUF_SIZE_SMALL)).take(2))
+///      );
+///
+///     pool.register()?;
+///
+///     let buf = pool.try_next(BUF_SIZE_LARGE).unwrap();
+///     assert_eq!(buf.bytes_total(), BUF_SIZE_LARGE);
+///     let next = pool.try_next(BUF_SIZE_LARGE);
+///     assert!(next.is_none());
+///     let buf1 = pool.try_next(BUF_SIZE_SMALL).unwrap();
+///     assert_eq!(buf1.bytes_total(), BUF_SIZE_SMALL);
+///     let buf2 = pool.try_next(BUF_SIZE_SMALL).unwrap();
+///     assert_eq!(buf2.bytes_total(), BUF_SIZE_SMALL);
+///     let next = pool.try_next(BUF_SIZE_SMALL);
+///     assert!(next.is_none());
+///     mem::drop(buf);
+///     let buf = pool.try_next(BUF_SIZE_LARGE).unwrap();
+///     assert_eq!(buf.bytes_total(), BUF_SIZE_LARGE);
+///
+///     Ok(())
+/// })
+/// # }
+/// ```
 #[derive(Clone)]
-pub struct FixedBufRegistry {
+pub struct FixedBufPool {
     inner: Rc<RefCell<Inner>>,
 }
 
-impl FixedBufRegistry {
+impl FixedBufPool {
     /// Creates a new collection of buffers from the provided allocated vectors.
     ///
     /// The buffers are assigned 0-based indices in the order of the iterable
@@ -58,7 +105,7 @@ impl FixedBufRegistry {
     /// [`iter::repeat`]: std::iter::repeat
     ///
     /// ```should_panic
-    /// use tokio_uring::buf::fixed::FixedBufRegistry;
+    /// use tokio_uring::buf::fixed::FixedBufPool;
     /// use std::iter;
     ///
     /// # #[allow(non_snake_case)]
@@ -67,12 +114,12 @@ impl FixedBufRegistry {
     /// # let (memlock_limit, _) = getrlimit(Resource::RLIMIT_MEMLOCK)?;
     /// # let NUM_BUFFERS = std::cmp::max(memlock_limit as usize / 4096 / 8, 1);
     /// # let BUF_SIZE = 4096;
-    /// let registry = FixedBufRegistry::new(
+    /// let pool = FixedBufPool::new(
     ///     iter::repeat(Vec::with_capacity(BUF_SIZE)).take(NUM_BUFFERS)
     /// );
     ///
     /// tokio_uring::start(async {
-    ///     registry.register()?;
+    ///     pool.register()?;
     ///     // ...
     ///     Ok(())
     /// })
@@ -82,7 +129,7 @@ impl FixedBufRegistry {
     /// Instead, create the vectors with requested capacity directly:
     ///
     /// ```
-    /// use tokio_uring::buf::fixed::FixedBufRegistry;
+    /// use tokio_uring::buf::fixed::FixedBufPool;
     /// use std::iter;
     ///
     /// # #[allow(non_snake_case)]
@@ -91,19 +138,19 @@ impl FixedBufRegistry {
     /// # let (memlock_limit, _) = getrlimit(Resource::RLIMIT_MEMLOCK)?;
     /// # let NUM_BUFFERS = std::cmp::max(memlock_limit as usize / 4096 / 8, 1);
     /// # let BUF_SIZE = 4096;
-    /// let registry = FixedBufRegistry::new(
+    /// let pool = FixedBufPool::new(
     ///     iter::repeat_with(|| Vec::with_capacity(BUF_SIZE)).take(NUM_BUFFERS)
     /// );
     ///
     /// tokio_uring::start(async {
-    ///     registry.register()?;
+    ///     pool.register()?;
     ///     // ...
     ///     Ok(())
     /// })
     /// # }
     /// ```
     pub fn new(bufs: impl IntoIterator<Item = Vec<u8>>) -> Self {
-        FixedBufRegistry {
+        FixedBufPool {
             inner: Rc::new(RefCell::new(Inner::new(bufs.into_iter()))),
         }
     }
@@ -113,7 +160,7 @@ impl FixedBufRegistry {
     /// This method must be called in the context of a `tokio-uring` runtime.
     /// The registration persists for the lifetime of the runtime, unless
     /// revoked by the [`unregister`] method. Dropping the
-    /// `FixedBufRegistry` instance this method has been called on does not revoke
+    /// `FixedBufPool` instance this method has been called on does not revoke
     /// the registration or deallocate the buffers.
     ///
     /// [`unregister`]: Self::unregister
@@ -149,7 +196,7 @@ impl FixedBufRegistry {
     ///
     /// If another collection of buffers is currently registered in the context
     /// of the `tokio-uring` runtime this call is made in, the function returns
-    /// an error. Calling `unregister` when no `FixedBufRegistry` is currently
+    /// an error. Calling `unregister` when no `FixedBufPool` is currently
     /// registered on this runtime also returns an error.
     pub fn unregister(&self) -> io::Result<()> {
         CONTEXT.with(|x| {
@@ -160,25 +207,29 @@ impl FixedBufRegistry {
         })
     }
 
-    /// Returns a buffer identified by the specified index for use by the
-    /// application, unless the buffer is already in use.
+    /// Returns a buffer of requested capacity from this pool
+    /// that is not currently owned by any other [`FixedBuf`] handle.
+    /// If no such free buffer is available, returns `None`.
     ///
     /// The buffer is released to be available again once the
     /// returned `FixedBuf` handle has been dropped. An I/O operation
     /// using the buffer takes ownership of it and returns it once completed,
     /// preventing shared use of the buffer while the operation is in flight.
-    pub fn check_out(&self, index: usize) -> Option<FixedBuf> {
+    ///
+    /// An application should not rely on any particular order
+    /// in which available buffers are retrieved.
+    pub fn try_next(&self, cap: usize) -> Option<FixedBuf> {
         let mut inner = self.inner.borrow_mut();
-        inner.check_out(index).map(|data| {
+        inner.try_next(cap).map(|data| {
             let registry = Rc::clone(&self.inner);
             // Safety: the validity of buffer data is ensured by
-            // Inner::check_out
+            // Inner::try_next
             unsafe { FixedBuf::new(registry, data) }
         })
     }
 }
 
-// Internal state shared by FixedBufRegistry and FixedBuf handles.
+// Internal state shared by FixedBufPool and FixedBuf handles.
 struct Inner {
     // Pointer to an allocated array of iovec records referencing
     // the allocated buffers. The number of initialized records is the
@@ -189,13 +240,19 @@ struct Inner {
     states: Vec<BufState>,
     // Original capacity of raw_bufs as a Vec.
     orig_cap: usize,
+    // Table of head indices of the free buffer lists in each size bucket.
+    free_buf_head_by_cap: HashMap<usize, u16>,
 }
 
 // State information of a buffer in the registry,
 enum BufState {
     // The buffer is not in use.
-    // The field records the length of the initialized part.
-    Free { init_len: usize },
+    Free {
+        // This field records the length of the initialized part.
+        init_len: usize,
+        // Index of the next buffer of the same capacity in a free buffer list, if any.
+        next: Option<u16>,
+    },
     // The buffer is checked out.
     // Its data are logically owned by the FixedBuf handle,
     // which also keeps track of the length of the initialized part.
@@ -208,13 +265,22 @@ impl Inner {
         let (size_hint, _) = bufs.size_hint();
         let mut iovecs = Vec::with_capacity(size_hint);
         let mut states = Vec::with_capacity(size_hint);
-        for mut buf in bufs {
+        let mut free_buf_head_by_cap = HashMap::new();
+        for (index, mut buf) in bufs.enumerate() {
+            let cap = buf.capacity();
+
+            // Link the buffer as the head of the free list for its capacity.
+            // This constructs the free buffer list to be initially retrieved
+            // back to front, which should be of no difference to the user.
+            let next = free_buf_head_by_cap.insert(cap, index as u16);
+
             iovecs.push(iovec {
                 iov_base: buf.as_mut_ptr() as *mut _,
-                iov_len: buf.capacity(),
+                iov_len: cap,
             });
             states.push(BufState::Free {
                 init_len: buf.len(),
+                next,
             });
             mem::forget(buf);
         }
@@ -228,26 +294,41 @@ impl Inner {
             raw_bufs,
             states,
             orig_cap,
+            free_buf_head_by_cap,
         }
     }
 
-    // If the indexed buffer is free, changes its state to checked out
-    // and returns its data.
-    // If the buffer is already checked out, returns None.
-    fn check_out(&mut self, index: usize) -> Option<CheckedOutBuf> {
-        let state = self.states.get_mut(index)?;
-        let BufState::Free { init_len } = *state else {
-            return None
+    // If the free buffer list for this capacity is not empty, checks out the first buffer
+    // from the list and returns its data. Otherwise, returns None.
+    fn try_next(&mut self, cap: usize) -> Option<CheckedOutBuf> {
+        let free_head = self.free_buf_head_by_cap.get_mut(&cap)?;
+        let index = *free_head as usize;
+        let state = &mut self.states[index];
+
+        let (init_len, next) = match *state {
+            BufState::Free { init_len, next } => {
+                *state = BufState::CheckedOut;
+                (init_len, next)
+            }
+            BufState::CheckedOut => panic!("buffer is checked out"),
         };
 
-        *state = BufState::CheckedOut;
+        // Update the head of the free list for this capacity.
+        match next {
+            Some(i) => {
+                *free_head = i;
+            }
+            None => {
+                self.free_buf_head_by_cap.remove(&cap);
+            }
+        }
 
         // Safety: the allocated array under the pointer is valid
-        // for the lifetime of self, the index is inside the array
-        // as checked by Vec::get_mut above, called on the array of
-        // states that has the same length.
+        // for the lifetime of self, a free buffer index is inside the array,
+        // as also asserted by the indexing operation on the states array
+        // that has the same length.
         let iovec = unsafe { self.raw_bufs.as_ptr().add(index).read() };
-        debug_assert!(index <= u16::MAX as usize);
+        debug_assert_eq!(iovec.iov_len, cap);
         Some(CheckedOutBuf {
             iovec,
             init_len,
@@ -256,15 +337,19 @@ impl Inner {
     }
 
     fn check_in_internal(&mut self, index: u16, init_len: usize) {
-        let state = self
-            .states
-            .get_mut(index as usize)
-            .expect("invalid buffer index");
+        let cap = self.iovecs()[index as usize].iov_len;
+        let state = &mut self.states[index as usize];
         debug_assert!(
             matches!(state, BufState::CheckedOut),
             "the buffer must be checked out"
         );
-        *state = BufState::Free { init_len };
+
+        // Link the buffer as the new head of the free list for its capacity.
+        // Recently checked in buffers will be first to be reused,
+        // improving cache locality.
+        let next = self.free_buf_head_by_cap.insert(cap, index);
+
+        *state = BufState::Free { init_len, next };
     }
 }
 
@@ -288,7 +373,7 @@ impl Drop for Inner {
         };
         for (i, iovec) in iovecs.iter().enumerate() {
             match self.states[i] {
-                BufState::Free { init_len } => {
+                BufState::Free { init_len, next: _ } => {
                     let ptr = iovec.iov_base as *mut u8;
                     let cap = iovec.iov_len;
                     let v = unsafe { Vec::from_raw_parts(ptr, init_len, cap) };

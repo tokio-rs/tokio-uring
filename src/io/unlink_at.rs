@@ -1,4 +1,5 @@
 use crate::runtime::driver::op::{Completable, CqeResult, Op};
+use crate::runtime::CONTEXT;
 use std::ffi::CString;
 use std::io;
 use std::path::Path;
@@ -25,14 +26,18 @@ impl Op<Unlink> {
 
         let path = super::util::cstr(path)?;
 
-        Op::submit_with(Unlink { path }, |unlink| {
-            // Get a reference to the memory. The string will be held by the
-            // operation state and will not be accessed again until the operation
-            // completes.
-            let p_ref = unlink.path.as_c_str().as_ptr();
-            opcode::UnlinkAt::new(types::Fd(libc::AT_FDCWD), p_ref)
-                .flags(flags)
-                .build()
+        CONTEXT.with(|x| {
+            x.handle()
+                .expect("Not in a runtime context")
+                .submit_op(Unlink { path }, |unlink| {
+                    // Get a reference to the memory. The string will be held by the
+                    // operation state and will not be accessed again until the operation
+                    // completes.
+                    let p_ref = unlink.path.as_c_str().as_ptr();
+                    opcode::UnlinkAt::new(types::Fd(libc::AT_FDCWD), p_ref)
+                        .flags(flags)
+                        .build()
+                })
         })
     }
 }

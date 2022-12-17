@@ -1,6 +1,7 @@
 use super::{IoBuf, IoBufMut, Slice};
 
 use std::ops;
+use std::ptr;
 
 /// A possibly bounded view into an owned [`IoBuf`] buffer.
 ///
@@ -152,6 +153,29 @@ pub trait BoundedBufMut: BoundedBuf<Buf = Self::BufMut> {
     /// The caller must ensure that all bytes starting at `stable_mut_ptr()` up
     /// to `pos` are initialized and owned by the buffer.
     unsafe fn set_init(&mut self, pos: usize);
+
+    /// Copies the given byte slice into the buffer, starting at
+    /// this view's offset.
+    ///
+    /// # Panics
+    ///
+    /// If the slice's length exceeds the destination's total capacity,
+    /// this method panics.
+    fn put_slice(&mut self, src: &[u8]) {
+        assert!(self.bytes_total() >= src.len());
+        let dst = self.stable_mut_ptr();
+
+        // Safety:
+        // dst pointer validity is ensured by stable_mut_ptr;
+        // the length is checked to not exceed the view's total capacity;
+        // src (immutable) and dst (mutable) cannot point to overlapping memory;
+        // after copying the amount of bytes given by the slice, it's safe
+        // to mark them as initialized in the buffer.
+        unsafe {
+            ptr::copy_nonoverlapping(src.as_ptr(), dst, src.len());
+            self.set_init(src.len());
+        }
+    }
 }
 
 impl<T: IoBufMut> BoundedBufMut for T {

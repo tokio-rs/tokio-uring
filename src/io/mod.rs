@@ -20,9 +20,6 @@ mod read_fixed;
 
 mod readv;
 
-mod register_buffers;
-pub(crate) use register_buffers::{register_buffers, unregister_buffers};
-
 mod recv_from;
 
 mod rename_at;

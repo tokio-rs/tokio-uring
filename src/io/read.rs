@@ -3,6 +3,7 @@ use crate::io::SharedFd;
 use crate::BufResult;
 
 use crate::runtime::driver::op::{Completable, CqeResult, Op};
+use crate::runtime::CONTEXT;
 use std::io;
 
 pub(crate) struct Read<T> {
@@ -19,20 +20,22 @@ impl<T: BoundedBufMut> Op<Read<T>> {
     pub(crate) fn read_at(fd: &SharedFd, buf: T, offset: u64) -> io::Result<Op<Read<T>>> {
         use io_uring::{opcode, types};
 
-        Op::submit_with(
-            Read {
-                fd: fd.clone(),
-                buf,
-            },
-            |read| {
-                // Get raw buffer info
-                let ptr = read.buf.stable_mut_ptr();
-                let len = read.buf.bytes_total();
-                opcode::Read::new(types::Fd(fd.raw_fd()), ptr, len as _)
-                    .offset(offset as _)
-                    .build()
-            },
-        )
+        CONTEXT.with(|x| {
+            x.handle().expect("Not in a runtime context").submit_op(
+                Read {
+                    fd: fd.clone(),
+                    buf,
+                },
+                |read| {
+                    // Get raw buffer info
+                    let ptr = read.buf.stable_mut_ptr();
+                    let len = read.buf.bytes_total();
+                    opcode::Read::new(types::Fd(fd.raw_fd()), ptr, len as _)
+                        .offset(offset as _)
+                        .build()
+                },
+            )
+        })
     }
 }
 

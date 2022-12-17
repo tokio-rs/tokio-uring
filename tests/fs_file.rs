@@ -1,7 +1,6 @@
 use std::{
     io::prelude::*,
     os::unix::io::{AsRawFd, FromRawFd, RawFd},
-    ptr,
 };
 
 use tempfile::NamedTempFile;
@@ -263,7 +262,7 @@ fn write_fixed() {
 
         let fixed_buf = buffers.check_out(0).unwrap();
         let mut buf = fixed_buf;
-        push_slice_to_buf(&HELLO[..6], &mut buf);
+        buf.put_slice(&HELLO[..6]);
 
         let (res, _) = file.write_fixed_at(buf, 0).await;
         let n = res.unwrap();
@@ -271,7 +270,7 @@ fn write_fixed() {
 
         let fixed_buf = buffers.check_out(1).unwrap();
         let mut buf = fixed_buf;
-        push_slice_to_buf(&HELLO[6..], &mut buf);
+        buf.put_slice(&HELLO[6..]);
 
         let (res, _) = file.write_fixed_at(buf, 6).await;
         let n = res.unwrap();
@@ -287,7 +286,7 @@ fn tempfile() -> NamedTempFile {
 }
 
 async fn poll_once(future: impl std::future::Future) {
-    use future::poll_fn;
+    use std::future::poll_fn;
     // use std::future::Future;
     use std::task::Poll;
     use tokio::pin;
@@ -310,14 +309,5 @@ fn assert_invalid_fd(fd: RawFd) {
     match f.read_to_end(&mut buf) {
         Err(ref e) if e.raw_os_error() == Some(libc::EBADF) => {}
         res => panic!("{:?}", res),
-    }
-}
-
-fn push_slice_to_buf(src: &[u8], buf: &mut impl BoundedBufMut) {
-    assert!(buf.bytes_total() >= src.len());
-    let dst = buf.stable_mut_ptr();
-    unsafe {
-        ptr::copy_nonoverlapping(src.as_ptr(), dst, src.len());
-        buf.set_init(src.len());
     }
 }

@@ -133,7 +133,7 @@ async fn poll_once(future: impl std::future::Future) {
 
     pin!(future);
 
-    future::poll_fn(|cx| {
+    std::future::poll_fn(|cx| {
         assert!(future.as_mut().poll(cx).is_pending());
         Poll::Ready(())
     })
