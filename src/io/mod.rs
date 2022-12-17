@@ -7,6 +7,8 @@ mod connect;
 
 mod fsync;
 
+mod mkdir_at;
+
 mod noop;
 pub(crate) use noop::NoOp;
 

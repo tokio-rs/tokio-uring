@@ -2,6 +2,23 @@ use crate::runtime::driver::op::Op;
 use std::io;
 use std::path::Path;
 
+/// # Examples
+///
+/// ```no_run
+/// use tokio_uring::fs::create_dir;
+///
+/// fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     tokio_uring::start(async {
+///         create_dir("/some/dir").await?;
+///         Ok::<(), std::io::Error>(())
+///     })?;
+///     Ok(())
+/// }
+/// ```
+pub async fn create_dir<P: AsRef<Path>>(path: P) -> io::Result<()> {
+    Op::make_dir(path.as_ref())?.await
+}
+
 /// Removes an empty directory.
 ///
 /// # Examples
