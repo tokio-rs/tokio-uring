@@ -16,10 +16,7 @@ use std::path::Path;
 /// }
 /// ```
 pub async fn create_dir<P: AsRef<Path>>(path: P) -> io::Result<()> {
-    let op = Op::make_dir(path.as_ref())?;
-    op.await?;
-
-    Ok(())
+    Op::make_dir(path.as_ref())?.await
 }
 
 /// Removes an empty directory.

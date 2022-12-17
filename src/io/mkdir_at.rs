@@ -1,4 +1,5 @@
 use crate::runtime::driver::op::{Completable, CqeResult, Op};
+use crate::runtime::CONTEXT;
 
 use super::util::cstr;
 
@@ -19,13 +20,14 @@ impl Op<Mkdir> {
 
         let _path = cstr(path)?;
 
-        // Get a reference to the memory. The string will be held by the
-        // operation state and will not be accessed again until the operation
-        // completes.
-        let p_ref = _path.as_c_str().as_ptr();
+        CONTEXT.with(|x| {
+            x.handle()
+                .expect("Not in a runtime context")
+                .submit_op(Mkdir { _path }, |mkdir| {
+                    let p_ref = mkdir._path.as_c_str().as_ptr();
 
-        Op::submit_with(Mkdir { _path }, |_| {
-            opcode::MkDirAt::new(types::Fd(libc::AT_FDCWD), p_ref).build()
+                    opcode::MkDirAt::new(types::Fd(libc::AT_FDCWD), p_ref).build()
+                })
         })
     }
 }
