@@ -280,8 +280,14 @@ impl FixedBufPool {
                 return buf;
             }
 
-            // Reset the `Notified` future in case another call to `try_next`
-            // got the buffer before us.
+            // It's possible that the task did not get a buffer from `try_next`.
+            // The `Notify` entries are created once for each requested capacity
+            // and never removed, so this `Notify` could have been holding
+            // a permit from a buffer checked in previously when no tasks were
+            // waiting. Then a task would call `next` on this pool and receive
+            // the buffer without consuming the permit. It's also possible that
+            // a task calls `try_next` directly.
+            // Reset the `Notified` future to wait for another wakeup.
             notified.set(notify.notified());
         }
     }
