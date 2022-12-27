@@ -120,6 +120,8 @@ impl Pool {
         })
     }
 
+    // Returns a `Notify` to use for waking up tasks awaiting a buffer of
+    // the specified capacity.
     pub(crate) fn notify_on_next(&mut self, cap: usize) -> Arc<Notify> {
         let notify = self.notify_next_by_cap.entry(cap).or_default();
         Arc::clone(notify)
