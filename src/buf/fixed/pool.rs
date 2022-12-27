@@ -230,10 +230,10 @@ impl FixedBufPool {
     pub fn try_next(&self, cap: usize) -> Option<FixedBuf> {
         let mut inner = self.inner.borrow_mut();
         inner.try_next(cap).map(|data| {
-            let registry = Rc::clone(&self.inner);
+            let pool = Rc::clone(&self.inner);
             // Safety: the validity of buffer data is ensured by
             // plumbing::Pool::try_next
-            unsafe { FixedBuf::new(registry, data) }
+            unsafe { FixedBuf::new(pool, data) }
         })
     }
 
