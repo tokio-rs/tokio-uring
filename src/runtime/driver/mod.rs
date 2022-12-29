@@ -38,7 +38,7 @@ struct Ops {
 
 impl Driver {
     pub(crate) fn new(b: &crate::Builder) -> io::Result<Driver> {
-        let uring = b.urb.build(b.entries)?;
+        let uring = b.urb.build(b.sq_entries)?;
 
         Ok(Driver {
             ops: Ops::new(),

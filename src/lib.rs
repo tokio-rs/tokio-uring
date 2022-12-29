@@ -84,7 +84,7 @@ pub use runtime::Runtime;
 use crate::runtime::driver::op::Op;
 use std::future::Future;
 
-/// Start an `io_uring` enabled Tokio runtime.
+/// Starts an `io_uring` enabled Tokio runtime.
 ///
 /// All `tokio-uring` resource types must be used from within the context of a
 /// runtime. The `start` method initializes the runtime and runs it for the
@@ -146,7 +146,7 @@ pub fn start<F: Future>(future: F) -> F::Output {
     rt.block_on(future)
 }
 
-/// Create and return an io_uring::Builder that can then be modified
+/// Creates and returns an io_uring::Builder that can then be modified
 /// through its implementation methods.
 ///
 /// This function is provided to avoid requiring the user of this crate from
@@ -156,50 +156,67 @@ pub fn uring_builder() -> io_uring::Builder {
     io_uring::IoUring::builder()
 }
 
-/// Builder API to allow starting the runtime and creating the io_uring driver with non-default
-/// parameters.
+/// Builder API that can create and start the `io_uring` runtime with non-default parameters,
+/// while abstracting away the underlying io_uring crate.
 // #[derive(Clone, Default)]
 pub struct Builder {
-    entries: u32,
+    sq_entries: u32,
+    cq_entries: u32,
     urb: io_uring::Builder,
 }
 
-/// Return a Builder to allow setting parameters before calling the start method.
-/// Returns a Builder with our default values, all of which can be replaced with the methods below.
+/// Constructs a [`Builder`] with default settings.
+/// Use this to alter submission and completion queue parameters, and to `start` the io_uring runtime.
 ///
-/// Refer to Builder::start for an example.
+/// Refer to [`Builder::start`] for an example.
 pub fn builder() -> Builder {
     Builder {
-        entries: 256,
+        sq_entries: 256,
+        cq_entries: 512,
         urb: io_uring::IoUring::builder(),
     }
 }
 
 impl Builder {
-    /// Set number of submission queue entries in uring.
+    /// Sets the number of submission queue entries in uring. The default is 256.
     ///
-    /// The kernel will ensure it uses a power of two and will round this up if necessary.
-    /// The kernel requires the number of completion queue entries to be larger than
-    /// the submission queue entries so generally will double the sq entries count.
-    ///
-    /// The caller can specify even a larger cq entries count by using the uring_builder
-    /// as shown in the start example below.
-    pub fn entries(&mut self, e: u32) -> &mut Self {
-        self.entries = e;
+    /// The kernel requires the number of submission queue entries to be a power of two,
+    /// and that it be less than the number of completion queue entries.
+    /// This function will adjust the `cq_entries` value to be at least 2 times `sq_entries`
+    pub fn sq_entries(&mut self, sqe: u32) -> &mut Self {
+        self.sq_entries = sqe.next_power_of_two();
+        if self.cq_entries / 2 < self.sq_entries {
+            self.cq_entries = self.sq_entries * 2;
+        }
+        self.urb.setup_cqsize(self.cq_entries);
         self
     }
 
-    /// Replace the default io_uring Builder. This allows the caller to craft the io_uring Builder
-    /// using the io_uring crate's Builder API.
+    /// Sets the number of completion queue entries in uring. The default is 512.
     ///
-    /// Refer to the Builder start method for an example.
-    /// Refer to the io_uring::builder documentation for all the supported methods.
+    /// The kernel requires the number of completion queue entries to be a power of two,
+    /// and that it be greater than the number of submission queue entries.
+    /// This function will adjust the `cq_entries` value to be at least 2 times `sq_entries`
+    pub fn cq_entries(&mut self, cqe: u32) -> &mut Self {
+        self.cq_entries = cqe.next_power_of_two();
+        if (self.cq_entries / 2) < self.sq_entries {
+            self.sq_entries = self.cq_entries / 2;
+        }
+        self.urb.setup_cqsize(self.cq_entries);
+        self
+    }
+
+    /// Replaces the default [`io_uring::Builder`], which controls the settings for the
+    /// inner `io_uring` API. This interface offers many more settings and parameters,
+    /// but requires directly depending upon the `io_uring` crate.
+    ///
+    /// Refer to the [`io_uring::builder`] documentation for all the supported methods.
     pub fn uring_builder(&mut self, b: &io_uring::Builder) -> &mut Self {
         self.urb = b.clone();
         self
     }
 
-    /// Start an `io_uring` enabled Tokio runtime.
+    /// Starts an `io_uring` enabled Tokio runtime.
     ///
     /// # Examples
     ///
@@ -211,10 +228,8 @@ impl Builder {
     ///
     /// fn main() -> Result<(), Box<dyn std::error::Error>> {
     ///     tokio_uring::builder()
-    ///         .entries(64)
-    ///         .uring_builder(tokio_uring::uring_builder()
-    ///             .setup_cqsize(1024)
-    ///             )
+    ///         .sq_entries(64)
+    ///         .cq_entries(1024)
     ///         .start(async {
     ///             let listener = TcpListener::bind("127.0.0.1:8080").await?;
     ///

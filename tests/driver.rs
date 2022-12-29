@@ -107,8 +107,8 @@ fn completion_overflow() {
     });
 
     tokio_uring::builder()
-        .entries(squeue_entries)
-        .uring_builder(tokio_uring::uring_builder().setup_cqsize(cqueue_entries))
+        .sq_entries(squeue_entries)
+        .cq_entries(cqueue_entries)
         .start(async move {
             let mut js = JoinSet::new();
 

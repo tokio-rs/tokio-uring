@@ -92,6 +92,8 @@ pub struct UdpSocket {
 
 impl UdpSocket {
     /// Creates a new UDP socket and attempt to bind it to the addr provided.
+    /// Returns a future that resolves to a new instance of [`UdpSocket`] on success, 
+    /// or an [`io::Error`](std::io::Errror) on failure.
     pub async fn bind(socket_addr: SocketAddr) -> io::Result<UdpSocket> {
         let socket = Socket::bind(socket_addr, libc::SOCK_DGRAM)?;
         Ok(UdpSocket { inner: socket })
