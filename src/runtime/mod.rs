@@ -88,13 +88,21 @@ impl Runtime {
         })
     }
 
+    /// Runs a future to completion on the tokio-uring runtime. This is the
+    /// runtime's entry point.
+    ///
+    /// This runs the given future on the current thread, blocking until it is
+    /// complete, and yielding its resolved result. Any tasks, futures, or timers
+    /// which the future spawns internally will be executed on this runtime.
+    ///
+    /// Any spawned tasks will be suspended after `block_on` returns. Calling
+    /// `block_on` again will resume previously spawned tasks.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if the provided future panics, or if called within an
+    /// asynchronous execution context.
     /// Runs a future to completion on the current runtime.
-    ///
-    /// Returns a Future that resolves to the output of the
-    /// supplied future.
-    ///
-    /// Note: Unlike most [`Futures`](std::future::Future), this future will
-    /// run regardless of whether the returned future is polled.
     pub fn block_on<F>(&self, future: F) -> F::Output
     where
         F: Future,
