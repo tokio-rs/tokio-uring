@@ -93,7 +93,7 @@ pub struct UdpSocket {
 impl UdpSocket {
     /// Creates a new UDP socket and attempt to bind it to the addr provided.
     ///
-    /// Returns a future that resolves to a new instance of [`UdpSocket`] on success,
+    /// Returns a new instance of [`UdpSocket`] on success,
     /// or an [`io::Error`](std::io::Error) on failure.
     pub async fn bind(socket_addr: SocketAddr) -> io::Result<UdpSocket> {
         let socket = Socket::bind(socket_addr, libc::SOCK_DGRAM)?;
@@ -279,7 +279,7 @@ impl UdpSocket {
     /// Writes data into the socket from the specified buffer.
     ///
     /// Takes ownership of the buffer for the duration of the Future.
-    /// 
+    ///
     /// Returns the original buffer and quantity of data written.
     pub async fn write<T: BoundedBuf>(&self, buf: T) -> crate::BufResult<usize, T> {
         self.inner.write(buf).await
