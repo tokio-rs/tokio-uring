@@ -26,11 +26,7 @@ impl Default for Options {
 
 fn run_no_ops(opts: &Options, count: u64) -> Duration {
     let mut ring_opts = tokio_uring::uring_builder();
-    ring_opts
-        .setup_cqsize(opts.cq_size as _)
-        // .setup_sqpoll(10)
-        // .setup_sqpoll_cpu(1)
-        ;
+    ring_opts.setup_cqsize(opts.cq_size as _);
 
     let mut m = Duration::ZERO;
 
