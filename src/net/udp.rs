@@ -100,7 +100,7 @@ impl UdpSocket {
         Ok(UdpSocket { inner: socket })
     }
 
-    /// Returns the local address that this UDP socket is bound to.
+    /// Returns the local address to which this UDP socket is bound.
     ///
     /// This can be useful, for example, when binding to port 0 to
     /// figure out which port was actually bound.
@@ -198,8 +198,10 @@ impl UdpSocket {
         self.inner.connect(SockAddr::from(socket_addr)).await
     }
 
-    /// Sends data on the socket to the given address. On success, returns the
-    /// number of bytes written.
+    /// Sends data on the socket to the given address.
+    ///
+    /// On success, returns the number of bytes written.
+    /// This can be used on a socket regardless of whether it has been "connected".
     pub async fn send_to<T: BoundedBuf>(
         &self,
         buf: T,
@@ -254,7 +256,7 @@ impl UdpSocket {
         self.inner.read(buf).await
     }
 
-    /// Receives a single datagram message into a pre-mapped buffer.
+    /// Receives a single datagram message into a fixed, pre-registered buffer.
     ///
     /// Like [`read`], but using a pre-mapped buffer
     /// registered with [`FixedBufRegistry`].
@@ -276,12 +278,14 @@ impl UdpSocket {
 
     /// Writes data into the socket from the specified buffer.
     ///
+    /// Takes ownership of the buffer for the duration of the Future.
+    /// 
     /// Returns the original buffer and quantity of data written.
     pub async fn write<T: BoundedBuf>(&self, buf: T) -> crate::BufResult<usize, T> {
         self.inner.write(buf).await
     }
 
-    /// Writes data into the socket from a pre-mapped buffer.
+    /// Writes data into the socket from a fixed, pre-registered buffer.
     ///
     /// Like [`write`], but using a pre-mapped buffer
     /// registered with [`FixedBufRegistry`].

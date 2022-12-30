@@ -70,12 +70,17 @@ impl TcpStream {
         Self { inner }
     }
 
-    /// Read some data from the stream into the buffer, returning the original buffer and
-    /// quantity of data read.
+    /// Read some data from the stream into the buffer.
+    ///
+    /// Takes ownership of the buffer for the duration of the Future.
+    ///
+    /// Returns the original buffer and quantity of data read.
     pub async fn read<T: BoundedBufMut>(&self, buf: T) -> crate::BufResult<usize, T> {
         self.inner.read(buf).await
     }
 
+    /// Read some data from the stream into a fixed, pre-registered buffer.
+    ///
     /// Like [`read`], but using a pre-mapped buffer
     /// registered with [`FixedBufRegistry`].
     ///
@@ -94,8 +99,11 @@ impl TcpStream {
         self.inner.read_fixed(buf).await
     }
 
-    /// Write some data to the stream from the buffer, returning the original buffer and
-    /// quantity of data written.
+    /// Write some data to the stream from the buffer.
+    ///
+    /// Takes ownership of the buffer for the duration of the Future.
+    ///
+    /// Returns the original buffer and quantity of data written.
     pub async fn write<T: BoundedBuf>(&self, buf: T) -> crate::BufResult<usize, T> {
         self.inner.write(buf).await
     }
@@ -154,6 +162,8 @@ impl TcpStream {
         self.inner.write_all(buf).await
     }
 
+    /// Writes data into the socket from a fixed, pre-registered buffer.
+    ///
     /// Like [`write`], but using a pre-mapped buffer
     /// registered with [`FixedBufRegistry`].
     ///
@@ -184,7 +194,7 @@ impl TcpStream {
     ///
     /// This function will return the first error that [`write_fixed`] returns.
     ///
-    /// [`write_fixed`]: Self::write
+    /// [`write_fixed`]: Self::write_fixed
     pub async fn write_fixed_all<T>(&self, buf: T) -> crate::BufResult<(), T>
     where
         T: BoundedBuf<Buf = FixedBuf>,
@@ -192,8 +202,9 @@ impl TcpStream {
         self.inner.write_fixed_all(buf).await
     }
 
-    /// Write data from buffers into this socket returning how many bytes were
-    /// written.
+    /// Writes data from multiple buffers into this socket using the scatter/gather IO style.
+    ///
+    /// Takes ownership of the Vec of Buffers for the duration of the Future.
     ///
     /// This function will attempt to write the entire contents of `bufs`, but
     /// the entire write may not succeed, or the write may also generate an
