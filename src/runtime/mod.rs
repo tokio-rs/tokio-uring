@@ -14,8 +14,9 @@ thread_local! {
 }
 
 /// The Runtime Executor
-/// io_uring instances are always single-threaded. Correspondingly, this runtime is 
-/// current-thread only. 
+///
+/// io_uring instances are always single-threaded. Correspondingly, this runtime will
+/// execute whithin the current-thread only.
 pub struct Runtime {
     /// Tokio runtime, always current-thread
     tokio_rt: ManuallyDrop<tokio::runtime::Runtime>,
@@ -58,7 +59,8 @@ pub fn spawn<T: Future + 'static>(task: T) -> tokio::task::JoinHandle<T::Output>
 }
 
 impl Runtime {
-    /// Creates a new tokio_uring runtime on the current thread
+    /// Creates a new tokio_uring runtime on the current thread.
+    ///
     /// This takes the tokio-uring [`Builder`](crate::Builder) as a parameter.
     pub fn new(b: &crate::Builder) -> io::Result<Runtime> {
         let rt = tokio::runtime::Builder::new_current_thread()
@@ -87,12 +89,12 @@ impl Runtime {
     }
 
     /// Runs a future to completion on the current runtime.
+    ///
     /// Returns a Future that resolves to the output of the
     /// supplied future.
     ///
-    /// NOTE: Unlike most [`Futures`](std::future::Future), this future will
-    /// run regardless of whether the returned future
-    /// is polled or not. 
+    /// Note: Unlike most [`Futures`](std::future::Future), this future will
+    /// run regardless of whether the returned future is polled.
     pub fn block_on<F>(&self, future: F) -> F::Output
     where
         F: Future,

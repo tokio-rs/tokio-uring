@@ -3,12 +3,17 @@ use std::io;
 use std::path::Path;
 
 /// Creates a directory on the local filesystem.
+///
 /// Returns a future which resolves to unit on success, and ['std::io::Error'] on failure.
 ///
-/// Preconditions:
-/// 1. The specified directory must not already exist.
-/// 2. The parent directory must exist.
-/// 3. The user must have sufficient permissions to create the directory on the filesystem.
+/// # Errors
+///
+/// This function will return an error in the following situations, but is not
+/// limited to just these cases:
+///
+/// * User lacks permissions to create a directory at `path`.
+/// * A parent of the given path doesn't exist.
+/// * `path` already exists.
 ///
 /// # Examples
 ///
@@ -28,12 +33,18 @@ pub async fn create_dir<P: AsRef<Path>>(path: P) -> io::Result<()> {
 }
 
 /// Removes a directory on the local filesystem.
+///
 /// Returns a future which resolves to unit on success, and ['std::io::Error'] on failure.
 ///
-/// Preconditions:
-/// 1. The specified directory must exist.
-/// 2. The specified directory must be empty.
-/// 3. The user must have sufficient permissions to modify/remove a directory on the filesystem.
+/// # Errors
+///
+/// This function will return an error in the following situations, but is not
+/// limited to just these cases:
+///
+/// * `path` doesn't exist.
+/// * `path` isn't a directory.
+/// * The user lacks permissions to modify/remove the directory at the provided `path`.
+/// * The directory isn't empty.
 ///
 /// # Examples
 ///

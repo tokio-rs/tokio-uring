@@ -160,57 +160,41 @@ pub fn uring_builder() -> io_uring::Builder {
 /// while abstracting away the underlying io_uring crate.
 // #[derive(Clone, Default)]
 pub struct Builder {
-    sq_entries: u32,
-    cq_entries: u32,
+    entries: u32,
     urb: io_uring::Builder,
 }
 
 /// Constructs a [`Builder`] with default settings.
+///
 /// Use this to alter submission and completion queue parameters, and to `start` the io_uring runtime.
 ///
 /// Refer to [`Builder::start`] for an example.
 pub fn builder() -> Builder {
     Builder {
-        sq_entries: 256,
-        cq_entries: 512,
+        entries: 256,
         urb: io_uring::IoUring::builder(),
     }
 }
 
 impl Builder {
-    /// Sets the number of submission queue entries in uring. The default is 256.
+    /// Sets the number of Submission Queue entries in uring.
     ///
+    /// The default value is 256.
     /// The kernel requires the number of submission queue entries to be a power of two,
     /// and that it be less than the number of completion queue entries.
     /// This function will adjust the `cq_entries` value to be at least 2 times `sq_entries`
-    pub fn sq_entries(&mut self, sqe: u32) -> &mut Self {
-        self.sq_entries = sqe.next_power_of_two();
-        if self.cq_entries / 2 < self.sq_entries {
-            self.cq_entries = self.sq_entries * 2;
-        }
-        self.urb.setup_cqsize(self.cq_entries);
-        self
-    }
-
-    /// Sets the number of completion queue entries in uring. The default is 512.
-    ///
-    /// The kernel requires the number of completion queue entries to be a power of two,
-    /// and that it be greater than the number of submission queue entries.
-    /// This function will adjust the `cq_entries` value to be at least 2 times `sq_entries`
-    pub fn cq_entries(&mut self, cqe: u32) -> &mut Self {
-        self.cq_entries = cqe.next_power_of_two();
-        if (self.cq_entries / 2) < self.sq_entries {
-            self.sq_entries = self.cq_entries / 2;
-        }
-        self.urb.setup_cqsize(self.cq_entries);
+    pub fn entries(&mut self, sqe: u32) -> &mut Self {
+        self.entries = sqe;
         self
     }
 
     /// Replaces the default [`io_uring::Builder`], which controls the settings for the
-    /// inner `io_uring` API. This interface offers many more settings and parameters,
+    /// inner `io_uring` API.
+    ///
+    /// This interface offers many more settings and parameters,
     /// but requires directly depending upon the `io_uring` crate.
     ///
-    /// Refer to the [`io_uring::builder`] documentation for all the supported methods.
+    /// Refer to the [`io_uring::Builder`] documentation for all the supported methods.
     pub fn uring_builder(&mut self, b: &io_uring::Builder) -> &mut Self {
         self.urb = b.clone();
         self
@@ -228,8 +212,10 @@ impl Builder {
     ///
     /// fn main() -> Result<(), Box<dyn std::error::Error>> {
     ///     tokio_uring::builder()
-    ///         .sq_entries(64)
-    ///         .cq_entries(1024)
+    ///         .entries(64)
+    ///         .uring_builder(tokio_uring::uring_builder()
+    ///             .setup_cqsize(1024)
+    ///             )
     ///         .start(async {
     ///             let listener = TcpListener::bind("127.0.0.1:8080").await?;
     ///
