@@ -1,5 +1,5 @@
-use futures::stream::{self, StreamExt};
 use iai::black_box;
+use tokio::task::JoinSet;
 
 #[derive(Clone)]
 struct Options {
@@ -23,11 +23,7 @@ impl Default for Options {
 fn runtime_only() -> Result<(), Box<dyn std::error::Error>> {
     let opts = Options::default();
     let mut ring_opts = tokio_uring::uring_builder();
-    ring_opts
-        .setup_cqsize(opts.cq_size as _)
-        // .setup_sqpoll(10)
-        // .setup_sqpoll_cpu(1)
-        ;
+    ring_opts.setup_cqsize(opts.cq_size as _);
 
     tokio_uring::builder()
         .entries(opts.sq_size as _)
@@ -37,21 +33,22 @@ fn runtime_only() -> Result<(), Box<dyn std::error::Error>> {
 
 fn run_no_ops(opts: Options) -> Result<(), Box<dyn std::error::Error>> {
     let mut ring_opts = tokio_uring::uring_builder();
-    ring_opts
-        .setup_cqsize(opts.cq_size as _)
-        // .setup_sqpoll(10)
-        // .setup_sqpoll_cpu(1)
-        ;
+    ring_opts.setup_cqsize(opts.cq_size as _);
 
     tokio_uring::builder()
         .entries(opts.sq_size as _)
         .uring_builder(&ring_opts)
         .start(async move {
-            stream::iter(0..opts.iterations)
-                .for_each_concurrent(Some(opts.concurrency), |_| async move {
-                    tokio_uring::no_op().await.unwrap();
-                })
-                .await;
+            let mut js = JoinSet::new();
+
+            for _ in 0..opts.iterations {
+                js.spawn_local(tokio_uring::no_op());
+            }
+
+            while let Some(res) = js.join_next().await {
+                res.unwrap().unwrap();
+            }
+
             Ok(())
         })
 }
