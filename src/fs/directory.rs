@@ -4,7 +4,7 @@ use std::path::Path;
 
 /// Creates a directory on the local filesystem.
 ///
-/// Returns a future which resolves to unit on success, and ['std::io::Error'] on failure.
+/// Returns unit on success, and ['std::io::Error'] on failure.
 ///
 /// # Errors
 ///
@@ -34,7 +34,7 @@ pub async fn create_dir<P: AsRef<Path>>(path: P) -> io::Result<()> {
 
 /// Removes a directory on the local filesystem.
 ///
-/// Returns a future which resolves to unit on success, and ['std::io::Error'] on failure.
+/// Returns unit on success, and ['std::io::Error'] on failure.
 ///
 /// # Errors
 ///

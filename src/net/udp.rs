@@ -201,7 +201,6 @@ impl UdpSocket {
     /// Sends data on the socket to the given address.
     ///
     /// On success, returns the number of bytes written.
-    /// This can be used on a socket regardless of whether it has been "connected".
     pub async fn send_to<T: BoundedBuf>(
         &self,
         buf: T,
