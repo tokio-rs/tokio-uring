@@ -14,7 +14,10 @@ io-uring support for the Tokio asynchronous runtime.
 categories = ["asynchronous", "network-programming"]
 keywords = ["async", "fs", "io-uring"]
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[features]
+default = []
+macros = ["tokio-uring-macros"]
+full = ["macros"]
 
 [dependencies]
 tokio = { version = "1.2", features = ["net", "rt"] }
@@ -23,6 +26,8 @@ libc = "0.2.80"
 io-uring = { version = "0.5.9", features = ["unstable"] }
 socket2 = { version = "0.4.4", features = ["all"] }
 bytes = { version = "1.0", optional = true }
+
+tokio-uring-macros = { version = "0.1.0", path = "./tokio-uring-macros", optional = true }
 
 [dev-dependencies]
 tempfile = "3.2.0"
