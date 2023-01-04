@@ -191,9 +191,6 @@ impl Builder {
     /// Replaces the default [`io_uring::Builder`], which controls the settings for the
     /// inner `io_uring` API.
     ///
-    /// This interface offers many more settings and parameters,
-    /// but requires directly depending upon the `io_uring` crate.
-    ///
     /// Refer to the [`io_uring::Builder`] documentation for all the supported methods.
     pub fn uring_builder(&mut self, b: &io_uring::Builder) -> &mut Self {
         self.urb = b.clone();
