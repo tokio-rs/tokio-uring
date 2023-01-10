@@ -22,7 +22,7 @@ pub(crate) struct SendMsgZc<T> {
     pub(crate) msghdr: Box<libc::msghdr>,
 }
 
-impl<T: BoundedBuf> Op<SendZc<T>, MultiCQEFuture> {
+impl<T: Box<libc::msghdr>> Op<SendZc<T>, MultiCQEFuture> {
     pub(crate) fn sendmsg_zc(fd: &SharedFd, msghdr: Box<libc::msghdr>) -> io::Result<Self> {
         use io_uring::{opcode, types};
 
