@@ -220,6 +220,10 @@ impl UdpSocket {
         self.inner.send_zc(buf).await
     }
 
+    pub async fn sendmsg_zc<T: Box<libc::msghdr>>(&self, msghdr: T) -> crate::BufResult<usize, T> {
+        self.inner.sendmsg_zc(msghdr).await
+    }
+
     /// Receives a single datagram message on the socket. On success, returns
     /// the number of bytes read and the origin.
     pub async fn recv_from<T: BoundedBufMut>(

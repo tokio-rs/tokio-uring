@@ -147,6 +147,11 @@ impl Socket {
         op.await
     }
 
+    pub(crate) async fn sendmsg_zc<T: Box<libc::msghdr>(&self, msghdr: T) -> crate::BufResult<usize, T> {
+        let op = Op::sendmsg_zc(&self.fd, msghdr).unwrap();
+        op.await
+    }
+
     pub(crate) async fn read<T: BoundedBufMut>(&self, buf: T) -> crate::BufResult<usize, T> {
         let op = Op::read_at(&self.fd, buf, 0).unwrap();
         op.await
