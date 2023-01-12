@@ -75,19 +75,17 @@ fn complete_ops_on_drop() {
     drop(file);
 }
 
-#[test]
-fn too_many_submissions() {
+#[tokio_uring::test]
+async fn too_many_submissions() {
     let tempfile = tempfile();
 
-    tokio_uring::start(async {
-        let file = File::create(tempfile.path()).await.unwrap();
-        for _ in 0..600 {
-            poll_once(async {
-                file.write_at(b"hello world".to_vec(), 0).await.0.unwrap();
-            })
-            .await;
-        }
-    });
+    let file = File::create(tempfile.path()).await.unwrap();
+    for _ in 0..600 {
+        poll_once(async {
+            file.write_at(b"hello world".to_vec(), 0).await.0.unwrap();
+        })
+        .await;
+    }
 }
 
 #[test]

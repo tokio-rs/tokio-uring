@@ -32,7 +32,7 @@ mod test {
     use crate as tokio_uring;
 
     #[tokio_uring::test]
-    async fn perform_no_op() -> () {
+    async fn perform_no_op() {
         tokio_uring::no_op().await.unwrap();
     }
 }

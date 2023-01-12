@@ -154,13 +154,13 @@ mod test {
     #[test]
     fn block_on() {
         let rt = Runtime::new(&builder()).unwrap();
-        rt.block_on(async move { () });
+        rt.block_on(async move {});
     }
 
     #[test]
     fn block_on_twice() {
         let rt = Runtime::new(&builder()).unwrap();
-        rt.block_on(async move { () });
-        rt.block_on(async move { () });
+        rt.block_on(async move {});
+        rt.block_on(async move {});
     }
 }
