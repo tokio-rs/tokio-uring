@@ -166,7 +166,8 @@ pub struct Builder {
 
 /// Constructs a [`Builder`] with default settings.
 ///
-/// Use this to alter submission and completion queue parameters, and to `start` the io_uring runtime.
+/// Use this to alter submission and completion queue parameters, and to create the io_uring
+/// Runtime.
 ///
 /// Refer to [`Builder::start`] for an example.
 pub fn builder() -> Builder {

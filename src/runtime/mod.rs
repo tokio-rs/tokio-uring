@@ -15,8 +15,14 @@ thread_local! {
 
 /// The Runtime Executor
 ///
-/// io_uring instances are always single-threaded. Correspondingly, this runtime will
-/// execute whithin the current-thread only.
+/// This is the Runtime for `tokio-uring`.
+/// It wraps the default [`Runtime`], along with the uring [`Driver`]. 
+///
+/// # Multithreading 
+///
+/// This executes futures and tasks within the current-thread only. 
+///
+/// [`Runtime`]: tokio::runtime::Runtime
 pub struct Runtime {
     /// Tokio runtime, always current-thread
     tokio_rt: ManuallyDrop<tokio::runtime::Runtime>,
