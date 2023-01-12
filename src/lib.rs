@@ -184,8 +184,8 @@ impl Builder {
     /// The kernel requires the number of submission queue entries to be a power of two,
     /// and that it be less than the number of completion queue entries.
     /// This function will adjust the `cq_entries` value to be at least 2 times `sq_entries`
-    pub fn entries(&mut self, sqe: u32) -> &mut Self {
-        self.entries = sqe;
+    pub fn entries(&mut self, sq_entries: u32) -> &mut Self {
+        self.entries = sq_entries;
         self
     }
 
