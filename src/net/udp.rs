@@ -277,8 +277,6 @@ impl UdpSocket {
 
     /// Writes data into the socket from the specified buffer.
     ///
-    /// Takes ownership of the buffer for the duration of the Future.
-    ///
     /// Returns the original buffer and quantity of data written.
     pub async fn write<T: BoundedBuf>(&self, buf: T) -> crate::BufResult<usize, T> {
         self.inner.write(buf).await
