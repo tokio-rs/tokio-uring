@@ -48,3 +48,6 @@ harness = false
 name = "criterion_no_op"
 path = "benches/criterion/no_op.rs"
 harness = false
+
+[patch.crates-io]
+io-uring = { git = 'https://github.com/tokio-rs/io-uring', branch = 'master' }
