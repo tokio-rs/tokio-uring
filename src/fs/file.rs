@@ -905,6 +905,7 @@ pub async fn remove_file<P: AsRef<Path>>(path: P) -> io::Result<()> {
 /// Renames a file or directory to a new name, replacing the original file if
 /// `to` already exists.
 ///
+/// #Errors
 ///
 /// * `path` doesn't exist.
 ///      * [`io::ErrorKind`] would be set to `NotFound`
