@@ -1,29 +1,21 @@
-use crate::buf::BoundedBuf;
+//use crate::buf::BoundedBuf;
 use crate::io::SharedFd;
-use crate::runtime::driver::op::{Completable, CqeResult, Op};
+use crate::runtime::driver::op::{Completable, CqeResult, MultiCQEFuture, Op, Updateable};
 use crate::runtime::CONTEXT;
-use crate::BufResult;
-use socket2::SockAddr;
-use std::io::IoSlice;
-use std::{boxed::Box, io, net::SocketAddr};
+use std::io;
 
-pub(crate) struct SendMsgZc<T> {
+pub(crate) struct SendMsgZc {
     #[allow(dead_code)]
     fd: SharedFd,
 
-    /*pub(crate) buf: T,
-    
-    #[allow(dead_code)]
-    io_slices: Vec<IoSlice<'static>>,
-    
-    #[allow(dead_code)]
-    socket_addr: Box<SockAddr>,*/
+    pub(crate) msghdr: libc::msghdr,
 
-    pub(crate) msghdr: Box<libc::msghdr>,
+    /// Hold the number of transmitted bytes
+    bytes: usize,
 }
 
-impl<T: Box<libc::msghdr>> Op<SendZc<T>, MultiCQEFuture> {
-    pub(crate) fn sendmsg_zc(fd: &SharedFd, msghdr: Box<libc::msghdr>) -> io::Result<Self> {
+impl Op<SendMsgZc, MultiCQEFuture> {
+    pub(crate) fn sendmsg_zc(fd: &SharedFd, msghdr: &libc::msghdr) -> io::Result<Self> {
         use io_uring::{opcode, types};
 
         /*let io_slices = vec![IoSlice::new(unsafe {
@@ -42,28 +34,31 @@ impl<T: Box<libc::msghdr>> Op<SendZc<T>, MultiCQEFuture> {
             x.handle().expect("Not in a runtime context").submit_op(
                 SendMsgZc {
                     fd: fd.clone(),
-                    /*buf,
-                    io_slices,
-                    socket_addr,*/
                     msghdr: msghdr.clone(),
+                    bytes: 0,
                 },
                 |sendmsg_zc| {
-                    opcode::SendMsgZc::new(types::Fd(sendmsg_zc.fd.raw_fd()), sendmsg_zc.msghdr.as_ref() as *const _).build()
+                    opcode::SendMsgZc::new(types::Fd(sendmsg_zc.fd.raw_fd()), &sendmsg_zc.msghdr as *const _).build()
                 },
             )
         })
     }
 }
 
-impl<T> Completable for SendMsgZc<T> {
-    type Output = BufResult<usize, T>;
+impl Completable for SendMsgZc {
+    type Output = io::Result<usize>;
 
     fn complete(self, cqe: CqeResult) -> Self::Output {
         // Convert the operation result to `usize`
         let res = cqe.result.map(|v| v as usize);
-        // Recover the buffer
-        let buf = self.buf;
+    
+        res
+    }
+}
 
-        (res, buf)
+impl Updateable for SendMsgZc {
+    fn update(&mut self, cqe: CqeResult) {
+        // uring send_zc promises there will be no error on CQE's marked more
+        self.bytes += *cqe.result.as_ref().unwrap() as usize;
     }
 }

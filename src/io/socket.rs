@@ -147,7 +147,7 @@ impl Socket {
         op.await
     }
 
-    pub(crate) async fn sendmsg_zc<T: Box<libc::msghdr>(&self, msghdr: T) -> crate::BufResult<usize, T> {
+    pub(crate) async fn sendmsg_zc(&self, msghdr: &libc::msghdr) -> io::Result<usize> {
         let op = Op::sendmsg_zc(&self.fd, msghdr).unwrap();
         op.await
     }
