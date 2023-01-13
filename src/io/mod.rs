@@ -43,3 +43,6 @@ mod write;
 mod write_fixed;
 
 mod writev;
+
+#[cfg(feature = "uring-cmd")]
+mod uring_cmd;

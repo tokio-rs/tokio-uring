@@ -82,6 +82,7 @@ pub use runtime::spawn;
 pub use runtime::Runtime;
 
 use crate::runtime::driver::op::Op;
+use crate::runtime::driver::{CEntry, SEntry};
 use std::future::Future;
 
 /// Start an `io_uring` enabled Tokio runtime.
@@ -152,8 +153,8 @@ pub fn start<F: Future>(future: F) -> F::Output {
 /// This function is provided to avoid requiring the user of this crate from
 /// having to use the io_uring crate as well. Refer to Builder::start example
 /// for its intended usage.
-pub fn uring_builder() -> io_uring::Builder {
-    io_uring::IoUring::builder()
+pub fn uring_builder() -> io_uring::Builder<SEntry, CEntry> {
+    io_uring::IoUring::generic_builder()
 }
 
 /// Builder API to allow starting the runtime and creating the io_uring driver with non-default
@@ -161,7 +162,7 @@ pub fn uring_builder() -> io_uring::Builder {
 // #[derive(Clone, Default)]
 pub struct Builder {
     entries: u32,
-    urb: io_uring::Builder,
+    urb: io_uring::Builder<SEntry, CEntry>,
 }
 
 /// Return a Builder to allow setting parameters before calling the start method.
@@ -171,7 +172,7 @@ pub struct Builder {
 pub fn builder() -> Builder {
     Builder {
         entries: 256,
-        urb: io_uring::IoUring::builder(),
+        urb: io_uring::IoUring::generic_builder(),
     }
 }
 
@@ -194,7 +195,7 @@ impl Builder {
     ///
     /// Refer to the Builder start method for an example.
     /// Refer to the io_uring::builder documentation for all the supported methods.
-    pub fn uring_builder(&mut self, b: &io_uring::Builder) -> &mut Self {
+    pub fn uring_builder(&mut self, b: &io_uring::Builder<SEntry, CEntry>) -> &mut Self {
         self.urb = b.clone();
         self
     }

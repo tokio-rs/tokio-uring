@@ -24,6 +24,28 @@ async fn read_hello(file: &File) {
     assert_eq!(&buf[..n], HELLO);
 }
 
+#[cfg(all(feature = "uring-cmd"))]
+#[test]
+fn uring_cmd16() {
+    tokio_uring::start(async {
+        let file = File::open("/dev/null").await.unwrap();
+        let res = file.uring_cmd16(0, [0x00; 16]).await.unwrap();
+
+        assert_eq!(res, 0);
+    });
+}
+
+#[cfg(all(feature = "uring-cmd", feature = "sqe128"))]
+#[test]
+fn uring_cmd80() {
+    tokio_uring::start(async {
+        let file = File::open("/dev/null").await.unwrap();
+        let res = file.uring_cmd80(0, [0x00; 80]).await.unwrap();
+
+        assert_eq!(res, 0);
+    });
+}
+
 #[test]
 fn basic_read() {
     tokio_uring::start(async {
