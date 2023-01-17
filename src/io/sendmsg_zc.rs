@@ -1,4 +1,3 @@
-//use crate::buf::BoundedBuf;
 use crate::io::SharedFd;
 use crate::runtime::driver::op::{Completable, CqeResult, MultiCQEFuture, Op, Updateable};
 use crate::runtime::CONTEXT;
@@ -22,11 +21,15 @@ impl Op<SendMsgZc, MultiCQEFuture> {
             x.handle().expect("Not in a runtime context").submit_op(
                 SendMsgZc {
                     fd: fd.clone(),
-                    msghdr: msghdr.clone(),
+                    msghdr: msghdr.copy(),
                     bytes: 0,
                 },
                 |sendmsg_zc| {
-                    opcode::SendMsgZc::new(types::Fd(sendmsg_zc.fd.raw_fd()), &sendmsg_zc.msghdr as *const _).build()
+                    opcode::SendMsgZc::new(
+                        types::Fd(sendmsg_zc.fd.raw_fd()), 
+                        &sendmsg_zc.msghdr as *const _
+                    )
+                    .build()
                 },
             )
         })
@@ -34,7 +37,7 @@ impl Op<SendMsgZc, MultiCQEFuture> {
 }
 
 impl Completable for SendMsgZc {
-    type Output = (libc::msghdr, io::Result<usize>) ;
+    type Output = (libc::msghdr, io::Result<usize>);
 
     fn complete(self, cqe: CqeResult) -> (libc::msghdr, io::Result<usize>) {
         // Convert the operation result to `usize`
@@ -42,7 +45,7 @@ impl Completable for SendMsgZc {
 
         // Recover the msghdr.
         let msghdr = self.msghdr;
-    
+
         (msghdr, res)
     }
 }

@@ -220,7 +220,8 @@ impl UdpSocket {
         self.inner.send_zc(buf).await
     }
 
-    pub async fn sendmsg_zc(&self, msghdr: &libc::msghdr) -> (libc::msghdr, io::Result<usize>)  {
+    /// Sends a message on the socket using a msghdr.
+    pub async fn sendmsg_zc(&self, msghdr: &libc::msghdr) -> (libc::msghdr, io::Result<usize>) {
         self.inner.sendmsg_zc(msghdr).await
     }
 
