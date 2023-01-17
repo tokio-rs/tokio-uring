@@ -40,6 +40,7 @@ impl Completable for SendMsgZc {
         // Convert the operation result to `usize`
         let res = cqe.result.map(|v| v as usize);
 
+        // Recover the msghdr.
         let msghdr = self.msghdr;
     
         (msghdr, res)
