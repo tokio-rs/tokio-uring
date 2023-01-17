@@ -1,10 +1,10 @@
 use crate::io::SharedFd;
 use crate::runtime::driver::op::{Completable, CqeResult, MultiCQEFuture, Op, Updateable};
 use crate::runtime::CONTEXT;
+use socket2::SockAddr;
 use std::io;
 use std::io::IoSlice;
 use std::net::SocketAddr;
-use socket2::SockAddr;
 
 pub(crate) struct SendMsgZc {
     #[allow(dead_code)]
@@ -21,7 +21,12 @@ pub(crate) struct SendMsgZc {
 }
 
 impl Op<SendMsgZc, MultiCQEFuture> {
-    pub(crate) fn sendmsg_zc(fd: &SharedFd, io_slices: Vec<IoSlice<'static>>, socket_addr: SocketAddr, msg_control: Option<IoSlice<'static>>) -> io::Result<Self> {
+    pub(crate) fn sendmsg_zc(
+        fd: &SharedFd,
+        io_slices: Vec<IoSlice<'static>>,
+        socket_addr: SocketAddr,
+        msg_control: Option<IoSlice<'static>>,
+    ) -> io::Result<Self> {
         use io_uring::{opcode, types};
 
         let socket_addr = Box::new(SockAddr::from(socket_addr));
@@ -34,8 +39,14 @@ impl Op<SendMsgZc, MultiCQEFuture> {
         msghdr.msg_namelen = socket_addr.len();
 
         match msg_control {
-            Some(_msg_control) => {msghdr.msg_control = _msg_control.as_ptr() as *mut _; msghdr.msg_controllen = _msg_control.len(); },
-            None => { msghdr.msg_control = std::ptr::null_mut(); msghdr.msg_controllen = 0 as usize; }
+            Some(_msg_control) => {
+                msghdr.msg_control = _msg_control.as_ptr() as *mut _;
+                msghdr.msg_controllen = _msg_control.len();
+            }
+            None => {
+                msghdr.msg_control = std::ptr::null_mut();
+                msghdr.msg_controllen = 0 as usize;
+            }
         }
 
         CONTEXT.with(|x| {
@@ -61,9 +72,20 @@ impl Op<SendMsgZc, MultiCQEFuture> {
 }
 
 impl Completable for SendMsgZc {
-    type Output = (io::Result<usize>, Vec<IoSlice<'static>>, Option<IoSlice<'static>>);
+    type Output = (
+        io::Result<usize>,
+        Vec<IoSlice<'static>>,
+        Option<IoSlice<'static>>,
+    );
 
-    fn complete(self, cqe: CqeResult) -> (io::Result<usize>, Vec<IoSlice<'static>>, Option<IoSlice<'static>>) {
+    fn complete(
+        self,
+        cqe: CqeResult,
+    ) -> (
+        io::Result<usize>,
+        Vec<IoSlice<'static>>,
+        Option<IoSlice<'static>>,
+    ) {
         // Convert the operation result to `usize`
         let res = cqe.result.map(|v| v as usize);
 

@@ -153,7 +153,11 @@ impl Socket {
         io_slices: Vec<IoSlice<'static>>,
         socket_addr: SocketAddr,
         msg_control: Option<IoSlice<'static>>,
-    ) -> (io::Result<usize>, Vec<IoSlice<'static>>, Option<IoSlice<'static>>) {
+    ) -> (
+        io::Result<usize>,
+        Vec<IoSlice<'static>>,
+        Option<IoSlice<'static>>,
+    ) {
         let op = Op::sendmsg_zc(&self.fd, io_slices, socket_addr, msg_control).unwrap();
         op.await
     }
