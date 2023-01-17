@@ -21,12 +21,12 @@ impl Op<SendMsgZc, MultiCQEFuture> {
             x.handle().expect("Not in a runtime context").submit_op(
                 SendMsgZc {
                     fd: fd.clone(),
-                    msghdr: msghdr.clone(),
+                    msghdr: (*msghdr).clone(),
                     bytes: 0,
                 },
                 |sendmsg_zc| {
                     opcode::SendMsgZc::new(
-                        types::Fd(sendmsg_zc.fd.raw_fd()), 
+                        types::Fd(sendmsg_zc.fd.raw_fd()),
                         &sendmsg_zc.msghdr as *const _,
                     )
                     .build()

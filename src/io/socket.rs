@@ -148,8 +148,8 @@ impl Socket {
     }
 
     pub(crate) async fn sendmsg_zc(
-        &self, 
-        msghdr: &libc::msghdr
+        &self,
+        msghdr: &libc::msghdr,
     ) -> (libc::msghdr, io::Result<usize>) {
         let op = Op::sendmsg_zc(&self.fd, msghdr).unwrap();
         op.await
