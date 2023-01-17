@@ -6,6 +6,7 @@ use crate::{
 use socket2::SockAddr;
 use std::{
     io,
+    io::IoSlice,
     net::SocketAddr,
     os::unix::prelude::{AsRawFd, FromRawFd, RawFd},
 };
@@ -221,8 +222,13 @@ impl UdpSocket {
     }
 
     /// Sends a message on the socket using a msghdr.
-    pub async fn sendmsg_zc(&self, msghdr: &libc::msghdr) -> (libc::msghdr, io::Result<usize>) {
-        self.inner.sendmsg_zc(msghdr).await
+    pub async fn sendmsg_zc(
+        &self,
+        io_slices: Vec<IoSlice<'static>>,
+        socket_addr: SocketAddr,
+        msg_control: Option<IoSlice<'static>>,
+    ) -> (io::Result<usize>, Vec<IoSlice<'static>>, Option<IoSlice<'static>>) {
+        self.inner.sendmsg_zc(io_slices, socket_addr, msg_control).await
     }
 
     /// Receives a single datagram message on the socket. On success, returns
