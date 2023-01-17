@@ -21,7 +21,7 @@ impl Op<SendMsgZc, MultiCQEFuture> {
             x.handle().expect("Not in a runtime context").submit_op(
                 SendMsgZc {
                     fd: fd.clone(),
-                    msghdr: (*msghdr).clone(),
+                    msghdr: (*msghdr).copy(),
                     bytes: 0,
                 },
                 |sendmsg_zc| {
