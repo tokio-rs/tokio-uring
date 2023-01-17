@@ -34,7 +34,7 @@ impl Op<SendMsgZc, MultiCQEFuture> {
 }
 
 impl Completable for SendMsgZc {
-    //type Output = io::Result<usize>;
+    type Output = (libc::msghdr, io::Result<usize>) ;
 
     fn complete(self, cqe: CqeResult) -> (libc::msghdr, io::Result<usize>) {
         // Convert the operation result to `usize`
