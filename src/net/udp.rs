@@ -1,12 +1,11 @@
 use crate::{
     buf::fixed::FixedBuf,
-    buf::{BoundedBuf, BoundedBufMut},
+    buf::{BoundedBuf, BoundedBufMut, IoBuf},
     io::{SharedFd, Socket},
 };
 use socket2::SockAddr;
 use std::{
     io,
-    io::IoSlice,
     net::SocketAddr,
     os::unix::prelude::{AsRawFd, FromRawFd, RawFd},
 };
@@ -222,15 +221,15 @@ impl UdpSocket {
     }
 
     /// Sends a message on the socket using a msghdr.
-    pub async fn sendmsg_zc(
+    pub async fn sendmsg_zc<T: IoBuf>(
         &self,
-        io_slices: Vec<IoSlice<'static>>,
+        io_slices: Vec<T>,
         socket_addr: SocketAddr,
-        msg_control: Option<IoSlice<'static>>,
+        msg_control: Option<T>,
     ) -> (
         io::Result<usize>,
-        Vec<IoSlice<'static>>,
-        Option<IoSlice<'static>>,
+        Vec<T>,
+        Option<T>,
     ) {
         self.inner
             .sendmsg_zc(io_slices, socket_addr, msg_control)

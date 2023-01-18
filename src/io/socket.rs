@@ -6,7 +6,6 @@ use crate::{
 };
 use std::{
     io,
-    io::IoSlice,
     net::SocketAddr,
     os::unix::io::{AsRawFd, IntoRawFd, RawFd},
     path::Path,
@@ -148,15 +147,15 @@ impl Socket {
         op.await
     }
 
-    pub(crate) async fn sendmsg_zc(
+    pub(crate) async fn sendmsg_zc<T: IoBuf>(
         &self,
-        io_slices: Vec<IoSlice<'static>>,
+        io_slices: Vec<T>,
         socket_addr: SocketAddr,
-        msg_control: Option<IoSlice<'static>>,
+        msg_control: Option<T>,
     ) -> (
         io::Result<usize>,
-        Vec<IoSlice<'static>>,
-        Option<IoSlice<'static>>,
+        Vec<T>,
+        Option<T>,
     ) {
         let op = Op::sendmsg_zc(&self.fd, io_slices, socket_addr, msg_control).unwrap();
         op.await
