@@ -7,26 +7,26 @@ use std::io;
 use std::io::IoSlice;
 use std::net::SocketAddr;
 
-pub(crate) struct SendMsgZc<T> {
+pub(crate) struct SendMsgZc<T, U> {
     #[allow(dead_code)]
     fd: SharedFd,
     #[allow(dead_code)]
     io_bufs: Vec<T>,
     #[allow(dead_code)]
     socket_addr: Box<SockAddr>,
-    msg_control: Option<T>,
+    msg_control: Option<U>,
     msghdr: libc::msghdr,
 
     /// Hold the number of transmitted bytes
     bytes: usize,
 }
 
-impl<T: IoBuf> Op<SendMsgZc<T>, MultiCQEFuture> {
+impl<T: IoBuf, U: IoBuf> Op<SendMsgZc<T, U>, MultiCQEFuture> {
     pub(crate) fn sendmsg_zc(
         fd: &SharedFd,
         io_bufs: Vec<T>,
         socket_addr: SocketAddr,
-        msg_control: Option<T>,
+        msg_control: Option<U>,
     ) -> io::Result<Self> {
         use io_uring::{opcode, types};
 
@@ -80,10 +80,10 @@ impl<T: IoBuf> Op<SendMsgZc<T>, MultiCQEFuture> {
     }
 }
 
-impl<T> Completable for SendMsgZc<T> {
-    type Output = (io::Result<usize>, Vec<T>, Option<T>);
+impl<T, U> Completable for SendMsgZc<T, U> {
+    type Output = (io::Result<usize>, Vec<T>, Option<U>);
 
-    fn complete(self, cqe: CqeResult) -> (io::Result<usize>, Vec<T>, Option<T>) {
+    fn complete(self, cqe: CqeResult) -> (io::Result<usize>, Vec<T>, Option<U>) {
         // Convert the operation result to `usize`
         let res = cqe.result.map(|v| v as usize);
 
@@ -97,7 +97,7 @@ impl<T> Completable for SendMsgZc<T> {
     }
 }
 
-impl<T> Updateable for SendMsgZc<T> {
+impl<T, U> Updateable for SendMsgZc<T, U> {
     fn update(&mut self, cqe: CqeResult) {
         // uring send_zc promises there will be no error on CQE's marked more
         self.bytes += *cqe.result.as_ref().unwrap() as usize;

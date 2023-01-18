@@ -147,12 +147,12 @@ impl Socket {
         op.await
     }
 
-    pub(crate) async fn sendmsg_zc<T: IoBuf>(
+    pub(crate) async fn sendmsg_zc<T: IoBuf, U: IoBuf>(
         &self,
         io_slices: Vec<T>,
         socket_addr: SocketAddr,
-        msg_control: Option<T>,
-    ) -> (io::Result<usize>, Vec<T>, Option<T>) {
+        msg_control: Option<U>,
+    ) -> (io::Result<usize>, Vec<T>, Option<U>) {
         let op = Op::sendmsg_zc(&self.fd, io_slices, socket_addr, msg_control).unwrap();
         op.await
     }

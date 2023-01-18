@@ -221,12 +221,12 @@ impl UdpSocket {
     }
 
     /// Sends a message on the socket using a msghdr.
-    pub async fn sendmsg_zc<T: IoBuf>(
+    pub async fn sendmsg_zc<T: IoBuf, U: IoBuf>(
         &self,
         io_slices: Vec<T>,
         socket_addr: SocketAddr,
-        msg_control: Option<T>,
-    ) -> (io::Result<usize>, Vec<T>, Option<T>) {
+        msg_control: Option<U>,
+    ) -> (io::Result<usize>, Vec<T>, Option<U>) {
         self.inner
             .sendmsg_zc(io_slices, socket_addr, msg_control)
             .await
