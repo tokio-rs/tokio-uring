@@ -1,5 +1,5 @@
-use crate::io::SharedFd;
 use crate::buf::IoBuf;
+use crate::io::SharedFd;
 use crate::runtime::driver::op::{Completable, CqeResult, MultiCQEFuture, Op, Updateable};
 use crate::runtime::CONTEXT;
 use socket2::SockAddr;
@@ -14,7 +14,7 @@ pub(crate) struct SendMsgZc<T> {
     #[allow(dead_code)]
     socket_addr: Box<SockAddr>,
     msg_control: Option<T>,
-    pub(crate) msghdr: libc::msghdr,
+    msghdr: libc::msghdr,
 
     /// Hold the number of transmitted bytes
     bytes: usize,
@@ -72,20 +72,9 @@ impl<T: IoBuf> Op<SendMsgZc<T>, MultiCQEFuture> {
 }
 
 impl<T> Completable for SendMsgZc<T> {
-    type Output = (
-        io::Result<usize>,
-        Vec<T>,
-        Option<T>,
-    );
+    type Output = (io::Result<usize>, Vec<T>, Option<T>);
 
-    fn complete(
-        self,
-        cqe: CqeResult,
-    ) -> (
-        io::Result<usize>,
-        Vec<T>,
-        Option<T>,
-    ) {
+    fn complete(self, cqe: CqeResult) -> (io::Result<usize>, Vec<T>, Option<T>) {
         // Convert the operation result to `usize`
         let res = cqe.result.map(|v| v as usize);
 
