@@ -4,6 +4,7 @@ use crate::runtime::driver::op::{Completable, CqeResult, MultiCQEFuture, Op, Upd
 use crate::runtime::CONTEXT;
 use socket2::SockAddr;
 use std::io;
+use std::io::IoSlice;
 use std::net::SocketAddr;
 
 pub(crate) struct SendMsgZc<T> {
@@ -33,8 +34,16 @@ impl<T: IoBuf> Op<SendMsgZc<T>, MultiCQEFuture> {
 
         let mut msghdr: libc::msghdr = unsafe { std::mem::zeroed() };
 
-        msghdr.msg_iov = io_bufs.as_ptr() as *mut _;
-        msghdr.msg_iovlen = io_bufs.len() as _;
+        let io_slices: Vec<IoSlice> = Vec::new();
+
+        for io_buf in io_bufs {
+            io_slices.push(IoSlice::new(unsafe {
+                std::slice::from_raw_parts(io_buf.stable_ptr(), io_buf.bytes_init())
+            }))
+        }
+
+        msghdr.msg_iov = io_slices.as_ptr() as *mut _;
+        msghdr.msg_iovlen = io_slices.len() as _;
         msghdr.msg_name = socket_addr.as_ptr() as *mut libc::c_void;
         msghdr.msg_namelen = socket_addr.len();
 
