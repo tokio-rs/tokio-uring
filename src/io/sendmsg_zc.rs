@@ -31,7 +31,7 @@ impl<T: IoBuf> Op<SendMsgZc<T>, MultiCQEFuture> {
 
         let socket_addr = Box::new(SockAddr::from(socket_addr));
 
-        let mut msghdr: libc::msghdr;
+        let mut msghdr: libc::msghdr = unsafe { std::mem::zeroed() };
 
         msghdr.msg_iov = io_bufs.as_ptr() as *mut _;
         msghdr.msg_iovlen = io_bufs.len() as _;
@@ -39,7 +39,7 @@ impl<T: IoBuf> Op<SendMsgZc<T>, MultiCQEFuture> {
         msghdr.msg_namelen = socket_addr.len();
 
         match msg_control {
-            Some(_msg_control) => {
+            Some(ref _msg_control) => {
                 msghdr.msg_control = _msg_control.stable_ptr() as *mut _;
                 msghdr.msg_controllen = _msg_control.bytes_init();
             }
