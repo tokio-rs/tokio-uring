@@ -36,7 +36,7 @@ impl<T: IoBuf> Op<SendMsgZc<T>, MultiCQEFuture> {
 
         let mut io_slices: Vec<IoSlice> = Vec::new();
 
-        for io_buf in io_bufs {
+        for io_buf in &io_bufs {
             io_slices.push(IoSlice::new(unsafe {
                 std::slice::from_raw_parts(io_buf.stable_ptr(), io_buf.bytes_init())
             }))
