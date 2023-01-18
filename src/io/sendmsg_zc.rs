@@ -34,7 +34,7 @@ impl<T: IoBuf, U: IoBuf> Op<SendMsgZc<T, U>, MultiCQEFuture> {
 
         let mut msghdr: libc::msghdr = unsafe { std::mem::zeroed() };
 
-        let mut io_slices: Vec<IoSlice> = Vec::new();
+        let mut io_slices: Vec<IoSlice> = Vec::with_capacity(io_bufs.len());
 
         for io_buf in &io_bufs {
             io_slices.push(IoSlice::new(unsafe {
