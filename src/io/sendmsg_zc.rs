@@ -45,7 +45,7 @@ impl<T: IoBuf> Op<SendMsgZc<T>, MultiCQEFuture> {
             }
             None => {
                 msghdr.msg_control = std::ptr::null_mut();
-                msghdr.msg_controllen = 0 as usize;
+                msghdr.msg_controllen = 0_usize;
             }
         }
 
