@@ -72,14 +72,12 @@ impl TcpStream {
 
     /// Read some data from the stream into the buffer.
     ///
-    /// Takes ownership of the buffer for the duration of the Future.
-    ///
     /// Returns the original buffer and quantity of data read.
     pub async fn read<T: BoundedBufMut>(&self, buf: T) -> crate::BufResult<usize, T> {
         self.inner.read(buf).await
     }
 
-    /// Read some data from the stream into a fixed, pre-registered buffer.
+    /// Read some data from the stream into a registered buffer.
     ///
     /// Like [`read`], but using a pre-mapped buffer
     /// registered with [`FixedBufRegistry`].
@@ -100,8 +98,6 @@ impl TcpStream {
     }
 
     /// Write some data to the stream from the buffer.
-    ///
-    /// Takes ownership of the buffer for the duration of the Future.
     ///
     /// Returns the original buffer and quantity of data written.
     pub async fn write<T: BoundedBuf>(&self, buf: T) -> crate::BufResult<usize, T> {
@@ -203,8 +199,6 @@ impl TcpStream {
     }
 
     /// Writes data from multiple buffers into this socket using the scatter/gather IO style.
-    ///
-    /// Takes ownership of the Vec of Buffers for the duration of the Future.
     ///
     /// This function will attempt to write the entire contents of `bufs`, but
     /// the entire write may not succeed, or the write may also generate an
