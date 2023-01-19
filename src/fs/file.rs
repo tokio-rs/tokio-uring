@@ -772,6 +772,58 @@ impl File {
         Op::datasync(&self.fd)?.await
     }
 
+    /// Manipulate the allocated disk space of the file.
+    ///
+    /// The manipulated range starts at the `offset` and continues for `len` bytes.
+    ///
+    /// The specific manipulation to the allocated disk space are specified by
+    /// the `flags`, to understand what are the possible values here check
+    /// the `fallocate(2)` man page.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use tokio_uring::fs::File;
+    ///
+    /// fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ///     tokio_uring::start(async {
+    ///         let f = File::create("foo.txt").await?;
+    ///
+    ///         // Allocate a 1024 byte file setting all the bytes to zero
+    ///         f.fallocate(0, 1024, libc::FALLOC_FL_ZERO_RANGE).await?;
+    ///
+    ///         // Close the file
+    ///         f.close().await?;
+    ///         Ok(())
+    ///     })
+    /// }
+    pub async fn fallocate(&self, offset: u64, len: u64, flags: i32) -> io::Result<()> {
+        Op::fallocate(&self.fd, offset, len, flags)?.await
+    }
+
+    /// Metadata information about a file.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use tokio_uring::fs::File;
+    ///
+    /// fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ///     tokio_uring::start(async {
+    ///         let f = File::create("foo.txt").await?;
+    ///
+    ///         // Fetch file metadata
+    ///         let statx = f.statx().await?;
+    ///
+    ///         // Close the file
+    ///         f.close().await?;
+    ///         Ok(())
+    ///     })
+    /// }
+    pub async fn statx(&self) -> io::Result<libc::statx> {
+        Op::statx(&self.fd)?.await
+    }
+
     /// Closes the file.
     ///
     /// The method completes once the close operation has completed,
