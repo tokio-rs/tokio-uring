@@ -158,7 +158,7 @@ impl TcpStream {
         self.inner.write_all(buf).await
     }
 
-    /// Writes data into the socket from a fixed, pre-registered buffer.
+    /// Writes data into the socket from a registered buffer.
     ///
     /// Like [`write`], but using a pre-mapped buffer
     /// registered with [`FixedBufRegistry`].
