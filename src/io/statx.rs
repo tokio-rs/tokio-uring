@@ -21,7 +21,7 @@ impl Op<Statx> {
             x.handle().expect("not in a runtime context").submit_op(
                 Statx {
                     fd: fd.clone(),
-                    statx: unsafe { Box::new(std::mem::zeroed()) },
+                    statx: Box::new(unsafe { std::mem::zeroed() }),
                 },
                 |statx| {
                     opcode::Statx::new(
