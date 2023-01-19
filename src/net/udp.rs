@@ -255,7 +255,7 @@ impl UdpSocket {
         self.inner.read(buf).await
     }
 
-    /// Receives a single datagram message into a fixed, pre-registered buffer.
+    /// Receives a single datagram message into a registered buffer.
     ///
     /// Like [`read`], but using a pre-mapped buffer
     /// registered with [`FixedBufRegistry`].
@@ -282,7 +282,7 @@ impl UdpSocket {
         self.inner.write(buf).await
     }
 
-    /// Writes data into the socket from a fixed, pre-registered buffer.
+    /// Writes data into the socket from a registered buffer.
     ///
     /// Like [`write`], but using a pre-mapped buffer
     /// registered with [`FixedBufRegistry`].
