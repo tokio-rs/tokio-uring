@@ -20,7 +20,7 @@ keywords = ["async", "fs", "io-uring"]
 tokio = { version = "1.2", features = ["net", "rt"] }
 slab = "0.4.2"
 libc = "0.2.80"
-io-uring = { version = "0.5.9", features = ["unstable"] }
+io-uring = { version = "0.5.12", features = ["unstable"] }
 socket2 = { version = "0.4.4", features = ["all"] }
 bytes = { version = "1.0", optional = true }
 
@@ -48,6 +48,3 @@ harness = false
 name = "criterion_no_op"
 path = "benches/criterion/no_op.rs"
 harness = false
-
-[patch.crates-io]
-io-uring = { git = 'https://github.com/tokio-rs/io-uring', branch = 'master' }
