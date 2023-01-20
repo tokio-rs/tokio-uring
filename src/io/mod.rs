@@ -5,6 +5,8 @@ pub(crate) use close::Close;
 
 mod connect;
 
+mod fallocate;
+
 mod fsync;
 
 mod mkdir_at;
@@ -33,6 +35,8 @@ pub(crate) use shared_fd::SharedFd;
 
 mod socket;
 pub(crate) use socket::Socket;
+
+mod statx;
 
 mod unlink_at;
 
