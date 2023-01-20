@@ -147,6 +147,16 @@ impl Socket {
         op.await
     }
 
+    pub(crate) async fn sendmsg_zc<T: IoBuf, U: IoBuf>(
+        &self,
+        io_slices: Vec<T>,
+        socket_addr: SocketAddr,
+        msg_control: Option<U>,
+    ) -> (io::Result<usize>, Vec<T>, Option<U>) {
+        let op = Op::sendmsg_zc(&self.fd, io_slices, socket_addr, msg_control).unwrap();
+        op.await
+    }
+
     pub(crate) async fn read<T: BoundedBufMut>(&self, buf: T) -> crate::BufResult<usize, T> {
         let op = Op::read_at(&self.fd, buf, 0).unwrap();
         op.await

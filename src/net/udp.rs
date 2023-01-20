@@ -1,6 +1,6 @@
 use crate::{
     buf::fixed::FixedBuf,
-    buf::{BoundedBuf, BoundedBufMut},
+    buf::{BoundedBuf, BoundedBufMut, IoBuf},
     io::{SharedFd, Socket},
 };
 use socket2::SockAddr;
@@ -218,6 +218,18 @@ impl UdpSocket {
     /// Note: Using fixed buffers [#54](https://github.com/tokio-rs/tokio-uring/pull/54), avoids the page-pinning overhead
     pub async fn send_zc<T: BoundedBuf>(&self, buf: T) -> crate::BufResult<usize, T> {
         self.inner.send_zc(buf).await
+    }
+
+    /// Sends a message on the socket using a msghdr.
+    pub async fn sendmsg_zc<T: IoBuf, U: IoBuf>(
+        &self,
+        io_slices: Vec<T>,
+        socket_addr: SocketAddr,
+        msg_control: Option<U>,
+    ) -> (io::Result<usize>, Vec<T>, Option<U>) {
+        self.inner
+            .sendmsg_zc(io_slices, socket_addr, msg_control)
+            .await
     }
 
     /// Receives a single datagram message on the socket. On success, returns
