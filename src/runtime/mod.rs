@@ -18,8 +18,6 @@ thread_local! {
 /// This is the Runtime for `tokio-uring`.
 /// It wraps the default [`Runtime`] using the platform-specific Driver.
 ///
-/// # Multithreading
-///
 /// This executes futures and tasks within the current-thread only.
 ///
 /// [`Runtime`]: tokio::runtime::Runtime
