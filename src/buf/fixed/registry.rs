@@ -207,11 +207,10 @@ enum BufState {
 impl<T: IoBufMut> Inner<T> {
     fn new(bufs: impl Iterator<Item = T>) -> Self {
         let bufs = bufs.take(cmp::min(UIO_MAXIOV as usize, u16::MAX as usize));
-        let (size_hint, _) = bufs.size_hint();
-        let mut iovecs = Vec::with_capacity(size_hint);
-        let mut states = Vec::with_capacity(size_hint);
-        let mut buffers = Vec::with_capacity(size_hint);
-        for mut buf in bufs {
+        let mut buffers  = bufs.collect::<Vec<T>>();
+        let mut iovecs = Vec::with_capacity(buffers.len());
+        let mut states = Vec::with_capacity(buffers.len());
+        for buf in buffers.iter_mut() {
             iovecs.push(iovec {
                 iov_base: buf.stable_mut_ptr() as *mut _,
                 iov_len: buf.bytes_total(),
@@ -219,7 +218,6 @@ impl<T: IoBufMut> Inner<T> {
             states.push(BufState::Free {
                 init_len: buf.bytes_init(),
             });
-            buffers.push(buf);
         }
         debug_assert_eq!(iovecs.len(), states.len());
         debug_assert_eq!(iovecs.len(), buffers.len());

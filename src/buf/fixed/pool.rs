@@ -264,12 +264,11 @@ enum BufState {
 impl<T: IoBufMut> Inner<T> {
     fn new(bufs: impl Iterator<Item = T>) -> Self {
         let bufs = bufs.take(cmp::min(UIO_MAXIOV as usize, u16::MAX as usize));
-        let (size_hint, _) = bufs.size_hint();
-        let mut iovecs = Vec::with_capacity(size_hint);
-        let mut states = Vec::with_capacity(size_hint);
-        let mut buffers = Vec::with_capacity(size_hint);
+        let mut buffers  = bufs.collect::<Vec<T>>();
+        let mut iovecs = Vec::with_capacity(buffers.len());
+        let mut states = Vec::with_capacity(buffers.len());
         let mut free_buf_head_by_cap = HashMap::new();
-        for (index, mut buf) in bufs.enumerate() {
+        for (index, buf) in buffers.iter_mut().enumerate() {
             let cap = buf.bytes_total();
 
             // Link the buffer as the head of the free list for its capacity.
@@ -285,7 +284,6 @@ impl<T: IoBufMut> Inner<T> {
                 init_len: buf.bytes_init(),
                 next,
             });
-            buffers.push(buf);
         }
         debug_assert_eq!(iovecs.len(), states.len());
         debug_assert_eq!(iovecs.len(), buffers.len());
