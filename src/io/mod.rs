@@ -30,6 +30,8 @@ mod send_to;
 
 mod send_zc;
 
+mod sendmsg_zc;
+
 mod shared_fd;
 pub(crate) use shared_fd::SharedFd;
 
