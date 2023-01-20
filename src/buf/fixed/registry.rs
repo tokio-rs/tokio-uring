@@ -208,7 +208,12 @@ enum BufState {
 
 impl<T: IoBufMut> Inner<T> {
     fn new(bufs: impl Iterator<Item = T>) -> Self {
+        // Limit the number of buffers to the maximum allowable number.
         let bufs = bufs.take(cmp::min(UIO_MAXIOV as usize, u16::MAX as usize));
+        // Collect into `buffers`, which holds the backing buffers for
+        // the lifetime of the pool. Using collect may allow
+        // the compiler to apply collect in place specialization,
+        // to avoid an allocation.
         let mut buffers = bufs.collect::<Vec<T>>();
         let mut iovecs = Vec::with_capacity(buffers.len());
         let mut states = Vec::with_capacity(buffers.len());
