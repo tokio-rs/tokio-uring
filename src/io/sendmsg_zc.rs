@@ -88,9 +88,8 @@ impl<T, U> Completable for SendMsgZc<T, U> {
         let mut res = cqe.result.map(|v| v as usize);
 
         // Add the number of bytes to res.
-        match res {
-            Ok(_res) => res = Ok(_res + self.bytes),
-            _ => (),
+        if let Ok(_res) = res {
+            res = Ok(_res + self.bytes)
         }
 
         // Recover the data buffers.
