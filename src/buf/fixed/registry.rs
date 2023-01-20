@@ -188,6 +188,8 @@ struct Inner<T> {
     // State information on the buffers. Indices in this array correspond to
     // the indices in the array at raw_bufs.
     states: Vec<BufState>,
+    // Original capacity of raw_bufs as a Vec.
+    orig_cap: usize,
     // The owned buffers are kept until Drop
     #[allow(dead_code)]
     buffers: Vec<T>,
@@ -224,10 +226,12 @@ impl<T: IoBufMut> Inner<T> {
 
         // Safety: Vec::as_mut_ptr never returns null
         let raw_bufs = unsafe { ptr::NonNull::new_unchecked(iovecs.as_mut_ptr()) };
+        let orig_cap = iovecs.capacity();
         mem::forget(iovecs);
         Inner {
             raw_bufs,
             states,
+            orig_cap,
             buffers,
         }
     }
@@ -284,6 +288,9 @@ impl<T: IoBufMut> FixedBuffers for Inner<T> {
 
 impl<T> Drop for Inner<T> {
     fn drop(&mut self) {
+        let _iovecs = unsafe {
+            Vec::from_raw_parts(self.raw_bufs.as_ptr(), self.states.len(), self.orig_cap)
+        };
         // Assert all buffers are checked in
         for state in self.states.iter() {
             if let BufState::CheckedOut = state {
