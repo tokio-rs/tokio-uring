@@ -242,7 +242,6 @@ struct Inner<T: IoBufMut> {
     // Original capacity of raw_bufs as a Vec.
     orig_cap: usize,
     // Original buffers, kept until drop
-    #[allow(dead_code)]
     buffers: Vec<T>,
     // Table of head indices of the free buffer lists in each size bucket.
     free_buf_head_by_cap: HashMap<usize, u16>,
