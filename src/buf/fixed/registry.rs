@@ -35,7 +35,7 @@ use std::slice;
 /// [`check_out`]: Self::check_out
 /// [`Runtime`]: crate::Runtime
 #[derive(Clone)]
-pub struct FixedBufRegistry<T> {
+pub struct FixedBufRegistry<T: IoBufMut> {
     inner: Rc<RefCell<Inner<T>>>,
 }
 
@@ -180,7 +180,7 @@ impl<T: IoBufMut> FixedBufRegistry<T> {
 }
 
 // Internal state shared by FixedBufRegistry and FixedBuf handles.
-struct Inner<T> {
+struct Inner<T: IoBufMut> {
     // Pointer to an allocated array of iovec records referencing
     // the allocated buffers. The number of initialized records is the
     // same as the length of the states array.
@@ -191,7 +191,6 @@ struct Inner<T> {
     // Original capacity of raw_bufs as a Vec.
     orig_cap: usize,
     // The owned buffers are kept until Drop
-    #[allow(dead_code)]
     buffers: Vec<T>,
 }
 
@@ -291,14 +290,20 @@ impl<T: IoBufMut> FixedBuffers for Inner<T> {
     }
 }
 
-impl<T> Drop for Inner<T> {
+impl<T: IoBufMut> Drop for Inner<T> {
     fn drop(&mut self) {
-        // Assert all buffers are checked in
-        for state in self.states.iter() {
-            if let BufState::CheckedOut = state {
-                unreachable!("all buffers must be checked in");
+        for (i, state) in self.states.iter().enumerate() {
+            match state {
+                BufState::Free { init_len, .. } => {
+                    // Update buffer initalisation.
+                    // The buffer is about to dropped, but this may release it
+                    // from Registry ownership, rather than deallocate.
+                    unsafe { self.buffers[i].set_init(*init_len) };
+                }
+                BufState::CheckedOut => unreachable!("all buffers must be checked in"),
             }
         }
+
         // Rebuild Vec<iovec>, so it's dropped
         let _ = unsafe {
             Vec::from_raw_parts(self.raw_bufs.as_ptr(), self.states.len(), self.orig_cap)

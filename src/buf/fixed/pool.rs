@@ -82,7 +82,7 @@ use std::slice;
 /// # }
 /// ```
 #[derive(Clone)]
-pub struct FixedBufPool<T> {
+pub struct FixedBufPool<T: IoBufMut> {
     inner: Rc<RefCell<Inner<T>>>,
 }
 
@@ -231,7 +231,7 @@ impl<T: IoBufMut> FixedBufPool<T> {
 }
 
 // Internal state shared by FixedBufPool and FixedBuf handles.
-struct Inner<T> {
+struct Inner<T: IoBufMut> {
     // Pointer to an allocated array of iovec records referencing
     // the allocated buffers. The number of initialized records is the
     // same as the length of the states array.
@@ -376,12 +376,17 @@ impl<T: IoBufMut> FixedBuffers for Inner<T> {
     }
 }
 
-impl<T> Drop for Inner<T> {
+impl<T: IoBufMut> Drop for Inner<T> {
     fn drop(&mut self) {
-        // Assert all buffers are checked in
-        for state in self.states.iter() {
-            if let BufState::CheckedOut = state {
-                unreachable!("all buffers must be checked in");
+        for (i, state) in self.states.iter().enumerate() {
+            match state {
+                BufState::Free { init_len, .. } => {
+                    // Update buffer initalisation.
+                    // The buffer is about to dropped, but this may release it
+                    // from Registry ownership, rather than deallocate.
+                    unsafe { self.buffers[i].set_init(*init_len) };
+                }
+                BufState::CheckedOut => unreachable!("all buffers must be checked in"),
             }
         }
         // Rebuild Vec<iovec>, so it's dropped
