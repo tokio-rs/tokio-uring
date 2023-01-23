@@ -295,8 +295,8 @@ impl<T: IoBufMut> Drop for Inner<T> {
         for (i, state) in self.states.iter().enumerate() {
             match state {
                 BufState::Free { init_len, .. } => {
-                    // Update buffer initalisation.
-                    // The buffer is about to dropped, but this may release it
+                    // Update buffer initialisation.
+                    // The buffer is about to be dropped, but this may release it
                     // from Registry ownership, rather than deallocate.
                     unsafe { self.buffers[i].set_init(*init_len) };
                 }

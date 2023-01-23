@@ -53,10 +53,7 @@ impl FixedBuf {
     // - the data in the array must be initialized up to the number of bytes
     //   given in init_len.
     pub(super) unsafe fn new(registry: Rc<RefCell<dyn FixedBuffers>>, buf: CheckedOutBuf) -> Self {
-        FixedBuf {
-            registry,
-            buf,
-        }
+        FixedBuf { registry, buf }
     }
 
     /// Index of the underlying registry buffer
@@ -95,12 +92,14 @@ impl Deref for FixedBuf {
     type Target = [u8];
 
     fn deref(&self) -> &[u8] {
+        // Safety: The iovec points to a slice held  in self.buffers, to which no mutable reference exists.
         unsafe { std::slice::from_raw_parts(self.buf.iovec.iov_base as _, self.buf.init_len) }
     }
 }
 
 impl DerefMut for FixedBuf {
     fn deref_mut(&mut self) -> &mut [u8] {
+        // Safety: The iovec points to a slice held in self.buffers, to which no other reference exists.
         unsafe { std::slice::from_raw_parts_mut(self.buf.iovec.iov_base as _, self.buf.init_len) }
     }
 }
