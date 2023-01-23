@@ -27,11 +27,11 @@ fn test_vec() {
     assert_eq!(v.bytes_init(), 5);
     assert_eq!(v.bytes_total(), v.capacity());
 
-    // Assume init does not go backwards
+    // Init may go backwards
     unsafe {
         v.set_init(3);
     }
-    assert_eq!(&v[..], b"hello");
+    assert_eq!(&v[..], b"hel");
 
     // Initializing goes forward
     unsafe {

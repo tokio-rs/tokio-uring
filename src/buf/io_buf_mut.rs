@@ -23,14 +23,12 @@ pub unsafe trait IoBufMut: IoBuf {
 
     /// Updates the number of initialized bytes.
     ///
-    /// If the specified `pos` is greater than the value returned by
-    /// [`IoBuf::bytes_init`], it becomes the new water mark as returned by
-    /// `IoBuf::bytes_init`.
-    ///
     /// # Safety
     ///
     /// The caller must ensure that all bytes starting at `stable_mut_ptr()` up
     /// to `pos` are initialized and owned by the buffer.
+    ///
+    /// The number of bytes must be less than or equal to bytes_total()
     unsafe fn set_init(&mut self, pos: usize);
 }
 
@@ -40,9 +38,7 @@ unsafe impl IoBufMut for Vec<u8> {
     }
 
     unsafe fn set_init(&mut self, init_len: usize) {
-        if self.len() < init_len {
-            self.set_len(init_len);
-        }
+        self.set_len(init_len);
     }
 }
 
@@ -53,8 +49,6 @@ unsafe impl IoBufMut for bytes::BytesMut {
     }
 
     unsafe fn set_init(&mut self, init_len: usize) {
-        if self.len() < init_len {
-            self.set_len(init_len);
-        }
+        self.set_len(init_len);
     }
 }
