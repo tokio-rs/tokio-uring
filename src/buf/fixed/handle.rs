@@ -82,7 +82,7 @@ unsafe impl IoBufMut for FixedBuf {
     }
 
     unsafe fn set_init(&mut self, pos: usize) {
-        if self.buf.iovec.iov_len >= pos {
+        if self.buf.init_len < pos {
             self.buf.init_len = pos
         }
     }
