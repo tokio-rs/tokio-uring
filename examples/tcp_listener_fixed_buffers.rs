@@ -4,7 +4,7 @@
 use std::{env, iter, net::SocketAddr};
 
 use tokio_uring::{
-    buf::{fixed::FixedBufRegistry, BoundedBuf},
+    buf::{fixed::FixedBufRegistry, BoundedBuf, IoBufMut},
     net::{TcpListener, TcpStream},
 }; // BoundedBuf for slice method
 
@@ -50,7 +50,11 @@ async fn accept_loop(listen_addr: SocketAddr) {
 // A loop that echoes input to output. Use one fixed buffer for receiving and sending the response
 // back. Once the connection is closed, the function returns and the fixed buffer is dropped,
 // getting the fixed buffer index returned to the available pool kept by the registry.
-async fn echo_handler(stream: TcpStream, peer: SocketAddr, registry: FixedBufRegistry) {
+async fn echo_handler<T: IoBufMut>(
+    stream: TcpStream,
+    peer: SocketAddr,
+    registry: FixedBufRegistry<T>,
+) {
     println!("peer {} connected", peer);
 
     // Get one of the two fixed buffers.
