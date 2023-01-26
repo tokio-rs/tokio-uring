@@ -231,8 +231,8 @@ impl UdpSocket {
     /// Returns a tuple of:
     ///
     /// * Result containing bytes written on success
-    /// * The original `io_slices` Vec<T>
-    /// * The original `msg_contol` Option<U>
+    /// * The original `io_slices` `Vec<T>`
+    /// * The original `msg_contol` `Option<U>`
     ///
     /// See the linux [kernel docs](https://www.kernel.org/doc/html/latest/networking/msg_zerocopy.html)
     /// for a discussion on when this might be appropriate. In particular:
