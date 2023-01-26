@@ -227,6 +227,22 @@ impl UdpSocket {
     }
 
     /// Sends a message on the socket using a msghdr.
+    ///
+    /// Returns a tuple of:
+    ///
+    /// * Result containing bytes written on success
+    /// * The original `io_slices` Vec<T>
+    /// * The original `msg_contol` Option<U>
+    ///
+    /// See the linux [kernel docs](https://www.kernel.org/doc/html/latest/networking/msg_zerocopy.html)
+    /// for a discussion on when this might be appropriate. In particular:
+    ///
+    /// > Copy avoidance is not a free lunch. As implemented, with page pinning,
+    /// > it replaces per byte copy cost with page accounting and completion
+    /// > notification overhead. As a result, zero copy is generally only effective
+    /// > at writes over around 10 KB.
+    ///
+    /// Note: Using fixed buffers [#54](https://github.com/tokio-rs/tokio-uring/pull/54), avoids the page-pinning overhead
     pub async fn sendmsg_zc<T: IoBuf, U: IoBuf>(
         &self,
         io_slices: Vec<T>,
