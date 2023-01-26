@@ -877,6 +877,14 @@ impl fmt::Debug for File {
 
 /// Removes a File
 ///
+/// This function will return an error in the following situations, but is not
+/// limited to just these cases:
+///
+/// * `path` doesn't exist.
+///      * [`io::ErrorKind`] would be set to `NotFound`
+/// * The user lacks permissions to modify/remove the file at the provided `path`.
+///      * [`io::ErrorKind`] would be set to `PermissionDenied`
+///
 /// # Examples
 ///
 /// ```no_run
@@ -897,7 +905,14 @@ pub async fn remove_file<P: AsRef<Path>>(path: P) -> io::Result<()> {
 /// Renames a file or directory to a new name, replacing the original file if
 /// `to` already exists.
 ///
-/// This will not work if the new name is on a different mount point.
+/// #Errors
+///
+/// * `path` doesn't exist.
+///      * [`io::ErrorKind`] would be set to `NotFound`
+/// * The user lacks permissions to modify/remove the file at the provided `path`.
+///      * [`io::ErrorKind`] would be set to `PermissionDenied`
+/// * The new name/path is on a different mount point.
+///      * [`io::ErrorKind`] would be set to `CrossesDevices`
 ///
 /// # Example
 ///
