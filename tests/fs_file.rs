@@ -3,6 +3,8 @@ use std::{
     os::unix::io::{AsRawFd, FromRawFd, RawFd},
 };
 
+use libc;
+
 use tempfile::NamedTempFile;
 
 use tokio_uring::buf::fixed::FixedBufRegistry;
@@ -300,6 +302,38 @@ fn write_fixed() {
 
         let file = std::fs::read(tempfile.path()).unwrap();
         assert_eq!(file, HELLO);
+    });
+}
+
+#[test]
+fn basic_fallocate() {
+    tokio_uring::start(async {
+        let tempfile = tempfile();
+
+        let file = File::create(tempfile.path()).await.unwrap();
+
+        file.fallocate(0, 1024, libc::FALLOC_FL_ZERO_RANGE)
+            .await
+            .unwrap();
+        file.sync_all().await.unwrap();
+
+        let statx = file.statx().await.unwrap();
+        let size = statx.stx_size;
+        assert_eq!(size, 1024);
+
+        // using the FALLOC_FL_KEEP_SIZE flag causes the file metadata to reflect the previous size
+        file.fallocate(
+            0,
+            2048,
+            libc::FALLOC_FL_ZERO_RANGE | libc::FALLOC_FL_KEEP_SIZE,
+        )
+        .await
+        .unwrap();
+        file.sync_all().await.unwrap();
+
+        let statx = file.statx().await.unwrap();
+        let size = statx.stx_size;
+        assert_eq!(size, 1024);
     });
 }
 
