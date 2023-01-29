@@ -1,4 +1,4 @@
-use crate::buf::IoBufMut;
+use crate::buf::BoundedBufMut;
 use crate::BufResult;
 
 use crate::io::SharedFd;
@@ -19,7 +19,7 @@ pub(crate) struct Readv<T> {
     iovs: Vec<iovec>,
 }
 
-impl<T: IoBufMut> Op<Readv<T>> {
+impl<T: BoundedBufMut> Op<Readv<T>> {
     pub(crate) fn readv_at(
         fd: &SharedFd,
         mut bufs: Vec<T>,
@@ -31,7 +31,7 @@ impl<T: IoBufMut> Op<Readv<T>> {
         let iovs: Vec<iovec> = bufs
             .iter_mut()
             .map(|b| iovec {
-                // Safety guaranteed by `IoBufMut`.
+                // Safety guaranteed by `BoundedBufMut`.
                 iov_base: unsafe { b.stable_mut_ptr().add(b.bytes_init()) as *mut libc::c_void },
                 iov_len: b.bytes_total() - b.bytes_init(),
             })
@@ -60,7 +60,7 @@ impl<T: IoBufMut> Op<Readv<T>> {
 
 impl<T> Completable for Readv<T>
 where
-    T: IoBufMut,
+    T: BoundedBufMut,
 {
     type Output = BufResult<usize, Vec<T>>;
 
