@@ -1,6 +1,6 @@
 use crate::{
     buf::fixed::FixedBuf,
-    buf::{BoundedBuf, BoundedBufMut, IoBuf},
+    buf::{BoundedBuf, BoundedBufMut},
     io::{SharedFd, Socket},
 };
 use socket2::SockAddr;
@@ -243,7 +243,7 @@ impl UdpSocket {
     /// > at writes over around 10 KB.
     ///
     /// Note: Using fixed buffers [#54](https://github.com/tokio-rs/tokio-uring/pull/54), avoids the page-pinning overhead
-    pub async fn sendmsg_zc<T: IoBuf, U: IoBuf>(
+    pub async fn sendmsg_zc<T: BoundedBuf, U: BoundedBuf>(
         &self,
         io_slices: Vec<T>,
         socket_addr: SocketAddr,

@@ -226,7 +226,7 @@ impl File {
     ///     })
     /// }
     /// ```
-    pub async fn readv_at<T: IoBufMut>(
+    pub async fn readv_at<T: BoundedBufMut>(
         &self,
         bufs: Vec<T>,
         pos: u64,
@@ -283,7 +283,7 @@ impl File {
     /// ```
     ///
     /// [`Ok(n)`]: Ok
-    pub async fn writev_at<T: IoBuf>(
+    pub async fn writev_at<T: BoundedBuf>(
         &self,
         buf: Vec<T>,
         pos: u64,
@@ -408,7 +408,7 @@ impl File {
     ///# fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// use tokio_uring::fs::File;
     /// use tokio_uring::buf::fixed::FixedBufRegistry;
-    /// use tokio_uring::buf::IoBuf;
+    /// use tokio_uring::buf::BoundedBuf;
     /// use std::iter;
     ///
     /// tokio_uring::start(async {
@@ -601,7 +601,7 @@ impl File {
     ///# fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// use tokio_uring::fs::File;
     /// use tokio_uring::buf::fixed::FixedBufRegistry;
-    /// use tokio_uring::buf::IoBuf;
+    /// use tokio_uring::buf::BoundedBuf;
     ///
     /// tokio_uring::start(async {
     ///     let registry = FixedBufRegistry::new([b"some bytes".to_vec()]);
