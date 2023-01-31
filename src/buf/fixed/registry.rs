@@ -1,4 +1,5 @@
-use super::handle::CheckedOutBuf;
+use super::buffers::AllocatableBuffers;
+use super::handle::AllocatedBuf;
 use super::{FixedBuf, FixedBuffers};
 
 use crate::buf::IoBufMut;
@@ -170,11 +171,11 @@ impl<T: IoBufMut> FixedBufRegistry<T> {
     /// preventing shared use of the buffer while the operation is in flight.
     pub fn check_out(&self, index: usize) -> Option<FixedBuf> {
         let mut inner = self.inner.borrow_mut();
-        inner.check_out(index).map(|data| {
-            let registry = Rc::clone(&self.inner);
+        inner.check_out(index).map(|buf| {
+            let allocator = Rc::clone(&self.inner);
             // Safety: the validity of buffer data is ensured by
             // Inner::check_out
-            unsafe { FixedBuf::new(registry, data) }
+            unsafe { FixedBuf::new(allocator, buf) }
         })
     }
 }
@@ -243,7 +244,7 @@ impl<T: IoBufMut> Inner<T> {
     // If the indexed buffer is free, changes its state to checked out
     // and returns its data.
     // If the buffer is already checked out, returns None.
-    fn check_out(&mut self, index: usize) -> Option<CheckedOutBuf> {
+    fn check_out(&mut self, index: usize) -> Option<AllocatedBuf> {
         let state = self.states.get_mut(index)?;
         let BufState::Free { init_len } = *state else {
             return None
@@ -257,7 +258,7 @@ impl<T: IoBufMut> Inner<T> {
         // states that has the same length.
         let iovec = unsafe { self.raw_bufs.as_ptr().add(index).read() };
         debug_assert!(index <= u16::MAX as usize);
-        Some(CheckedOutBuf {
+        Some(AllocatedBuf {
             iovec,
             init_len,
             index: index as u16,
@@ -284,9 +285,11 @@ impl<T: IoBufMut> FixedBuffers for Inner<T> {
         // by construction.
         unsafe { slice::from_raw_parts(self.raw_bufs.as_ptr(), self.states.len()) }
     }
+}
 
-    unsafe fn check_in(&mut self, index: u16, init_len: usize) {
-        self.check_in_internal(index, init_len)
+unsafe impl<T: IoBufMut> AllocatableBuffers for Inner<T> {
+    unsafe fn free(&mut self, buf: AllocatedBuf) {
+        self.check_in_internal(buf.index, buf.init_len)
     }
 }
 

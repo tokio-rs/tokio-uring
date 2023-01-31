@@ -1,4 +1,5 @@
-use super::handle::CheckedOutBuf;
+use super::buffers::AllocatableBuffers;
+use super::handle::AllocatedBuf;
 use super::{FixedBuf, FixedBuffers};
 
 use crate::buf::IoBufMut;
@@ -221,11 +222,11 @@ impl<T: IoBufMut> FixedBufPool<T> {
     /// in which available buffers are retrieved.
     pub fn try_next(&self, cap: usize) -> Option<FixedBuf> {
         let mut inner = self.inner.borrow_mut();
-        inner.try_next(cap).map(|data| {
-            let registry = Rc::clone(&self.inner);
+        inner.try_next(cap).map(|buf| {
+            let allocator = Rc::clone(&self.inner);
             // Safety: the validity of buffer data is ensured by
             // Inner::try_next
-            unsafe { FixedBuf::new(registry, data) }
+            unsafe { FixedBuf::new(allocator, buf) }
         })
     }
 }
@@ -309,7 +310,7 @@ impl<T: IoBufMut> Inner<T> {
 
     // If the free buffer list for this capacity is not empty, checks out the first buffer
     // from the list and returns its data. Otherwise, returns None.
-    fn try_next(&mut self, cap: usize) -> Option<CheckedOutBuf> {
+    fn try_next(&mut self, cap: usize) -> Option<AllocatedBuf> {
         let free_head = self.free_buf_head_by_cap.get_mut(&cap)?;
         let index = *free_head as usize;
         let state = &mut self.states[index];
@@ -338,7 +339,7 @@ impl<T: IoBufMut> Inner<T> {
         // that has the same length.
         let iovec = unsafe { self.raw_bufs.as_ptr().add(index).read() };
         debug_assert_eq!(iovec.iov_len, cap);
-        Some(CheckedOutBuf {
+        Some(AllocatedBuf {
             iovec,
             init_len,
             index: index as u16,
@@ -369,9 +370,11 @@ impl<T: IoBufMut> FixedBuffers for Inner<T> {
         // by construction.
         unsafe { slice::from_raw_parts(self.raw_bufs.as_ptr(), self.states.len()) }
     }
+}
 
-    unsafe fn check_in(&mut self, index: u16, init_len: usize) {
-        self.check_in_internal(index, init_len)
+unsafe impl<T: IoBufMut> AllocatableBuffers for Inner<T> {
+    unsafe fn free(&mut self, buf: AllocatedBuf) {
+        self.check_in_internal(buf.index, buf.init_len)
     }
 }
 

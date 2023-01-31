@@ -1,4 +1,4 @@
-use super::FixedBuffers;
+use super::buffers::AllocatableBuffers;
 use crate::buf::{IoBuf, IoBufMut};
 
 use libc::iovec;
@@ -8,7 +8,8 @@ use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 
 // Data to construct a `FixedBuf` handle from.
-pub(super) struct CheckedOutBuf {
+#[derive(Clone, Copy)]
+pub(super) struct AllocatedBuf {
     // Pointer and size of the buffer.
     pub iovec: iovec,
     // Length of the initialized part.
@@ -31,19 +32,17 @@ pub(super) struct CheckedOutBuf {
 /// [`FixedBufPool`]:     super::FixedBufPool
 ///
 pub struct FixedBuf {
-    registry: Rc<RefCell<dyn FixedBuffers>>,
-    buf: CheckedOutBuf,
+    allocator: Rc<RefCell<dyn AllocatableBuffers>>,
+    buf: AllocatedBuf,
 }
 
 impl Drop for FixedBuf {
     fn drop(&mut self) {
-        let mut registry = self.registry.borrow_mut();
+        let mut allocator = self.allocator.borrow_mut();
         // Safety: the length of the initialized data in the buffer has been
         // maintained accordingly to the safety contracts on
         // Self::new and IoBufMut.
-        unsafe {
-            registry.check_in(self.buf.index, self.buf.init_len);
-        }
+        unsafe { allocator.free(self.buf) }
     }
 }
 
@@ -52,8 +51,11 @@ impl FixedBuf {
     // - the array will not be deallocated until the buffer is checked in;
     // - the data in the array must be initialized up to the number of bytes
     //   given in init_len.
-    pub(super) unsafe fn new(registry: Rc<RefCell<dyn FixedBuffers>>, buf: CheckedOutBuf) -> Self {
-        FixedBuf { registry, buf }
+    pub(super) unsafe fn new(
+        allocator: Rc<RefCell<dyn AllocatableBuffers>>,
+        buf: AllocatedBuf,
+    ) -> Self {
+        FixedBuf { allocator, buf }
     }
 
     /// Index of the underlying registry buffer
