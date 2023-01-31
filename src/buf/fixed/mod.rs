@@ -5,8 +5,9 @@
 //! [`File::write_fixed_at`][wfa] make use of buffers pre-mapped by
 //! the kernel to reduce per-I/O overhead.
 //!
-//! Two kinds of buffer collections are provided: [`FixedBufRegistry`] and
-//! [`FixedBufPool`], realizing two different patterns of buffer management.
+//! Three kinds of buffer collections are provided: [`FixedBufRegistry`],
+//! [`FixedBufPool`] and [`FixedBufAllocator`], realizing two different patterns of buffer management.
+//!
 //! The `register` method on either of these types is used to register a
 //! collection of buffers with the kernel. It must be called before any of
 //! the [`FixedBuf`] handles to the collection's buffers can be used with
@@ -14,6 +15,9 @@
 //!
 //! [rfa]: crate::fs::File::read_fixed_at
 //! [wfa]: crate::fs::File::write_fixed_at
+
+mod allocator;
+pub use allocator::FixedBufAllocator;
 
 mod handle;
 pub use handle::FixedBuf;

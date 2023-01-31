@@ -1,5 +1,5 @@
 use tokio_test::assert_err;
-use tokio_uring::buf::fixed::FixedBufRegistry;
+use tokio_uring::buf::fixed::{FixedBufAllocator, FixedBufRegistry};
 use tokio_uring::buf::BoundedBuf;
 use tokio_uring::fs::File;
 
@@ -54,6 +54,47 @@ fn fixed_buf_turnaround() {
         let fixed_buf = buffers.check_out(0).unwrap();
         assert_eq!(fixed_buf.bytes_total(), 30);
         assert_eq!(fixed_buf.bytes_init(), HELLO.len());
+    });
+}
+
+#[test]
+fn fixed_buf_allocator() {
+    tokio_uring::start(async {
+        let mut tempfile = tempfile();
+        tempfile.write_all(HELLO).unwrap();
+
+        let file = File::open(tempfile.path()).await.unwrap();
+
+        let buffers = FixedBufAllocator::new(1 << 20).unwrap();
+        buffers.register().unwrap();
+
+        let fixed_buf = buffers.allocate_fixed(32).unwrap();
+        assert_eq!(fixed_buf.bytes_total(), 32);
+
+        // Can't allocate more than the heap can provide
+        assert!(buffers.allocate_fixed(1 << 20).is_none());
+
+        // Checking out another buffer from the same registry is possible,
+        // but does not affect the status of the first buffer.
+        let fixed_buf1 = buffers.allocate_fixed(64).unwrap();
+        assert_eq!(fixed_buf1.bytes_total(), 64);
+        assert!(buffers.allocate_fixed(1 << 20).is_none());
+        mem::drop(fixed_buf1);
+        assert!(buffers.allocate_fixed(1 << 20).is_none());
+
+        let op = file.read_fixed_at(fixed_buf, 0);
+
+        let (res, buf) = op.await;
+        let n = res.unwrap();
+        assert_eq!(n, HELLO.len());
+
+        mem::drop(buf);
+
+        // The buffer has been released, now we can allocate the entire heap
+        // note that due to alignment we might end up with slightly less heap than requested
+        let max_bytes = (4096 / 2) + (buffers.available_bytes() / 2);
+        let fixed_buf = buffers.allocate_fixed(max_bytes).unwrap();
+        assert_eq!(fixed_buf.bytes_total(), max_bytes);
     });
 }
 
