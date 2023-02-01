@@ -6,7 +6,7 @@
 //! the kernel to reduce per-I/O overhead.
 //!
 //! Three kinds of buffer collections are provided: [`FixedBufRegistry`],
-//! [`FixedBufPool`] and [`FixedBufAllocator`], realizing two different patterns of buffer management.
+//! [`FixedBufPool`] and [`FixedBufAllocator`], realizing different patterns of buffer management.
 //!
 //! The `register` method on either of these types is used to register a
 //! collection of buffers with the kernel. It must be called before any of

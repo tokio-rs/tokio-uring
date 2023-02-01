@@ -26,5 +26,6 @@ pub(super) unsafe trait AllocatableBuffers: FixedBuffers {
 // Abstracts access of fixed buffers in a buffer allocator.
 pub(crate) trait FixedBuffers {
     // Provides access to the raw buffers as a slice of iovec.
+    // used during registration to hand buffers to the kernel.
     fn iovecs(&self) -> &[iovec];
 }

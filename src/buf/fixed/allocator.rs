@@ -23,9 +23,6 @@ use super::{buffers::AllocatableBuffers, handle::AllocatedBuf, FixedBuf, FixedBu
 ///
 /// The buffers of the collection are not deallocated until:
 /// - all `FixedBufAllocator` references to the heap have been dropped;
-/// - all [`FixedBuf`] handles to individual buffers in the heap have
-///   been dropped, including the buffer handles owned by any I/O operations
-///   in flight;
 /// - The `tokio-uring` [`Runtime`] the buffers are registered with
 ///   has been dropped.
 ///
@@ -39,15 +36,6 @@ pub struct FixedBufAllocator {
 
 impl FixedBufAllocator {
     /// Creates a new buffer heap of the requested size.
-    ///
-    /// Currently this is limited to the size of a single iovec that can
-    /// be passed to `io_uring` which limits us to 1GiB of heap per allocator.
-    ///
-    /// There is a hard limit to the heap of [`RLIMIT_MEMLOCK`], of course
-    /// this is not a per-runtime setting, so the practical limit will possibly be
-    /// lower.
-    ///
-    /// [`RLIMIT_MEMLOCK`]: nix::sys::resource::Resource::RLIMIT_MEMLOCK
     pub fn new(size: usize) -> io::Result<Self> {
         // the buddy allocator will use some of the space in the buffer for metadata
         // and so the layout.size() will be greater than allocator.available_bytes()
@@ -86,6 +74,15 @@ impl FixedBufAllocator {
     /// If collection of buffers is currently registered in the context
     /// of the `tokio-uring` runtime this call is made in, the function returns
     /// an error.
+    ///
+    /// If the requested heap size is greater than the limit imposed on a single
+    /// `io_uring` [`iovec`] (at present 1GiB), the function returns an error.
+    ///
+    /// If there are insufficient kernel resources are available, or the caller had a
+    /// non-zero [`RLIMIT_MEMLOCK`] soft resource limit, but tried to lock more memory than
+    /// the limit permitted. The function returns an error.
+    ///
+    /// [`RLIMIT_MEMLOCK`]: nix::sys::resource::Resource::RLIMIT_MEMLOCK
     pub fn register(&self) -> io::Result<()> {
         CONTEXT.with(|x| {
             x.handle()
@@ -108,7 +105,7 @@ impl FixedBufAllocator {
     ///
     /// If another collection of buffers is currently registered in the context
     /// of the `tokio-uring` runtime this call is made in, the function returns
-    /// an error. Calling `unregister` when no `FixedBufPool` is currently
+    /// an error. Calling `unregister` when no `FixedBufAllocator` is currently
     /// registered on this runtime also returns an error.
     pub fn unregister(&self) -> io::Result<()> {
         CONTEXT.with(|x| {
@@ -148,7 +145,7 @@ struct Inner {
     layout: Layout,
     // Buddy allocator for the heap
     allocator: BuddyAlloc,
-    // iovec mappted to the heap for registration
+    // iovec mapped to the heap for registration
     // for now we are limited to just a single iovec
     // if it crosses the limit of io_uring that is a registration error
     iovec: Vec<iovec>,
@@ -197,7 +194,6 @@ impl Inner {
 }
 
 impl FixedBuffers for Inner {
-    // Construct the iovec slice on the fly, this only gets called during registration
     fn iovecs(&self) -> &[iovec] {
         self.iovec.as_slice().as_ref()
     }
