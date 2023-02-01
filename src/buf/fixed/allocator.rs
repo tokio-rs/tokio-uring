@@ -195,11 +195,11 @@ impl Inner {
 
 impl FixedBuffers for Inner {
     fn iovecs(&self) -> &[iovec] {
-        self.iovec.as_slice().as_ref()
+        self.iovec.as_slice()
     }
 }
 
-unsafe impl AllocatableBuffers for Inner {
+impl AllocatableBuffers for Inner {
     unsafe fn free(&mut self, buf: AllocatedBuf) {
         self.allocator.free(buf.iovec.iov_base as _)
     }

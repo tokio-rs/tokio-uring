@@ -3,7 +3,7 @@ use libc::iovec;
 use super::handle::AllocatedBuf;
 
 // Abstracts management of fixed buffers in a buffer allocator.
-pub(super) unsafe trait AllocatableBuffers: FixedBuffers {
+pub(super) trait AllocatableBuffers: FixedBuffers {
     /// Releases the buffer back to its allocator implementation so it can be reused.
     ///
     /// Sets the indexed buffer's state to free and records the updated length

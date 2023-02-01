@@ -287,7 +287,7 @@ impl<T: IoBufMut> FixedBuffers for Inner<T> {
     }
 }
 
-unsafe impl<T: IoBufMut> AllocatableBuffers for Inner<T> {
+impl<T: IoBufMut> AllocatableBuffers for Inner<T> {
     unsafe fn free(&mut self, buf: AllocatedBuf) {
         self.check_in_internal(buf.index, buf.init_len)
     }
