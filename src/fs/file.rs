@@ -292,14 +292,15 @@ impl File {
         op.await
     }
 
-    /// Like `writev_at` but will call the `io_uring` `writev` operation multiple times if necessary.
+    /// Like `writev_at` but will call the `io_uring` `writev` operation multiple times if
+    /// necessary.
     ///
-    /// Parameter `pos` is an Option<u64> to allow this function to be used for both files that are
-    /// seekable and those that are not. The caller is responsible for knowing this.
+    /// Parameter `pos` is an `Option<u64>` to allow this function to be used for both files that
+    /// are seekable and those that are not. The caller is responsible for knowing this.
     ///
     /// When `None` is supplied, the offset passed to the `io_uring` call will always be zero, even
-    /// if multiple writev calls are necessary; only the iovec information would be adjusted between
-    /// calls. A Unix pipe would fall into this category.
+    /// if multiple writev calls are necessary; only the iovec information would be adjusted
+    /// between calls. A Unix pipe would fall into this category.
     ///
     /// When `Some(n)` is suppied, the offset passed to the writev call will be incremented by the
     /// progress of prior writev calls. A file system's regular file would fall into this category.
