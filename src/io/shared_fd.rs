@@ -6,6 +6,7 @@ use std::os::unix::io::{FromRawFd, RawFd};
 use std::rc::Rc;
 use std::task::Waker;
 
+use crate::io::shared_fd::sealed::CommonFd;
 use crate::runtime::driver::op::Op;
 use crate::runtime::CONTEXT;
 
@@ -21,7 +22,7 @@ pub(crate) struct SharedFd {
 
 struct Inner {
     // Open file descriptor
-    fd: Fd,
+    fd: CommonFd,
 
     // Waker to notify when the close operation completes.
     state: RefCell<State>,
@@ -45,15 +46,34 @@ impl SharedFd {
     pub(crate) fn new(fd: RawFd) -> SharedFd {
         SharedFd {
             inner: Rc::new(Inner {
-                fd: Fd(fd),
+                fd: CommonFd::Raw(fd),
+                state: RefCell::new(State::Init),
+            }),
+        }
+    }
+    // TODO once we implement a request that creates a fixed file descriptor, remove this 'allow'.
+    // It would be possible to create a fixed file using a `register` command to store a raw fd
+    // into the fixed table, but that's a whole other can of worms - do we track both, can either
+    // be closed while the other remains active and functional?
+    #[allow(dead_code)]
+    pub(crate) fn new_fixed(slot: u32) -> SharedFd {
+        SharedFd {
+            inner: Rc::new(Inner {
+                fd: CommonFd::Fixed(slot),
                 state: RefCell::new(State::Init),
             }),
         }
     }
 
-    /// Returns the RawFd
+    /// Returns the RawFd.
     pub(crate) fn raw_fd(&self) -> RawFd {
-        self.inner.fd.0
+        self.inner.raw_fd()
+    }
+
+    /// Returns true if self represents a RawFd.
+    #[allow(dead_code)]
+    pub(crate) fn is_raw_fd(&self) -> bool {
+        self.inner.is_raw_fd()
     }
 
     /// An FD cannot be closed until all in-flight operation have completed.
@@ -74,10 +94,34 @@ impl SharedFd {
 }
 
 impl Inner {
+    /// Returns the RawFd
+    pub(crate) fn raw_fd(&self) -> RawFd {
+        //self.inner.fd.0
+        match self.fd {
+            CommonFd::Raw(raw) => raw,
+            CommonFd::Fixed(_fixed) => {
+                unreachable!(); // caller could have used is_raw_fd
+            }
+        }
+    }
+
+    /// Returns true if self represents a RawFd.
+    pub(crate) fn is_raw_fd(&self) -> bool {
+        match self.fd {
+            CommonFd::Raw(_) => true,
+            CommonFd::Fixed(_) => false,
+        }
+    }
     /// If there are no in-flight operations, submit the operation.
     fn submit_close_op(&mut self) {
-        // Close the FD
+        // Close the file
+        let common_fd = self.fd;
         let state = RefCell::get_mut(&mut self.state);
+
+        match *state {
+            State::Closing(_) | State::Closed => return,
+            _ => {}
+        };
 
         // Submit a close operation
         // If either:
@@ -92,19 +136,17 @@ impl Inner {
         // dropping it.
         //
         // TODO: Should we warn?
-        *state = match CONTEXT.try_with(|cx| cx.is_set()) {
-            Ok(true) => match Op::close(self.fd.0) {
-                Ok(op) => State::Closing(op),
-                Err(_) => {
-                    let _ = unsafe { std::fs::File::from_raw_fd(self.fd.0) };
-                    State::Closed
-                }
-            },
-            _ => {
-                let _ = unsafe { std::fs::File::from_raw_fd(self.fd.0) };
-                State::Closed
+        if let Ok(true) = CONTEXT.try_with(|cx| cx.is_set()) {
+            if let Ok(op) = Op::close(common_fd) {
+                *state = State::Closing(op);
+                return;
             }
         };
+
+        if let CommonFd::Raw(raw) = common_fd {
+            let _ = unsafe { std::fs::File::from_raw_fd(raw) };
+        }
+        *state = State::Closed;
     }
 
     /// Completes when the FD has been closed.
@@ -133,7 +175,7 @@ impl Inner {
                     Poll::Pending
                 }
                 State::Closing(op) => {
-                    // Nothing to do if the close opeation failed.
+                    // Nothing to do if the close operation failed.
                     let _ = ready!(Pin::new(op).poll(cx));
                     *state = State::Closed;
                     Poll::Ready(())
@@ -157,52 +199,50 @@ impl Drop for Inner {
     }
 }
 
-// TODO maybe find a better file for this later.
+// Enum and traits copied from the io-uring crate.
 
 /// A file descriptor that has not been registered with io_uring.
 #[derive(Debug, Clone, Copy)]
-#[repr(transparent)]
-pub struct Fd(pub RawFd); // TODO consider renaming to RawFd
+pub struct Raw(pub RawFd); // Note: io-uring names this Fd
 
 /// A file descriptor that has been registered with io_uring using
 /// [`Submitter::register_files`](crate::Submitter::register_files) or [`Submitter::register_files_sparse`](crate::Submitter::register_files_sparse).
 /// This can reduce overhead compared to using [`Fd`] in some cases.
 #[derive(Debug, Clone, Copy)]
-#[repr(transparent)] // TODO this probably isn't significant for this crate
 pub struct Fixed(pub u32); // TODO consider renaming to Direct (but uring docs use both Fixed descriptor and Direct descriptor)
 
 pub(crate) mod sealed {
-    use super::{Fd, Fixed};
+    use super::{Fixed, Raw};
     use std::os::unix::io::RawFd;
 
-    #[derive(Debug)]
-    // Note: io-uring crate names this Target
+    #[derive(Debug, Clone, Copy)]
+    // Note: io-uring names this Target
     pub enum CommonFd {
-        Fd(RawFd),
+        Raw(RawFd),
         Fixed(u32),
     }
 
-    // Note: io-uring crate names this UseFd
+    // Note: io-uring names this UseFd
     pub trait UseRawFd: Sized {
         fn into(self) -> RawFd;
     }
 
-    // Note: ioo-uring crate names this UseFixed
+    // Note: io-uring names this UseFixed
     pub trait UseCommonFd: Sized {
         fn into(self) -> CommonFd;
     }
 
-    impl UseRawFd for Fd {
+    impl UseRawFd for Raw {
         #[inline]
         fn into(self) -> RawFd {
             self.0
         }
     }
 
-    impl UseCommonFd for Fd {
+    impl UseCommonFd for Raw {
         #[inline]
         fn into(self) -> CommonFd {
-            CommonFd::Fd(self.0)
+            CommonFd::Raw(self.0)
         }
     }
 
