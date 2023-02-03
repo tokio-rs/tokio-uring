@@ -21,7 +21,7 @@ pub(crate) struct SharedFd {
 
 struct Inner {
     // Open file descriptor
-    fd: RawFd,
+    fd: Fd,
 
     // Waker to notify when the close operation completes.
     state: RefCell<State>,
@@ -45,7 +45,7 @@ impl SharedFd {
     pub(crate) fn new(fd: RawFd) -> SharedFd {
         SharedFd {
             inner: Rc::new(Inner {
-                fd,
+                fd: Fd(fd),
                 state: RefCell::new(State::Init),
             }),
         }
@@ -53,7 +53,7 @@ impl SharedFd {
 
     /// Returns the RawFd
     pub(crate) fn raw_fd(&self) -> RawFd {
-        self.inner.fd
+        self.inner.fd.0
     }
 
     /// An FD cannot be closed until all in-flight operation have completed.
@@ -93,15 +93,15 @@ impl Inner {
         //
         // TODO: Should we warn?
         *state = match CONTEXT.try_with(|cx| cx.is_set()) {
-            Ok(true) => match Op::close(self.fd) {
+            Ok(true) => match Op::close(self.fd.0) {
                 Ok(op) => State::Closing(op),
                 Err(_) => {
-                    let _ = unsafe { std::fs::File::from_raw_fd(self.fd) };
+                    let _ = unsafe { std::fs::File::from_raw_fd(self.fd.0) };
                     State::Closed
                 }
             },
             _ => {
-                let _ = unsafe { std::fs::File::from_raw_fd(self.fd) };
+                let _ = unsafe { std::fs::File::from_raw_fd(self.fd.0) };
                 State::Closed
             }
         };
@@ -153,6 +153,63 @@ impl Drop for Inner {
                 self.submit_close_op();
             }
             _ => {}
+        }
+    }
+}
+
+// TODO maybe find a better file for this later.
+
+/// A file descriptor that has not been registered with io_uring.
+#[derive(Debug, Clone, Copy)]
+#[repr(transparent)]
+pub struct Fd(pub RawFd); // TODO consider renaming to RawFd
+
+/// A file descriptor that has been registered with io_uring using
+/// [`Submitter::register_files`](crate::Submitter::register_files) or [`Submitter::register_files_sparse`](crate::Submitter::register_files_sparse).
+/// This can reduce overhead compared to using [`Fd`] in some cases.
+#[derive(Debug, Clone, Copy)]
+#[repr(transparent)] // TODO this probably isn't significant for this crate
+pub struct Fixed(pub u32); // TODO consider renaming to Direct (but uring docs use both Fixed descriptor and Direct descriptor)
+
+pub(crate) mod sealed {
+    use super::{Fd, Fixed};
+    use std::os::unix::io::RawFd;
+
+    #[derive(Debug)]
+    // Note: io-uring crate names this Target
+    pub enum CommonFd {
+        Fd(RawFd),
+        Fixed(u32),
+    }
+
+    // Note: io-uring crate names this UseFd
+    pub trait UseRawFd: Sized {
+        fn into(self) -> RawFd;
+    }
+
+    // Note: ioo-uring crate names this UseFixed
+    pub trait UseCommonFd: Sized {
+        fn into(self) -> CommonFd;
+    }
+
+    impl UseRawFd for Fd {
+        #[inline]
+        fn into(self) -> RawFd {
+            self.0
+        }
+    }
+
+    impl UseCommonFd for Fd {
+        #[inline]
+        fn into(self) -> CommonFd {
+            CommonFd::Fd(self.0)
+        }
+    }
+
+    impl UseCommonFd for Fixed {
+        #[inline]
+        fn into(self) -> CommonFd {
+            CommonFd::Fixed(self.0)
         }
     }
 }
