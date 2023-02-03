@@ -15,7 +15,7 @@ pub(crate) struct Statx {
 }
 
 impl Op<Statx> {
-    pub(crate) fn statx(fd: &SharedFd) -> io::Result<Op<Statx>> {
+    pub(crate) fn statx(fd: &SharedFd, flags: i32, mask: u32) -> io::Result<Op<Statx>> {
         CONTEXT.with(|x| {
             let empty_path = CStr::from_bytes_with_nul(b"\0").unwrap();
             x.handle().expect("not in a runtime context").submit_op(
@@ -29,8 +29,8 @@ impl Op<Statx> {
                         empty_path.as_ptr(),
                         &mut *statx.statx as *mut libc::statx as *mut types::statx,
                     )
-                    .flags(libc::AT_EMPTY_PATH)
-                    .mask(libc::STATX_ALL)
+                    .flags(flags)
+                    .mask(mask)
                     .build()
                 },
             )

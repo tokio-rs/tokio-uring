@@ -803,6 +803,8 @@ impl File {
 
     /// Metadata information about a file.
     ///
+    /// Refer to statx(2) for the returned libc::statx structure.
+    ///
     /// # Examples
     ///
     /// ```no_run
@@ -821,7 +823,16 @@ impl File {
     ///     })
     /// }
     pub async fn statx(&self) -> io::Result<libc::statx> {
-        Op::statx(&self.fd)?.await
+        let flags = libc::AT_EMPTY_PATH;
+        let mask = libc::STATX_ALL;
+        Op::statx(&self.fd, flags, mask)?.await
+    }
+
+    /// Metadata information about a file.
+    ///
+    /// Refer to statx(2) for flags and mask values and the returned libc::statx structure.
+    pub async fn statx_flags_mask(&self, flags: i32, mask: u32) -> io::Result<libc::statx> {
+        Op::statx(&self.fd, flags, mask)?.await
     }
 
     /// Closes the file.
