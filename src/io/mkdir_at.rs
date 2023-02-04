@@ -15,7 +15,7 @@ pub(crate) struct Mkdir {
 
 impl Op<Mkdir> {
     /// Submit a request to create a directory
-    pub(crate) fn make_dir(path: &Path) -> io::Result<Op<Mkdir>> {
+    pub(crate) fn make_dir(path: &Path, mode: u32) -> io::Result<Op<Mkdir>> {
         use io_uring::{opcode, types};
 
         let _path = cstr(path)?;
@@ -27,7 +27,7 @@ impl Op<Mkdir> {
                     let p_ref = mkdir._path.as_c_str().as_ptr();
 
                     opcode::MkDirAt::new(types::Fd(libc::AT_FDCWD), p_ref)
-                        .mode(0o777)
+                        .mode(mode)
                         .build()
                 })
         })
