@@ -55,7 +55,7 @@ use std::path::Path;
 /// ```
 pub struct File {
     /// Open file descriptor
-    fd: SharedFd,
+    pub(crate) fd: SharedFd,
 }
 
 impl File {
@@ -799,29 +799,6 @@ impl File {
     /// }
     pub async fn fallocate(&self, offset: u64, len: u64, flags: i32) -> io::Result<()> {
         Op::fallocate(&self.fd, offset, len, flags)?.await
-    }
-
-    /// Metadata information about a file.
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use tokio_uring::fs::File;
-    ///
-    /// fn main() -> Result<(), Box<dyn std::error::Error>> {
-    ///     tokio_uring::start(async {
-    ///         let f = File::create("foo.txt").await?;
-    ///
-    ///         // Fetch file metadata
-    ///         let statx = f.statx().await?;
-    ///
-    ///         // Close the file
-    ///         f.close().await?;
-    ///         Ok(())
-    ///     })
-    /// }
-    pub async fn statx(&self) -> io::Result<libc::statx> {
-        Op::statx(&self.fd)?.await
     }
 
     /// Closes the file.
