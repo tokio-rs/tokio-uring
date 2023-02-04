@@ -124,7 +124,9 @@ impl DirBuilder {
     // recursion when only the first level of the directory needs to be built. For now, this serves
     // its purpose.
 
-    // TODO This version still relies on the synchronous os call to resolve the is_dir property.
+    // TODO this is a bit expensive for the case of creating a directory that already exists
+    // because after the call to mkdir fails, it will make three more async calls to determine the
+    // path already exists and is a directory.
 
     fn recurse_create_dir_all<'a>(&'a self, path: &'a Path) -> LocalBoxFuture<io::Result<()>> {
         Box::pin(async move {
@@ -135,7 +137,7 @@ impl DirBuilder {
             match self.inner.mkdir(path).await {
                 Ok(()) => return Ok(()),
                 Err(ref e) if e.kind() == io::ErrorKind::NotFound => {}
-                Err(_) if path.is_dir() => return Ok(()),
+                Err(_) if is_dir(path).await => return Ok(()),
                 Err(e) => return Err(e),
             }
             match path.parent() {
@@ -155,7 +157,7 @@ impl DirBuilder {
             }
             match self.inner.mkdir(path).await {
                 Ok(()) => Ok(()),
-                Err(_) if path.is_dir() => Ok(()),
+                Err(_) if is_dir(path).await => Ok(()),
                 Err(e) => Err(e),
             }
         })
@@ -188,4 +190,24 @@ mod fs_imp {
             self.mode = mode as mode_t;
         }
     }
+}
+
+// Returns true if the path represents a directory.
+//
+// Uses three asynchronous uring calls to determine this.
+async fn is_dir<P: AsRef<Path>>(path: P) -> bool {
+    let f = match crate::fs::File::open(path).await {
+        Ok(f) => f,
+        _ => return false,
+    };
+
+    // f is closed asynchronously, regardless of the statx result.
+
+    let b: bool = match f.statx().await {
+        Ok(statx) => (u32::from(statx.stx_mode) & libc::S_IFMT) == libc::S_IFDIR,
+        _ => false,
+    };
+
+    let _ = f.close().await;
+    b
 }
