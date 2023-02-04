@@ -31,7 +31,7 @@ use std::path::Path;
 /// }
 /// ```
 pub async fn create_dir<P: AsRef<Path>>(path: P) -> io::Result<()> {
-    Op::make_dir(path.as_ref())?.await
+    Op::make_dir(path.as_ref(), 0o777)?.await
 }
 
 /// Removes a directory on the local filesystem.
