@@ -11,6 +11,8 @@ use tokio_uring::buf::fixed::FixedBufRegistry;
 use tokio_uring::buf::{BoundedBuf, BoundedBufMut};
 use tokio_uring::fs::File;
 
+use io_uring::{IoUring, Probe};
+
 #[path = "../src/future.rs"]
 #[allow(warnings)]
 mod future;
@@ -28,12 +30,20 @@ async fn read_hello(file: &File) {
 
 #[test]
 fn uring_cmd16() {
-    tokio_uring::start(async {
-        let file = File::open("/dev/null").await.unwrap();
-        let res = file.uring_cmd16(0, [0x00; 16]).await.unwrap();
-
-        assert_eq!(res, 0);
-    });
+    // Check that io_uring::opcode::UringCmd16 is supported on the running kernel.
+    let entries = 8;
+    let ring = IoUring::new(entries).unwrap();
+    let probe = Probe::new();
+    ring.submitter().register_probe(&mut probe).unwrap();
+    if probe.is_supported(io_uring::opcode::UringCmd16) {
+        tokio_uring::start(async {
+            io_uring.submitter().register_probe(&mut probe)?;
+            let file = File::open("/dev/null").await.unwrap();
+            let res = file.uring_cmd16(0, [0x00; 16]).await.unwrap();
+    
+            assert_eq!(res, 0);
+        });
+    }
 }
 
 #[cfg(feature = "sqe128")]
