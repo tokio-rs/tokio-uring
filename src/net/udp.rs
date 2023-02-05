@@ -204,7 +204,7 @@ impl UdpSocket {
     pub async fn send_to<T: BoundedBuf>(
         &self,
         buf: T,
-        socket_addr: SocketAddr,
+        socket_addr: Option<SocketAddr>,
     ) -> crate::BufResult<usize, T> {
         self.inner.send_to(buf, socket_addr).await
     }
@@ -246,7 +246,7 @@ impl UdpSocket {
     pub async fn sendmsg_zc<T: BoundedBuf, U: BoundedBuf>(
         &self,
         io_slices: Vec<T>,
-        socket_addr: SocketAddr,
+        socket_addr: Option<SocketAddr>,
         msg_control: Option<U>,
     ) -> (io::Result<usize>, Vec<T>, Option<U>) {
         self.inner
