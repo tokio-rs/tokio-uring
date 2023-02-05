@@ -24,7 +24,6 @@ async fn read_hello(file: &File) {
     assert_eq!(&buf[..n], HELLO);
 }
 
-#[cfg(all(feature = "uring-cmd"))]
 #[test]
 fn uring_cmd16() {
     tokio_uring::start(async {
@@ -35,7 +34,7 @@ fn uring_cmd16() {
     });
 }
 
-#[cfg(all(feature = "uring-cmd", feature = "sqe128"))]
+#[cfg(feature = "sqe128")]
 #[test]
 fn uring_cmd80() {
     tokio_uring::start(async {

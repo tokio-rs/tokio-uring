@@ -21,8 +21,6 @@ keywords = ["async", "fs", "io-uring"]
 sqe128 = []
 # Enable 32-byte completion queue entries. This requires Linux >= 5.19.
 cqe32 = []
-# Enable support for uring-cmd. This requires Linux >= 5.19.
-uring-cmd = []
 
 [dependencies]
 tokio = { version = "1.2", features = ["net", "rt"] }
