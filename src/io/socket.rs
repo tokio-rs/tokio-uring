@@ -128,7 +128,7 @@ impl Socket {
         (Ok(()), buf.into_inner())
     }
 
-    pub async fn writev<T: IoBuf>(&self, buf: Vec<T>) -> crate::BufResult<usize, Vec<T>> {
+    pub async fn writev<T: BoundedBuf>(&self, buf: Vec<T>) -> crate::BufResult<usize, Vec<T>> {
         let op = Op::writev_at(&self.fd, buf, 0).unwrap();
         op.await
     }
@@ -147,7 +147,7 @@ impl Socket {
         op.await
     }
 
-    pub(crate) async fn sendmsg_zc<T: IoBuf, U: IoBuf>(
+    pub(crate) async fn sendmsg_zc<T: BoundedBuf, U: BoundedBuf>(
         &self,
         io_slices: Vec<T>,
         socket_addr: SocketAddr,

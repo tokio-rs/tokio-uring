@@ -1,4 +1,4 @@
-use crate::buf::IoBuf;
+use crate::buf::BoundedBuf;
 use crate::io::SharedFd;
 use crate::runtime::driver::op::{Completable, CqeResult, MultiCQEFuture, Op, Updateable};
 use crate::runtime::CONTEXT;
@@ -21,7 +21,7 @@ pub(crate) struct SendMsgZc<T, U> {
     bytes: usize,
 }
 
-impl<T: IoBuf, U: IoBuf> Op<SendMsgZc<T, U>, MultiCQEFuture> {
+impl<T: BoundedBuf, U: BoundedBuf> Op<SendMsgZc<T, U>, MultiCQEFuture> {
     pub(crate) fn sendmsg_zc(
         fd: &SharedFd,
         io_bufs: Vec<T>,

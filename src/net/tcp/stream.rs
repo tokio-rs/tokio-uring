@@ -6,7 +6,7 @@ use std::{
 
 use crate::{
     buf::fixed::FixedBuf,
-    buf::{BoundedBuf, BoundedBufMut, IoBuf},
+    buf::{BoundedBuf, BoundedBufMut},
     io::{SharedFd, Socket},
 };
 
@@ -221,7 +221,7 @@ impl TcpStream {
     /// written to this writer.
     ///
     /// [`Ok(n)`]: Ok
-    pub async fn writev<T: IoBuf>(&self, buf: Vec<T>) -> crate::BufResult<usize, Vec<T>> {
+    pub async fn writev<T: BoundedBuf>(&self, buf: Vec<T>) -> crate::BufResult<usize, Vec<T>> {
         self.inner.writev(buf).await
     }
 
