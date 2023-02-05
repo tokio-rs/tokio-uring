@@ -23,21 +23,19 @@ impl Op<Statx> {
     // Future. If we aren't, use the libc::AT_FDCWD value.
     // If Path is None, the flags is combined with libc::AT_EMPTY_PATH automatically.
     pub(crate) fn statx(
-        fd: Option<&SharedFd>,
+        fd: Option<SharedFd>,
         path: Option<CString>,
         flags: i32,
         mask: u32,
     ) -> io::Result<Op<Statx>> {
-        let (fd, raw) = match fd {
-            Some(shared) => (Some(shared.clone()), shared.raw_fd()),
-            None => (None, libc::AT_FDCWD),
-        };
+        let raw = fd.as_ref().map_or(libc::AT_FDCWD, |fd| fd.raw_fd());
         let mut flags = flags;
         let path = match path {
             Some(path) => path,
             None => {
+                // If there is no path, add appropriate bit to flags.
                 flags |= libc::AT_EMPTY_PATH;
-                CStr::from_bytes_with_nul(b"\0").unwrap().into() // Is there a constant CString we
+                CStr::from_bytes_with_nul(b"\0").unwrap().into() // TODO Is there a constant CString we
                                                                  // could use here.
             }
         };

@@ -1,4 +1,5 @@
 use super::File;
+use crate::io::SharedFd;
 use crate::runtime::driver::op::Op;
 use std::io;
 use std::path::Path;
@@ -31,7 +32,7 @@ impl File {
     pub async fn statx(&self) -> io::Result<libc::statx> {
         let flags = libc::AT_EMPTY_PATH;
         let mask = libc::STATX_ALL;
-        Op::statx(Some(&self.fd), None, flags, mask)?.await
+        Op::statx(Some(self.fd.clone()), None, flags, mask)?.await
     }
 
     /// Returns a builder that can return statx(2) metadata for an open file using the uring
@@ -70,7 +71,7 @@ impl File {
     /// ```
     pub fn statx_builder(&self) -> StatxBuilder {
         StatxBuilder {
-            file: Some(self),
+            file: Some(self.fd.clone()),
             flags: libc::AT_EMPTY_PATH,
             mask: libc::STATX_ALL,
         }
@@ -111,20 +112,19 @@ pub async fn statx<P: AsRef<Path>>(path: P) -> io::Result<libc::statx> {
 /// `statx()` or to `statx_path().
 ///
 /// See StatxBuilder::new for more details.
-#[derive(Debug)]
-pub struct StatxBuilder<'a> {
-    file: Option<&'a File>,
+pub struct StatxBuilder {
+    file: Option<SharedFd>,
     flags: i32,
     mask: u32,
 }
 
-impl<'a> Default for StatxBuilder<'a> {
+impl Default for StatxBuilder {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<'a> StatxBuilder<'a> {
+impl StatxBuilder {
     /// Returns a builder to fully specify the arguments to the uring statx(2) operation.
     ///
     /// The libc::statx structure returned in described in the statx(2) man page.
@@ -155,12 +155,42 @@ impl<'a> StatxBuilder<'a> {
     /// })
     /// ```
     #[must_use]
-    pub fn new() -> StatxBuilder<'a> {
+    pub fn new() -> StatxBuilder {
         StatxBuilder {
             file: None,
             flags: libc::AT_EMPTY_PATH,
             mask: libc::STATX_ALL,
         }
+    }
+
+    /// Sets the `dirfd` option, setting or replacing the file descriptor which may be for a
+    /// directory but doesn't have to be. When used with a path, it should be a directory but when
+    /// used without a path, can be any file type. So `dirfd` is a bit of a misnomer but it is what
+    /// the statx(2) man page calls it.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use tokio_uring::fs::{self, File};
+    ///
+    /// tokio_uring::start(async {
+    ///     let dir = fs::OpenOptions::new()
+    ///         .open("/home/linux")
+    ///         .await.unwrap();
+    ///
+    ///     // Fetch file metadata
+    ///     let statx = fs::StatxBuilder::new()
+    ///         .dirfd(&dir)
+    ///         .mask(libc::STATX_TYPE)
+    ///         .statx_path(".vimrc").await.unwrap();
+    ///
+    ///     dir.close().await.unwrap();
+    /// })
+    /// ```
+    #[must_use]
+    pub fn dirfd(&mut self, file: &File) -> &mut Self {
+        self.file = Some(file.fd.clone());
+        self
     }
 
     /// Sets the `flags` option, replacing the default.
@@ -207,22 +237,25 @@ impl<'a> StatxBuilder<'a> {
     /// # Examples
     ///
     /// ```no_run
-    /// use tokio_uring::fs::File;
+    /// use tokio_uring::fs::{self, File};
     ///
     /// tokio_uring::start(async {
-    ///     let f = File::create("foo.txt").await.unwrap();
+    ///     let dir = fs::OpenOptions::new()
+    ///         .open("/home/linux")
+    ///         .await.unwrap();
     ///
     ///     // Fetch file metadata
-    ///     let statx = f.statx_builder()
+    ///     let statx = fs::StatxBuilder::new()
+    ///         .dirfd(&dir)
     ///         .mask(libc::STATX_TYPE)
     ///         .statx().await.unwrap();
     ///
-    ///     // Close the file
-    ///     f.close().await.unwrap();
+    ///     dir.close().await.unwrap();
     /// })
     /// ```
-    pub async fn statx(&self) -> io::Result<libc::statx> {
-        Op::statx(self.file.map(|x| &x.fd), None, self.flags, self.mask)?.await
+    pub async fn statx(&mut self) -> io::Result<libc::statx> {
+        let fd = self.file.take();
+        Op::statx(fd, None, self.flags, self.mask)?.await
     }
 
     // TODO should the statx() terminator be renamed to something like nopath()
@@ -247,26 +280,27 @@ impl<'a> StatxBuilder<'a> {
     /// # Examples
     ///
     /// ```no_run
+    /// use tokio_uring::fs;
+    ///
     /// tokio_uring::start(async {
     ///     // This shows the power of combining an open file, presumably a directory, and the relative
     ///     // path to have the statx operation return the meta data for the child of the opened directory
     ///     // descriptor.
-    ///     let dir_path = "/home/ubuntu";
-    ///     let rel_path = "./work";
+    ///     let dir = fs::OpenOptions::new()
+    ///         .open("/home/linux")
+    ///         .await.unwrap();
     ///
-    ///     let open_dir = tokio_uring::fs::File::open(dir_path).await.unwrap();
+    ///     // Fetch file metadata
+    ///     let statx_res = fs::StatxBuilder::new()
+    ///         .dirfd(&dir)
+    ///         .mask(libc::STATX_TYPE)
+    ///         .statx().await;
     ///
-    ///     // Fetch metadata for relative path against open directory.
-    ///     let statx_res = open_dir.statx_builder().statx_path(rel_path).await;
-    ///
-    ///     // Close the directory descriptor.
-    ///     open_dir.close().await.unwrap();
-    ///
-    ///     // Use the relative path's statx information.
+    ///     dir.close().await.unwrap();
     ///     let _ = statx_res.unwrap();
     /// })
     /// ```
-    pub async fn statx_path<P: AsRef<Path>>(&self, path: P) -> io::Result<libc::statx> {
+    pub async fn statx_path<P: AsRef<Path>>(&mut self, path: P) -> io::Result<libc::statx> {
         // It's almost an accident there are two terminators for the StatxBuilder, one that doesn't
         // take a path, and one that does.
         //
@@ -278,8 +312,9 @@ impl<'a> StatxBuilder<'a> {
         // again.
         use crate::io::cstr;
 
+        let fd = self.file.take();
         let path = cstr(path.as_ref())?;
-        Op::statx(self.file.map(|x| &x.fd), Some(path), self.flags, self.mask)?.await
+        Op::statx(fd, Some(path), self.flags, self.mask)?.await
     }
 }
 
