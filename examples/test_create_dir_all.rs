@@ -177,7 +177,8 @@ async fn statx<P: AsRef<Path>>(path: P) -> io::Result<()> {
 
 async fn statx_builder<P: AsRef<Path>>(path: P) -> io::Result<()> {
     let _statx = tokio_uring::fs::StatxBuilder::new()
-        .statx_path(path)
+        .pathname(path)?
+        .statx()
         .await?;
     Ok(())
 }
@@ -186,13 +187,13 @@ async fn statx_builder2<P: AsRef<Path>>(dir_path: P, rel_path: P) -> io::Result<
     // This shows the power of combining an open file, presumably a directory, and the relative
     // path to have the statx operation return the meta data for the child of the opened directory
     // descriptor.
-    let f = tokio_uring::fs::File::open(dir_path).await.unwrap();
+    let f = tokio_uring::fs::File::open(dir_path).await?;
 
     // Fetch file metadata
-    let res = f.statx_builder().statx_path(rel_path).await;
+    let res = f.statx_builder().pathname(rel_path)?.statx().await;
 
     // Close the file
-    f.close().await.unwrap();
+    f.close().await?;
 
     res.map(|_| ())
 }
@@ -200,7 +201,8 @@ async fn statx_builder2<P: AsRef<Path>>(dir_path: P, rel_path: P) -> io::Result<
 async fn matches_mode<P: AsRef<Path>>(path: P, want_mode: u16) -> io::Result<()> {
     let statx = tokio_uring::fs::StatxBuilder::new()
         .mask(libc::STATX_MODE)
-        .statx_path(path)
+        .pathname(path)?
+        .statx()
         .await?;
     let got_mode = statx.stx_mode & 0o7777;
     if want_mode == got_mode {

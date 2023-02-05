@@ -15,6 +15,9 @@ pub(crate) struct Statx {
     fd: Option<SharedFd>,
     #[allow(dead_code)]
     path: CString,
+
+    // TODO consider returning this type when the operation is complete so the caller has the boxed value.
+    // The builder could even recycle an old boxed value and pass it in here.
     statx: Box<libc::statx>,
 }
 

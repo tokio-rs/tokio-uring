@@ -1,8 +1,7 @@
 use super::File;
-use crate::io::SharedFd;
+use crate::io::{cstr, SharedFd};
 use crate::runtime::driver::op::Op;
-use std::io;
-use std::path::Path;
+use std::{ffi::CString, io, path::Path};
 
 impl File {
     /// Returns statx(2) metadata for an open file via a uring call.
@@ -72,6 +71,7 @@ impl File {
     pub fn statx_builder(&self) -> StatxBuilder {
         StatxBuilder {
             file: Some(self.fd.clone()),
+            path: None,
             flags: libc::AT_EMPTY_PATH,
             mask: libc::STATX_ALL,
         }
@@ -103,17 +103,18 @@ impl File {
 /// })
 /// ```
 pub async fn statx<P: AsRef<Path>>(path: P) -> io::Result<libc::statx> {
-    StatxBuilder::new().statx_path(path).await
+    StatxBuilder::new().pathname(path).unwrap().statx().await
 }
 
 /// A builder used to make a uring statx(2) call.
 ///
 /// This builder supports the `flags` and `mask` options and can be finished with a call to
-/// `statx()` or to `statx_path().
+/// `statx()`.
 ///
 /// See StatxBuilder::new for more details.
 pub struct StatxBuilder {
     file: Option<SharedFd>,
+    path: Option<CString>,
     flags: i32,
     mask: u32,
 }
@@ -144,7 +145,8 @@ impl StatxBuilder {
     ///     // Fetch file metadata
     ///     let statx = tokio_uring::fs::StatxBuilder::new()
     ///         .mask(libc::STATX_MODE)
-    ///         .statx_path("foo.txt").await.unwrap();
+    ///         .pathname("foo.txt").unwrap()
+    ///         .statx().await.unwrap();
     ///     let got_mode = statx.stx_mode & 0o7777;
     ///
     ///     if want_mode == got_mode {
@@ -158,6 +160,7 @@ impl StatxBuilder {
     pub fn new() -> StatxBuilder {
         StatxBuilder {
             file: None,
+            path: None,
             flags: libc::AT_EMPTY_PATH,
             mask: libc::STATX_ALL,
         }
@@ -182,7 +185,8 @@ impl StatxBuilder {
     ///     let statx = fs::StatxBuilder::new()
     ///         .dirfd(&dir)
     ///         .mask(libc::STATX_TYPE)
-    ///         .statx_path(".vimrc").await.unwrap();
+    ///         .pathname(".cargo").unwrap()
+    ///         .statx().await.unwrap();
     ///
     ///     dir.close().await.unwrap();
     /// })
@@ -191,6 +195,34 @@ impl StatxBuilder {
     pub fn dirfd(&mut self, file: &File) -> &mut Self {
         self.file = Some(file.fd.clone());
         self
+    }
+
+    /// Sets the `path` option, setting or replacing the path option to the command.
+    /// The path may be absolute or relative.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use tokio_uring::fs::{self, File};
+    ///
+    /// tokio_uring::start(async {
+    ///     let dir = fs::OpenOptions::new()
+    ///         .open("/home/linux")
+    ///         .await.unwrap();
+    ///
+    ///     // Fetch file metadata
+    ///     let statx = fs::StatxBuilder::new()
+    ///         .dirfd(&dir)
+    ///         .pathname(".cargo").unwrap()
+    ///         .mask(libc::STATX_TYPE)
+    ///         .statx().await.unwrap();
+    ///
+    ///     dir.close().await.unwrap();
+    /// })
+    /// ```
+    pub fn pathname<P: AsRef<Path>>(&mut self, path: P) -> io::Result<&mut Self> {
+        self.path = Some(cstr(path.as_ref())?);
+        Ok(self)
     }
 
     /// Sets the `flags` option, replacing the default.
@@ -204,7 +236,8 @@ impl StatxBuilder {
     ///     // Fetch file metadata
     ///     let statx = tokio_uring::fs::StatxBuilder::new()
     ///         .flags(libc::AT_NO_AUTOMOUNT)
-    ///         .statx_path("foo.txt").await.unwrap();
+    ///         .pathname("foo.txt").unwrap()
+    ///         .statx().await.unwrap();
     /// })
     /// ```
     #[must_use]
@@ -222,7 +255,8 @@ impl StatxBuilder {
     ///     // Fetch file metadata
     ///     let statx = tokio_uring::fs::StatxBuilder::new()
     ///         .mask(libc::STATX_BASIC_STATS)
-    ///         .statx_path("foo.txt").await.unwrap();
+    ///         .pathname("foo.txt").unwrap()
+    ///         .statx().await.unwrap();
     /// })
     /// ```
     #[must_use]
@@ -247,6 +281,7 @@ impl StatxBuilder {
     ///     // Fetch file metadata
     ///     let statx = fs::StatxBuilder::new()
     ///         .dirfd(&dir)
+    ///         .pathname(".cargo").unwrap()
     ///         .mask(libc::STATX_TYPE)
     ///         .statx().await.unwrap();
     ///
@@ -254,67 +289,10 @@ impl StatxBuilder {
     /// })
     /// ```
     pub async fn statx(&mut self) -> io::Result<libc::statx> {
+        // TODO should the statx() terminator be renamed to something like submit()?
         let fd = self.file.take();
-        Op::statx(fd, None, self.flags, self.mask)?.await
-    }
-
-    // TODO should the statx() terminator be renamed to something like nopath()
-    // and the statx_path() be renamed to path(AsRef<Path>)?
-
-    /// Returns the metadata requested for the given path. The path can be absolute or relative.
-    ///
-    /// When the path is relative, it works against the open file discriptor if it has one
-    /// else it works against the current working directory.
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// tokio_uring::start(async {
-    ///     // Fetch metadata for relative path against current working directory.
-    ///     let statx = tokio_uring::fs::StatxBuilder::new()
-    ///         .mask(libc::STATX_BASIC_STATS)
-    ///         .statx_path("foo.txt").await.unwrap();
-    /// })
-    /// ```
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use tokio_uring::fs;
-    ///
-    /// tokio_uring::start(async {
-    ///     // This shows the power of combining an open file, presumably a directory, and the relative
-    ///     // path to have the statx operation return the meta data for the child of the opened directory
-    ///     // descriptor.
-    ///     let dir = fs::OpenOptions::new()
-    ///         .open("/home/linux")
-    ///         .await.unwrap();
-    ///
-    ///     // Fetch file metadata
-    ///     let statx_res = fs::StatxBuilder::new()
-    ///         .dirfd(&dir)
-    ///         .mask(libc::STATX_TYPE)
-    ///         .statx().await;
-    ///
-    ///     dir.close().await.unwrap();
-    ///     let _ = statx_res.unwrap();
-    /// })
-    /// ```
-    pub async fn statx_path<P: AsRef<Path>>(&mut self, path: P) -> io::Result<libc::statx> {
-        // It's almost an accident there are two terminators for the StatxBuilder, one that doesn't
-        // take a path, and one that does.
-        //
-        // Because the <AsRef<Path>> is of unknown size, it can't be stored in the builder without
-        // boxing it, and the conversion to CString can't be done without potentially returning an
-        // error and returning an error can't be done by a method that returns a &mut self, and
-        // trying to return a Result<&mut self> may have led to trouble, but what really seemed
-        // like trouble was using the CString field in the other terminator. Have to look into this
-        // again.
-        use crate::io::cstr;
-
-        let fd = self.file.take();
-        let path = cstr(path.as_ref())?;
-        Op::statx(fd, Some(path), self.flags, self.mask)?.await
+        let path = self.path.take();
+        Op::statx(fd, path, self.flags, self.mask)?.await
     }
 }
 
@@ -324,10 +302,12 @@ impl StatxBuilder {
 /// They both can't be true at the same time and there are many reasons they may both be false.
 #[allow(dead_code)]
 pub async fn is_dir_regfile<P: AsRef<Path>>(path: P) -> (bool, bool) {
-    let res = crate::fs::StatxBuilder::new()
-        .mask(libc::STATX_TYPE)
-        .statx_path(path)
-        .await;
+    let mut builder = crate::fs::StatxBuilder::new();
+    if builder.mask(libc::STATX_TYPE).pathname(path).is_err() {
+        return (false, false);
+    }
+
+    let res = builder.statx().await;
     match res {
         Ok(statx) => (
             (u32::from(statx.stx_mode) & libc::S_IFMT) == libc::S_IFDIR,
