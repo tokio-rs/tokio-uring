@@ -785,6 +785,58 @@ impl File {
         Op::datasync(&self.fd)?.await
     }
 
+    /// Manipulate the allocated disk space of the file.
+    ///
+    /// The manipulated range starts at the `offset` and continues for `len` bytes.
+    ///
+    /// The specific manipulation to the allocated disk space are specified by
+    /// the `flags`, to understand what are the possible values here check
+    /// the `fallocate(2)` man page.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use tokio_uring::fs::File;
+    ///
+    /// fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ///     tokio_uring::start(async {
+    ///         let f = File::create("foo.txt").await?;
+    ///
+    ///         // Allocate a 1024 byte file setting all the bytes to zero
+    ///         f.fallocate(0, 1024, libc::FALLOC_FL_ZERO_RANGE).await?;
+    ///
+    ///         // Close the file
+    ///         f.close().await?;
+    ///         Ok(())
+    ///     })
+    /// }
+    pub async fn fallocate(&self, offset: u64, len: u64, flags: i32) -> io::Result<()> {
+        Op::fallocate(&self.fd, offset, len, flags)?.await
+    }
+
+    /// Metadata information about a file.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use tokio_uring::fs::File;
+    ///
+    /// fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ///     tokio_uring::start(async {
+    ///         let f = File::create("foo.txt").await?;
+    ///
+    ///         // Fetch file metadata
+    ///         let statx = f.statx().await?;
+    ///
+    ///         // Close the file
+    ///         f.close().await?;
+    ///         Ok(())
+    ///     })
+    /// }
+    pub async fn statx(&self) -> io::Result<libc::statx> {
+        Op::statx(&self.fd)?.await
+    }
+
     /// Closes the file.
     ///
     /// The method completes once the close operation has completed,
@@ -838,6 +890,14 @@ impl fmt::Debug for File {
 
 /// Removes a File
 ///
+/// This function will return an error in the following situations, but is not
+/// limited to just these cases:
+///
+/// * `path` doesn't exist.
+///      * [`io::ErrorKind`] would be set to `NotFound`
+/// * The user lacks permissions to modify/remove the file at the provided `path`.
+///      * [`io::ErrorKind`] would be set to `PermissionDenied`
+///
 /// # Examples
 ///
 /// ```no_run
@@ -858,7 +918,14 @@ pub async fn remove_file<P: AsRef<Path>>(path: P) -> io::Result<()> {
 /// Renames a file or directory to a new name, replacing the original file if
 /// `to` already exists.
 ///
-/// This will not work if the new name is on a different mount point.
+/// #Errors
+///
+/// * `path` doesn't exist.
+///      * [`io::ErrorKind`] would be set to `NotFound`
+/// * The user lacks permissions to modify/remove the file at the provided `path`.
+///      * [`io::ErrorKind`] would be set to `PermissionDenied`
+/// * The new name/path is on a different mount point.
+///      * [`io::ErrorKind`] would be set to `CrossesDevices`
 ///
 /// # Example
 ///

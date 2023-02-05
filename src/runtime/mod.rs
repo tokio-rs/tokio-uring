@@ -13,7 +13,14 @@ thread_local! {
     pub(crate) static CONTEXT: RuntimeContext = RuntimeContext::new();
 }
 
-/// The Runtime executor
+/// The Runtime Executor
+///
+/// This is the Runtime for `tokio-uring`.
+/// It wraps the default [`Runtime`] using the platform-specific Driver.
+///
+/// This executes futures and tasks within the current-thread only.
+///
+/// [`Runtime`]: tokio::runtime::Runtime
 pub struct Runtime {
     /// Tokio runtime, always current-thread
     tokio_rt: ManuallyDrop<tokio::runtime::Runtime>,
@@ -56,7 +63,9 @@ pub fn spawn<T: Future + 'static>(task: T) -> tokio::task::JoinHandle<T::Output>
 }
 
 impl Runtime {
-    /// Create a new tokio_uring runtime on the current thread
+    /// Creates a new tokio_uring runtime on the current thread.
+    ///
+    /// This takes the tokio-uring [`Builder`](crate::Builder) as a parameter.
     pub fn new(b: &crate::Builder) -> io::Result<Runtime> {
         let rt = tokio::runtime::Builder::new_current_thread()
             .on_thread_park(|| {
@@ -83,7 +92,21 @@ impl Runtime {
         })
     }
 
-    /// Runs a future to completion on the current runtime
+    /// Runs a future to completion on the tokio-uring runtime. This is the
+    /// runtime's entry point.
+    ///
+    /// This runs the given future on the current thread, blocking until it is
+    /// complete, and yielding its resolved result. Any tasks, futures, or timers
+    /// which the future spawns internally will be executed on this runtime.
+    ///
+    /// Any spawned tasks will be suspended after `block_on` returns. Calling
+    /// `block_on` again will resume previously spawned tasks.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if the provided future panics, or if called within an
+    /// asynchronous execution context.
+    /// Runs a future to completion on the current runtime.
     pub fn block_on<F>(&self, future: F) -> F::Output
     where
         F: Future,
