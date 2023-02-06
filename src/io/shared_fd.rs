@@ -2,7 +2,7 @@ use crate::io::Close;
 use std::future::poll_fn;
 
 use std::cell::RefCell;
-use std::os::unix::io::{FromRawFd, RawFd};
+use std::os::unix::io::{FromRawFd, IntoRawFd, RawFd};
 use std::rc::Rc;
 use std::task::Waker;
 
@@ -39,6 +39,26 @@ enum State {
 
     /// The FD is fully closed
     Closed,
+
+    // The FD is leaked. A SharedFd in this state will not be closed on drop.
+    // A SharedFd will only enter this state as a result of the `into_raw_fd`
+    // method.
+    Leaked,
+}
+
+impl IntoRawFd for SharedFd {
+    // Consumes this object, returning the raw underlying file descriptor.
+    // This method will panic if there are any in-flight operations.
+    fn into_raw_fd(mut self) -> RawFd {
+        // Change the SharedFd state to `Leaked` so that the file-descriptor is
+        // not closed on drop.
+        if let Some(inner) = Rc::get_mut(&mut self.inner) {
+            let state = RefCell::get_mut(&mut inner.state);
+            *state = State::Leaked;
+            return self.raw_fd();
+        }
+        panic!("unexpected operation in-flight")
+    }
 }
 
 impl SharedFd {
@@ -139,6 +159,9 @@ impl Inner {
                     Poll::Ready(())
                 }
                 State::Closed => Poll::Ready(()),
+                // By definition, a SharedFd in a Leaked state is not closed, so we should
+                // never encounter this case while waiting for a SharedFd to close.
+                State::Leaked => unreachable!(),
             }
         })
         .await;
