@@ -855,6 +855,17 @@ impl File {
     }
 }
 
+impl IntoRawFd for File {
+    // Consumes this object, returning the raw underlying file descriptor.
+    // Since all in-flight operations hold a reference to &self, the type-checker
+    // will ensure that there are no in-flight operations when this method is
+    // called.
+    fn into_raw_fd(self) -> RawFd {
+        // This should never panic.
+        self.fd.into_raw_fd()
+    }
+}
+
 impl FromRawFd for File {
     unsafe fn from_raw_fd(fd: RawFd) -> Self {
         File::from_shared_fd(SharedFd::new(fd))
