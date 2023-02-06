@@ -39,7 +39,6 @@ fn uring_cmd16() {
         tokio_uring::start(async {
             let file = File::open("/dev/null").await.unwrap();
             let res = file.uring_cmd16(0, [0x00; 16]).await.unwrap();
-    
             assert_eq!(res, 0);
         });
     }
