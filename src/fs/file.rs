@@ -850,8 +850,7 @@ impl File {
     /// }
     /// ```
     pub async fn close(self) -> io::Result<()> {
-        self.fd.close().await;
-        Ok(())
+        self.fd.close().await
     }
 }
 
@@ -863,14 +862,14 @@ impl FromRawFd for File {
 
 impl AsRawFd for File {
     fn as_raw_fd(&self) -> RawFd {
-        self.fd.raw_fd()
+        self.fd.as_raw_fd()
     }
 }
 
 impl fmt::Debug for File {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("File")
-            .field("fd", &self.fd.raw_fd())
+            .field("fd", &self.fd.as_raw_fd())
             .finish()
     }
 }

@@ -1,158 +1,98 @@
-use crate::io::Close;
-use std::future::poll_fn;
-
-use std::cell::RefCell;
-use std::os::unix::io::{FromRawFd, RawFd};
-use std::rc::Rc;
-use std::task::Waker;
-
 use crate::runtime::driver::op::Op;
-use crate::runtime::CONTEXT;
 
-// Tracks in-flight operations on a file descriptor. Ensures all in-flight
-// operations complete before submitting the close.
-//
-// If the runtime is unavailable, will fall back to synchronous Close to ensure
-// File resources are not leaked.
+use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
+use std::os::unix::prelude::IntoRawFd;
+use std::sync::Arc;
+
+struct OwnedFd {
+    fd: RawFd,
+}
+
+impl OwnedFd {
+    pub async fn close(self) -> std::io::Result<()> {
+        let res = Op::close(self.fd).unwrap().await;
+        if res.is_ok() {
+            std::mem::forget(self);
+        }
+        res
+    }
+}
+
+impl AsRawFd for OwnedFd {
+    #[inline]
+    fn as_raw_fd(&self) -> RawFd {
+        self.fd
+    }
+}
+
+impl FromRawFd for OwnedFd {
+    #[inline]
+    unsafe fn from_raw_fd(fd: RawFd) -> Self {
+        OwnedFd { fd }
+    }
+}
+
+impl IntoRawFd for OwnedFd {
+    #[inline]
+    fn into_raw_fd(self) -> RawFd {
+        let fd = self.fd;
+        std::mem::forget(self);
+        fd
+    }
+}
+
+impl Drop for OwnedFd {
+    fn drop(&mut self) {
+        let _ = unsafe { std::fs::File::from_raw_fd(self.fd) };
+    }
+}
+
 #[derive(Clone)]
 pub(crate) struct SharedFd {
-    inner: Rc<Inner>,
-}
-
-struct Inner {
-    // Open file descriptor
-    fd: RawFd,
-
-    // Waker to notify when the close operation completes.
-    state: RefCell<State>,
-}
-
-enum State {
-    /// Initial state
-    Init,
-
-    /// Waiting for all in-flight operation to complete.
-    Waiting(Option<Waker>),
-
-    /// The FD is closing
-    Closing(Op<Close>),
-
-    /// The FD is fully closed
-    Closed,
+    fd: Arc<OwnedFd>,
 }
 
 impl SharedFd {
-    pub(crate) fn new(fd: RawFd) -> SharedFd {
-        SharedFd {
-            inner: Rc::new(Inner {
-                fd,
-                state: RefCell::new(State::Init),
-            }),
-        }
+    // TODO: Replace all instances of SharedFd::new with SharedFd::from_raw_fd
+    pub fn new(fd: RawFd) -> Self {
+        unsafe { Self::from_raw_fd(fd) }
     }
 
-    /// Returns the RawFd
-    pub(crate) fn raw_fd(&self) -> RawFd {
-        self.inner.fd
+    // TODO: Replace all instances of SharedFd::raw_fd with SharedFd::as_raw_fd
+    pub fn raw_fd(&self) -> RawFd {
+        self.fd.as_raw_fd()
     }
 
-    /// An FD cannot be closed until all in-flight operation have completed.
-    /// This prevents bugs where in-flight reads could operate on the incorrect
-    /// file descriptor.
-    ///
-    /// TO model this, if there are no in-flight operations, then
-    pub(crate) async fn close(mut self) {
-        // Get a mutable reference to Inner, indicating there are no
-        // in-flight operations on the FD.
-        if let Some(inner) = Rc::get_mut(&mut self.inner) {
-            // Submit the close operation
-            inner.submit_close_op();
+    pub async fn close(self) -> std::io::Result<()> {
+        match Arc::try_unwrap(self.fd) {
+            Ok(fd) => fd.close().await,
+            Err(_) => panic!("unexpected in-flight io"),
         }
-
-        self.inner.closed().await;
     }
 }
 
-impl Inner {
-    /// If there are no in-flight operations, submit the operation.
-    fn submit_close_op(&mut self) {
-        // Close the FD
-        let state = RefCell::get_mut(&mut self.state);
-
-        // Submit a close operation
-        // If either:
-        //  - runtime has already closed, or
-        //  - submitting the Close operation fails
-        // we fall back on a synchronous `close`. This is safe as, at this point,
-        // we guarantee all in-flight operations have completed. The most
-        // common cause for an error is attempting to close the FD while
-        // off runtime.
-        //
-        // This is done by initializing a `File` with the FD and
-        // dropping it.
-        //
-        // TODO: Should we warn?
-        *state = match CONTEXT.try_with(|cx| cx.is_set()) {
-            Ok(true) => match Op::close(self.fd) {
-                Ok(op) => State::Closing(op),
-                Err(_) => {
-                    let _ = unsafe { std::fs::File::from_raw_fd(self.fd) };
-                    State::Closed
-                }
-            },
-            _ => {
-                let _ = unsafe { std::fs::File::from_raw_fd(self.fd) };
-                State::Closed
-            }
-        };
-    }
-
-    /// Completes when the FD has been closed.
-    async fn closed(&self) {
-        use std::future::Future;
-        use std::pin::Pin;
-        use std::task::Poll;
-
-        poll_fn(|cx| {
-            let mut state = self.state.borrow_mut();
-
-            match &mut *state {
-                State::Init => {
-                    *state = State::Waiting(Some(cx.waker().clone()));
-                    Poll::Pending
-                }
-                State::Waiting(Some(waker)) => {
-                    if !waker.will_wake(cx.waker()) {
-                        *waker = cx.waker().clone();
-                    }
-
-                    Poll::Pending
-                }
-                State::Waiting(None) => {
-                    *state = State::Waiting(Some(cx.waker().clone()));
-                    Poll::Pending
-                }
-                State::Closing(op) => {
-                    // Nothing to do if the close opeation failed.
-                    let _ = ready!(Pin::new(op).poll(cx));
-                    *state = State::Closed;
-                    Poll::Ready(())
-                }
-                State::Closed => Poll::Ready(()),
-            }
-        })
-        .await;
+impl AsRawFd for SharedFd {
+    #[inline]
+    fn as_raw_fd(&self) -> RawFd {
+        self.fd.as_raw_fd()
     }
 }
 
-impl Drop for Inner {
-    fn drop(&mut self) {
-        // Submit the close operation, if needed
-        match RefCell::get_mut(&mut self.state) {
-            State::Init | State::Waiting(..) => {
-                self.submit_close_op();
-            }
-            _ => {}
+impl FromRawFd for SharedFd {
+    #[inline]
+    unsafe fn from_raw_fd(fd: RawFd) -> Self {
+        Self {
+            fd: Arc::new(OwnedFd::from_raw_fd(fd)),
+        }
+    }
+}
+
+impl IntoRawFd for SharedFd {
+    #[inline]
+    fn into_raw_fd(self) -> RawFd {
+        match std::sync::Arc::try_unwrap(self.fd) {
+            Ok(owned_fd) => owned_fd.into_raw_fd(),
+            Err(_) => panic!(""),
         }
     }
 }
