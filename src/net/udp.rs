@@ -72,7 +72,7 @@ use std::{
 ///         let buf = vec![0; 32];
 ///
 ///         // write data
-///         let (result, _) = socket.send_to(b"hello world".as_slice(), second_addr).await;
+///         let (result, _) = socket.send_to(b"hello world".as_slice(), Some(second_addr)).await;
 ///         result.unwrap();
 ///
 ///         // read data
@@ -162,7 +162,7 @@ impl UdpSocket {
     ///
     ///         // write data
     ///         let (result, _) = std_socket
-    ///             .send_to(b"hello world".as_slice(), second_addr)
+    ///             .send_to(b"hello world".as_slice(), Some(second_addr))
     ///             .await;
     ///         result.unwrap();
     ///
