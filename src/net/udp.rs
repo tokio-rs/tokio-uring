@@ -51,6 +51,16 @@ use std::{
 ///
 ///         assert_eq!(b"hello world", &buf[..n_bytes]);
 ///
+///         // write data using send on connected socket
+///         let (result, _) = socket.send_to(b"hello world via send".as_slice(), None).await;
+///         result.unwrap();
+///
+///         // read data
+///         let (result, buf) = other_socket.read(buf).await;
+///         let n_bytes = result.unwrap();
+///
+///         assert_eq!(b"hello world via send", &buf[..n_bytes]);
+///
 ///         Ok(())
 ///     })
 /// }
@@ -198,7 +208,7 @@ impl UdpSocket {
         self.inner.connect(SockAddr::from(socket_addr)).await
     }
 
-    /// Sends data on the socket to the given address.
+    /// Sends data on the socket to the given address or to previously connected remote peer.
     ///
     /// On success, returns the number of bytes written.
     pub async fn send_to<T: BoundedBuf>(
