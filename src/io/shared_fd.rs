@@ -81,7 +81,8 @@ impl SharedFd {
         match self.inner.fd {
             CommonFd::Raw(raw) => raw,
             CommonFd::Fixed(_fixed) => {
-                unreachable!("fixed files aren't actually created yet");
+                // TODO Introduce the fixed option for file read and write first.
+                unreachable!("fixed file support not yet added for this call stack");
             }
         }
     }
