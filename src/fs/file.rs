@@ -226,7 +226,7 @@ impl File {
     ///     })
     /// }
     /// ```
-    pub async fn readv_at<T: IoBufMut>(
+    pub async fn readv_at<T: BoundedBufMut>(
         &self,
         bufs: Vec<T>,
         pos: u64,
@@ -283,7 +283,7 @@ impl File {
     /// ```
     ///
     /// [`Ok(n)`]: Ok
-    pub async fn writev_at<T: IoBuf>(
+    pub async fn writev_at<T: BoundedBuf>(
         &self,
         buf: Vec<T>,
         pos: u64,
@@ -408,7 +408,7 @@ impl File {
     ///# fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// use tokio_uring::fs::File;
     /// use tokio_uring::buf::fixed::FixedBufRegistry;
-    /// use tokio_uring::buf::IoBuf;
+    /// use tokio_uring::buf::BoundedBuf;
     /// use std::iter;
     ///
     /// tokio_uring::start(async {
@@ -601,7 +601,7 @@ impl File {
     ///# fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// use tokio_uring::fs::File;
     /// use tokio_uring::buf::fixed::FixedBufRegistry;
-    /// use tokio_uring::buf::IoBuf;
+    /// use tokio_uring::buf::BoundedBuf;
     ///
     /// tokio_uring::start(async {
     ///     let registry = FixedBufRegistry::new([b"some bytes".to_vec()]);
@@ -772,14 +772,69 @@ impl File {
         Op::datasync(&self.fd)?.await
     }
 
-    /// Closes the file.
+    /// Manipulate the allocated disk space of the file.
     ///
-    /// The method completes once the close operation has completed,
-    /// guaranteeing that resources associated with the file have been released.
+    /// The manipulated range starts at the `offset` and continues for `len` bytes.
     ///
-    /// If `close` is not called before dropping the file, the file is closed in
-    /// the background, but there is no guarantee as to **when** the close
-    /// operation will complete.
+    /// The specific manipulation to the allocated disk space are specified by
+    /// the `flags`, to understand what are the possible values here check
+    /// the `fallocate(2)` man page.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use tokio_uring::fs::File;
+    ///
+    /// fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ///     tokio_uring::start(async {
+    ///         let f = File::create("foo.txt").await?;
+    ///
+    ///         // Allocate a 1024 byte file setting all the bytes to zero
+    ///         f.fallocate(0, 1024, libc::FALLOC_FL_ZERO_RANGE).await?;
+    ///
+    ///         // Close the file
+    ///         f.close().await?;
+    ///         Ok(())
+    ///     })
+    /// }
+    pub async fn fallocate(&self, offset: u64, len: u64, flags: i32) -> io::Result<()> {
+        Op::fallocate(&self.fd, offset, len, flags)?.await
+    }
+
+    /// Metadata information about a file.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use tokio_uring::fs::File;
+    ///
+    /// fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ///     tokio_uring::start(async {
+    ///         let f = File::create("foo.txt").await?;
+    ///
+    ///         // Fetch file metadata
+    ///         let statx = f.statx().await?;
+    ///
+    ///         // Close the file
+    ///         f.close().await?;
+    ///         Ok(())
+    ///     })
+    /// }
+    pub async fn statx(&self) -> io::Result<libc::statx> {
+        Op::statx(&self.fd)?.await
+    }
+
+    /// Closes the file using the uring asynchronous close operation and returns the possible error
+    /// as described in the close(2) man page.
+    ///
+    /// The programmer has the choice of calling this asynchronous close and waiting for the result
+    /// or letting the library close the file automatically and simply letting the file go out of
+    /// scope and having the library close the file descriptor automatically and synchronously.
+    ///
+    /// Calling this asynchronous close is to be preferred because it returns the close result
+    /// which as the man page points out, should not be ignored. This asynchronous close also
+    /// avoids the synchronous close system call and may result in better throughput as the thread
+    /// is not blocked during the close.
     ///
     /// # Examples
     ///
@@ -797,9 +852,8 @@ impl File {
     ///     })
     /// }
     /// ```
-    pub async fn close(self) -> io::Result<()> {
-        self.fd.close().await;
-        Ok(())
+    pub async fn close(mut self) -> io::Result<()> {
+        self.fd.close().await
     }
 }
 
@@ -825,6 +879,14 @@ impl fmt::Debug for File {
 
 /// Removes a File
 ///
+/// This function will return an error in the following situations, but is not
+/// limited to just these cases:
+///
+/// * `path` doesn't exist.
+///      * [`io::ErrorKind`] would be set to `NotFound`
+/// * The user lacks permissions to modify/remove the file at the provided `path`.
+///      * [`io::ErrorKind`] would be set to `PermissionDenied`
+///
 /// # Examples
 ///
 /// ```no_run
@@ -845,7 +907,14 @@ pub async fn remove_file<P: AsRef<Path>>(path: P) -> io::Result<()> {
 /// Renames a file or directory to a new name, replacing the original file if
 /// `to` already exists.
 ///
-/// This will not work if the new name is on a different mount point.
+/// #Errors
+///
+/// * `path` doesn't exist.
+///      * [`io::ErrorKind`] would be set to `NotFound`
+/// * The user lacks permissions to modify/remove the file at the provided `path`.
+///      * [`io::ErrorKind`] would be set to `PermissionDenied`
+/// * The new name/path is on a different mount point.
+///      * [`io::ErrorKind`] would be set to `CrossesDevices`
 ///
 /// # Example
 ///
