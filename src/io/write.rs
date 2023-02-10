@@ -1,3 +1,4 @@
+use crate::io::shared_fd::sealed::CommonFd;
 use crate::runtime::driver::op::{Completable, CqeResult, Op};
 use crate::runtime::CONTEXT;
 use crate::{buf::BoundedBuf, io::SharedFd, BufResult};
@@ -27,9 +28,20 @@ impl<T: BoundedBuf> Op<Write<T>> {
                     let ptr = write.buf.stable_ptr();
                     let len = write.buf.bytes_init();
 
-                    opcode::Write::new(types::Fd(fd.raw_fd()), ptr, len as _)
-                        .offset(offset as _)
-                        .build()
+                    match write.fd.common_fd() {
+                        CommonFd::Raw(raw) => {
+                            let fd = types::Fd(raw);
+                            opcode::Write::new(fd, ptr, len as _)
+                                .offset(offset as _)
+                                .build()
+                        }
+                        CommonFd::Fixed(fixed) => {
+                            let fd = types::Fixed(fixed);
+                            opcode::Write::new(fd, ptr, len as _)
+                                .offset(offset as _)
+                                .build()
+                        }
+                    }
                 },
             )
         })

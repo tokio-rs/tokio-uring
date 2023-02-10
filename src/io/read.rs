@@ -32,11 +32,15 @@ impl<T: BoundedBufMut> Op<Read<T>> {
                     let ptr = read.buf.stable_mut_ptr();
                     let len = read.buf.bytes_total();
                     match read.fd.common_fd() {
-                        CommonFd::Raw(raw) => opcode::Read::new(types::Fd(raw), ptr, len as _)
-                            .offset(offset as _)
-                            .build(),
+                        CommonFd::Raw(raw) => {
+                            let fd = types::Fd(raw);
+                            opcode::Read::new(fd, ptr, len as _)
+                                .offset(offset as _)
+                                .build()
+                        }
                         CommonFd::Fixed(fixed) => {
-                            opcode::Read::new(types::Fixed(fixed), ptr, len as _)
+                            let fd = types::Fixed(fixed);
+                            opcode::Read::new(fd, ptr, len as _)
                                 .offset(offset as _)
                                 .build()
                         }
