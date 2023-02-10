@@ -1,6 +1,6 @@
 use crate::runtime::driver::op::{Completable, CqeResult, Op};
 use crate::runtime::CONTEXT;
-use crate::{buf::IoBuf, io::SharedFd, BufResult};
+use crate::{buf::BoundedBuf, io::SharedFd, BufResult};
 use libc::iovec;
 use std::io;
 
@@ -16,7 +16,7 @@ pub(crate) struct Writev<T> {
     iovs: Vec<iovec>,
 }
 
-impl<T: IoBuf> Op<Writev<T>> {
+impl<T: BoundedBuf> Op<Writev<T>> {
     pub(crate) fn writev_at(
         fd: &SharedFd,
         mut bufs: Vec<T>,
@@ -56,7 +56,7 @@ impl<T: IoBuf> Op<Writev<T>> {
 
 impl<T> Completable for Writev<T>
 where
-    T: IoBuf,
+    T: BoundedBuf,
 {
     type Output = BufResult<usize, Vec<T>>;
 

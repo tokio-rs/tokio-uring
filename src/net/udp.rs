@@ -92,12 +92,15 @@ pub struct UdpSocket {
 
 impl UdpSocket {
     /// Creates a new UDP socket and attempt to bind it to the addr provided.
+    ///
+    /// Returns a new instance of [`UdpSocket`] on success,
+    /// or an [`io::Error`](std::io::Error) on failure.
     pub async fn bind(socket_addr: SocketAddr) -> io::Result<UdpSocket> {
         let socket = Socket::bind(socket_addr, libc::SOCK_DGRAM)?;
         Ok(UdpSocket { inner: socket })
     }
 
-    /// Returns the local address that this UDP socket is bound to.
+    /// Returns the local address to which this UDP socket is bound.
     ///
     /// This can be useful, for example, when binding to port 0 to
     /// figure out which port was actually bound.
@@ -183,19 +186,21 @@ impl UdpSocket {
         Self { inner }
     }
 
-    /// Connects this UDP socket to a remote address, allowing the `write` and
-    /// `read` syscalls to be used to send data and also applies filters to only
-    /// receive data from the specified address.
+    /// "Connects" this UDP socket to a remote address.
     ///
-    /// Note that usually, a successful `connect` call does not specify
-    /// that there is a remote server listening on the port, rather, such an
-    /// error would only be detected after the first send.
+    /// This enables `write` and `read` syscalls to be used on this instance.
+    /// It also constrains the `read` to receive data only from the specified remote peer.
+    ///
+    /// Note: UDP is connectionless, so a successful `connect` call does not execute
+    /// a handshake or validation of the remote peer of any kind.
+    /// Any errors would not be detected until the first send.
     pub async fn connect(&self, socket_addr: SocketAddr) -> io::Result<()> {
         self.inner.connect(SockAddr::from(socket_addr)).await
     }
 
-    /// Sends data on the socket to the given address. On success, returns the
-    /// number of bytes written.
+    /// Sends data on the socket to the given address.
+    ///
+    /// On success, returns the number of bytes written.
     pub async fn send_to<T: BoundedBuf>(
         &self,
         buf: T,
@@ -205,6 +210,7 @@ impl UdpSocket {
     }
 
     /// Sends data on the socket. Will attempt to do so without intermediate copies.
+    ///
     /// On success, returns the number of bytes written.
     ///
     /// See the linux [kernel docs](https://www.kernel.org/doc/html/latest/networking/msg_zerocopy.html)
@@ -220,8 +226,37 @@ impl UdpSocket {
         self.inner.send_zc(buf).await
     }
 
-    /// Receives a single datagram message on the socket. On success, returns
-    /// the number of bytes read and the origin.
+    /// Sends a message on the socket using a msghdr.
+    ///
+    /// Returns a tuple of:
+    ///
+    /// * Result containing bytes written on success
+    /// * The original `io_slices` `Vec<T>`
+    /// * The original `msg_contol` `Option<U>`
+    ///
+    /// See the linux [kernel docs](https://www.kernel.org/doc/html/latest/networking/msg_zerocopy.html)
+    /// for a discussion on when this might be appropriate. In particular:
+    ///
+    /// > Copy avoidance is not a free lunch. As implemented, with page pinning,
+    /// > it replaces per byte copy cost with page accounting and completion
+    /// > notification overhead. As a result, zero copy is generally only effective
+    /// > at writes over around 10 KB.
+    ///
+    /// Note: Using fixed buffers [#54](https://github.com/tokio-rs/tokio-uring/pull/54), avoids the page-pinning overhead
+    pub async fn sendmsg_zc<T: BoundedBuf, U: BoundedBuf>(
+        &self,
+        io_slices: Vec<T>,
+        socket_addr: SocketAddr,
+        msg_control: Option<U>,
+    ) -> (io::Result<usize>, Vec<T>, Option<U>) {
+        self.inner
+            .sendmsg_zc(io_slices, socket_addr, msg_control)
+            .await
+    }
+
+    /// Receives a single datagram message on the socket.
+    ///
+    /// On success, returns the number of bytes read and the origin.
     pub async fn recv_from<T: BoundedBufMut>(
         &self,
         buf: T,
@@ -229,12 +264,15 @@ impl UdpSocket {
         self.inner.recv_from(buf).await
     }
 
-    /// Read a packet of data from the socket into the buffer, returning the original buffer and
-    /// quantity of data read.
+    /// Reads a packet of data from the socket into the buffer.
+    ///
+    /// Returns the original buffer and quantity of data read.
     pub async fn read<T: BoundedBufMut>(&self, buf: T) -> crate::BufResult<usize, T> {
         self.inner.read(buf).await
     }
 
+    /// Receives a single datagram message into a registered buffer.
+    ///
     /// Like [`read`], but using a pre-mapped buffer
     /// registered with [`FixedBufRegistry`].
     ///
@@ -253,12 +291,15 @@ impl UdpSocket {
         self.inner.read_fixed(buf).await
     }
 
-    /// Write some data to the socket from the buffer, returning the original buffer and
-    /// quantity of data written.
+    /// Writes data into the socket from the specified buffer.
+    ///
+    /// Returns the original buffer and quantity of data written.
     pub async fn write<T: BoundedBuf>(&self, buf: T) -> crate::BufResult<usize, T> {
         self.inner.write(buf).await
     }
 
+    /// Writes data into the socket from a registered buffer.
+    ///
     /// Like [`write`], but using a pre-mapped buffer
     /// registered with [`FixedBufRegistry`].
     ///
@@ -279,7 +320,7 @@ impl UdpSocket {
 
     /// Shuts down the read, write, or both halves of this connection.
     ///
-    /// This function will cause all pending and future I/O on the specified portions to return
+    /// This function causes all pending and future I/O on the specified portions to return
     /// immediately with an appropriate value.
     pub fn shutdown(&self, how: std::net::Shutdown) -> io::Result<()> {
         self.inner.shutdown(how)
