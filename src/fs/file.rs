@@ -824,14 +824,17 @@ impl File {
         Op::statx(&self.fd)?.await
     }
 
-    /// Closes the file.
+    /// Closes the file using the uring asynchronous close operation and returns the possible error
+    /// as described in the close(2) man page.
     ///
-    /// The method completes once the close operation has completed,
-    /// guaranteeing that resources associated with the file have been released.
+    /// The programmer has the choice of calling this asynchronous close and waiting for the result
+    /// or letting the library close the file automatically and simply letting the file go out of
+    /// scope and having the library close the file descriptor automatically and synchronously.
     ///
-    /// If `close` is not called before dropping the file, the file is closed in
-    /// the background, but there is no guarantee as to **when** the close
-    /// operation will complete.
+    /// Calling this asynchronous close is to be preferred because it returns the close result
+    /// which as the man page points out, should not be ignored. This asynchronous close also
+    /// avoids the synchronous close system call and may result in better throughput as the thread
+    /// is not blocked during the close.
     ///
     /// # Examples
     ///
@@ -849,9 +852,8 @@ impl File {
     ///     })
     /// }
     /// ```
-    pub async fn close(self) -> io::Result<()> {
-        self.fd.close().await;
-        Ok(())
+    pub async fn close(mut self) -> io::Result<()> {
+        self.fd.close().await
     }
 }
 

@@ -33,6 +33,7 @@ impl RuntimeContext {
     }
 
     /// Check if driver is initialized
+    #[allow(dead_code)]
     pub(crate) fn is_set(&self) -> bool {
         self.driver
             .try_borrow()

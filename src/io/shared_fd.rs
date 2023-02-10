@@ -1,20 +1,24 @@
-use crate::io::Close;
 use std::future::poll_fn;
 
-use std::cell::RefCell;
-use std::os::unix::io::{FromRawFd, RawFd};
-use std::rc::Rc;
-use std::task::Waker;
+use std::{
+    cell::RefCell,
+    io,
+    os::unix::io::{FromRawFd, RawFd},
+    rc::Rc,
+    task::Waker,
+};
 
 use crate::io::shared_fd::sealed::CommonFd;
 use crate::runtime::driver::op::Op;
-use crate::runtime::CONTEXT;
 
 // Tracks in-flight operations on a file descriptor. Ensures all in-flight
 // operations complete before submitting the close.
 //
-// If the runtime is unavailable, will fall back to synchronous Close to ensure
-// File resources are not leaked.
+// When closing the file descriptor because it is going out of scope, a synchronous close is
+// employed.
+//
+// The closed state is tracked so close calls after the first are ignored.
+// Only the first close call returns the true result of closing the file descriptor.
 #[derive(Clone)]
 pub(crate) struct SharedFd {
     inner: Rc<Inner>,
@@ -24,7 +28,8 @@ struct Inner {
     // Open file descriptor
     fd: CommonFd,
 
-    // Waker to notify when the close operation completes.
+    // Track the sharing state of the file descriptor:
+    // normal, being waited on to allow a close by the parent's owner, or already closed.
     state: RefCell<State>,
 }
 
@@ -32,153 +37,109 @@ enum State {
     /// Initial state
     Init,
 
-    /// Waiting for all in-flight operation to complete.
-    Waiting(Option<Waker>),
+    /// Waiting for the number of strong Rc pointers to drop to 1.
+    WaitingForUniqueness(Waker),
 
-    /// The FD is closing
-    Closing(Op<Close>),
-
-    /// The FD is fully closed
+    /// The close has been triggered by the parent owner.
     Closed,
 }
 
 impl SharedFd {
     pub(crate) fn new(fd: RawFd) -> SharedFd {
-        SharedFd {
-            inner: Rc::new(Inner {
-                fd: CommonFd::Raw(fd),
-                state: RefCell::new(State::Init),
-            }),
-        }
+        Self::_new(CommonFd::Raw(fd))
     }
+
     // TODO once we implement a request that creates a fixed file descriptor, remove this 'allow'.
     // It would be possible to create a fixed file using a `register` command to store a raw fd
     // into the fixed table, but that's a whole other can of worms - do we track both, can either
     // be closed while the other remains active and functional?
+    // So as a first step, we will likely be creating fixed file versions from fixed file opens.
+    // Further down the line, from fixed file multi-accept.
     #[allow(dead_code)]
     pub(crate) fn new_fixed(slot: u32) -> SharedFd {
+        Self::_new(CommonFd::Fixed(slot))
+    }
+
+    fn _new(fd: CommonFd) -> SharedFd {
         SharedFd {
             inner: Rc::new(Inner {
-                fd: CommonFd::Fixed(slot),
+                fd,
                 state: RefCell::new(State::Init),
             }),
         }
     }
 
+    /*
+     * This function name won't make sense when this fixed file feature
+     * is fully fleshed out. For now, we panic if called on
+     * a fixed file.
+     */
     /// Returns the RawFd.
     pub(crate) fn raw_fd(&self) -> RawFd {
-        self.inner.raw_fd()
+        // TODO remove self.inner.raw_fd()
+
+        match self.inner.fd {
+            CommonFd::Raw(raw) => raw,
+            CommonFd::Fixed(_fixed) => {
+                unreachable!("fixed files aren't actually created yet");
+            }
+        }
     }
 
+    /*
+     * TODO remove this, it doesn't seem appropriate any longer.
     /// Returns true if self represents a RawFd.
     #[allow(dead_code)]
     pub(crate) fn is_raw_fd(&self) -> bool {
         self.inner.is_raw_fd()
+    }
+    */
+    // Returns the common fd, either a RawFd or the fixed fd slot number.
+    #[allow(dead_code)]
+    pub(crate) fn common_fd(&self) -> CommonFd {
+        self.inner.fd
     }
 
     /// An FD cannot be closed until all in-flight operation have completed.
     /// This prevents bugs where in-flight reads could operate on the incorrect
     /// file descriptor.
     ///
-    /// TO model this, if there are no in-flight operations, then
-    pub(crate) async fn close(mut self) {
-        // Get a mutable reference to Inner, indicating there are no
-        // in-flight operations on the FD.
-        if let Some(inner) = Rc::get_mut(&mut self.inner) {
-            // Submit the close operation
-            inner.submit_close_op();
-        }
-
-        self.inner.closed().await;
-    }
-}
-
-impl Inner {
-    /// Returns the RawFd
-    pub(crate) fn raw_fd(&self) -> RawFd {
-        //self.inner.fd.0
-        match self.fd {
-            CommonFd::Raw(raw) => raw,
-            CommonFd::Fixed(_fixed) => {
-                unreachable!(); // caller could have used is_raw_fd
+    pub(crate) async fn close(&mut self) -> io::Result<()> {
+        loop {
+            // Get a mutable reference to Inner, indicating there are no
+            // in-flight operations on the FD.
+            if let Some(inner) = Rc::get_mut(&mut self.inner) {
+                // Wait for the close operation.
+                return inner.async_close_op().await;
             }
+
+            self.sharedfd_is_unique().await;
         }
     }
 
-    /// Returns true if self represents a RawFd.
-    pub(crate) fn is_raw_fd(&self) -> bool {
-        match self.fd {
-            CommonFd::Raw(_) => true,
-            CommonFd::Fixed(_) => false,
-        }
-    }
-    /// If there are no in-flight operations, submit the operation.
-    fn submit_close_op(&mut self) {
-        // Close the file
-        let common_fd = self.fd;
-        let state = RefCell::get_mut(&mut self.state);
-
-        match *state {
-            State::Closing(_) | State::Closed => return,
-            _ => {}
-        };
-
-        // Submit a close operation
-        // If either:
-        //  - runtime has already closed, or
-        //  - submitting the Close operation fails
-        // we fall back on a synchronous `close`. This is safe as, at this point,
-        // we guarantee all in-flight operations have completed. The most
-        // common cause for an error is attempting to close the FD while
-        // off runtime.
-        //
-        // This is done by initializing a `File` with the FD and
-        // dropping it.
-        //
-        // TODO: Should we warn?
-        if let Ok(true) = CONTEXT.try_with(|cx| cx.is_set()) {
-            if let Ok(op) = Op::close(common_fd) {
-                *state = State::Closing(op);
-                return;
-            }
-        };
-
-        if let CommonFd::Raw(raw) = common_fd {
-            let _ = unsafe { std::fs::File::from_raw_fd(raw) };
-        }
-        *state = State::Closed;
-    }
-
-    /// Completes when the FD has been closed.
-    async fn closed(&self) {
-        use std::future::Future;
-        use std::pin::Pin;
+    /// Completes when the SharedFd's Inner Rc strong count is 1.
+    /// Gets polled any time a SharedFd is dropped.
+    async fn sharedfd_is_unique(&self) {
         use std::task::Poll;
 
         poll_fn(|cx| {
-            let mut state = self.state.borrow_mut();
+            if Rc::<Inner>::strong_count(&self.inner) == 1 {
+                return Poll::Ready(());
+            }
+
+            let mut state = self.inner.state.borrow_mut();
 
             match &mut *state {
                 State::Init => {
-                    *state = State::Waiting(Some(cx.waker().clone()));
+                    *state = State::WaitingForUniqueness(cx.waker().clone());
                     Poll::Pending
                 }
-                State::Waiting(Some(waker)) => {
+                State::WaitingForUniqueness(waker) => {
                     if !waker.will_wake(cx.waker()) {
                         *waker = cx.waker().clone();
                     }
 
                     Poll::Pending
-                }
-                State::Waiting(None) => {
-                    *state = State::Waiting(Some(cx.waker().clone()));
-                    Poll::Pending
-                }
-                State::Closing(op) => {
-                    // Nothing to do if the close operation failed.
-                    let _ = ready!(Pin::new(op).poll(cx));
-                    *state = State::Closed;
-                    Poll::Ready(())
                 }
                 State::Closed => Poll::Ready(()),
             }
@@ -187,14 +148,88 @@ impl Inner {
     }
 }
 
+impl Inner {
+    /* TODO remove
+    // Returns the RawFd but panics if called on a fixed fd.
+    #[allow(dead_code)]
+    pub(crate) fn raw_fd(&self) -> Option<RawFd> {
+        //self.inner.fd.0
+        match self.fd {
+            CommonFd::Raw(raw) => Some(raw),
+            CommonFd::Fixed(_fixed) => None,
+        }
+    }
+    */
+
+    /* TODO remove
+    // Returns true if self represents a RawFd.
+    // Should be used before callinng
+    pub(crate) fn is_raw_fd(&self) -> bool {
+        match self.fd {
+            CommonFd::Raw(_) => true,
+            CommonFd::Fixed(_) => false,
+        }
+    }
+     */
+
+    async fn async_close_op(&mut self) -> io::Result<()> {
+        // &mut self implies there are no outstanding operations.
+        // If state already closed, the user closed multiple times; simply return Ok.
+        // Otherwise, set state to closed and then submit and await the uring close operation.
+        {
+            // Release state guard before await.
+            let state = RefCell::get_mut(&mut self.state);
+
+            if let State::Closed = *state {
+                return Ok(());
+            }
+
+            *state = State::Closed;
+        }
+        Op::close(self.fd)?.await
+    }
+}
+
+impl Drop for SharedFd {
+    fn drop(&mut self) {
+        // If the SharedFd state is Waiting
+        // The job of the SharedFd's drop is to possibly wake a task that is waiting for the
+        // reference count to go down.
+        use std::mem;
+
+        let mut state = self.inner.state.borrow_mut();
+        if let State::WaitingForUniqueness(_) = *state {
+            let state = &mut *state;
+            if let State::WaitingForUniqueness(waker) = mem::replace(state, State::Init) {
+                // Wake the task wanting to close this SharedFd and let it try again. If it finds
+                // there are no more outstanding clones, it will succeed. Otherwise it will start a new
+                // Future, waiting for another SharedFd to be dropped.
+                waker.wake()
+            }
+        }
+    }
+}
+
 impl Drop for Inner {
     fn drop(&mut self) {
-        // Submit the close operation, if needed
-        match RefCell::get_mut(&mut self.state) {
-            State::Init | State::Waiting(..) => {
-                self.submit_close_op();
+        // If the inner state isn't `Closed`, the user hasn't called close().await
+        // so do it synchronously.
+
+        let state = self.state.borrow_mut();
+
+        if let State::Closed = *state {
+            return;
+        }
+
+        // Perform one form of synchronous close or the other.
+        match self.fd {
+            CommonFd::Raw(raw) => {
+                let _ = unsafe { std::fs::File::from_raw_fd(raw) };
             }
-            _ => {}
+            CommonFd::Fixed(_fixed) => {
+                // TODO replace with test for context and then use synchronous close
+                unreachable!();
+            }
         }
     }
 }
@@ -211,24 +246,27 @@ pub struct Raw(pub RawFd); // Note: io-uring names this Fd
 #[derive(Debug, Clone, Copy)]
 pub struct Fixed(pub u32); // TODO consider renaming to Direct (but uring docs use both Fixed descriptor and Direct descriptor)
 
+// TODO definitely not sure this should be sealed. But leaving it for now. Could easily decide
+// there is nothing here to seal as our API is fluid for a while yet.
+
 pub(crate) mod sealed {
     use super::{Fixed, Raw};
     use std::os::unix::io::RawFd;
 
     #[derive(Debug, Clone, Copy)]
     // Note: io-uring names this Target
-    pub enum CommonFd {
+    pub(crate) enum CommonFd {
         Raw(RawFd),
         Fixed(u32),
     }
 
     // Note: io-uring names this UseFd
-    pub trait UseRawFd: Sized {
+    pub(crate) trait UseRawFd: Sized {
         fn into(self) -> RawFd;
     }
 
     // Note: io-uring names this UseFixed
-    pub trait UseCommonFd: Sized {
+    pub(crate) trait UseCommonFd: Sized {
         fn into(self) -> CommonFd;
     }
 
