@@ -342,6 +342,6 @@ fn assert_invalid_fd(fd: RawFd) {
 
     match f.read_to_end(&mut buf) {
         Err(ref e) if e.raw_os_error() == Some(libc::EBADF) => {}
-        res => panic!("{:?}", res),
+        res => panic!("assert_invalid_fd finds for fd {:?}, res = {:?}", fd, res),
     }
 }

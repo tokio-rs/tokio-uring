@@ -1,7 +1,6 @@
 mod accept;
 
 mod close;
-pub(crate) use close::Close;
 
 mod connect;
 
