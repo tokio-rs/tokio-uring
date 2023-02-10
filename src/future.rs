@@ -1,3 +1,5 @@
+// TODO see about removing or just commenting out.
+#[allow(unused_macros)]
 macro_rules! ready {
     ($e:expr $(,)?) => {
         match $e {
