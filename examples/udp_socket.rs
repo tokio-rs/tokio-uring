@@ -20,7 +20,7 @@ fn main() {
         buf.resize(read, 0);
         println!("received from {}: {:?}", socket_addr, &buf[..]);
 
-        let (result, _buf) = socket.send_to(buf, Some(socket_addr)).await;
+        let (result, _buf) = socket.send_to(buf, socket_addr).await;
         println!("sent to {}: {}", socket_addr, result.unwrap());
     });
 }

@@ -211,10 +211,7 @@ impl UdpSocket {
     /// Sends data on the connected socket
     ///
     /// On success, returns the number of bytes written.
-    pub async fn send<T: BoundedBuf>(
-        &self,
-        buf: T,
-    ) -> crate::BufResult<usize, T> {
+    pub async fn send<T: BoundedBuf>(&self, buf: T) -> crate::BufResult<usize, T> {
         self.inner.send_to(buf, None).await
     }
 
