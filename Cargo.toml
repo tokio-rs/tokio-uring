@@ -16,6 +16,12 @@ keywords = ["async", "fs", "io-uring"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+# Enable 128-byte submission queue entries. This requires Linux >= 5.19.
+sqe128 = []
+# Enable 32-byte completion queue entries. This requires Linux >= 5.19.
+cqe32 = []
+
 [dependencies]
 tokio = { version = "1.2", features = ["net", "rt"] }
 slab = "0.4.2"

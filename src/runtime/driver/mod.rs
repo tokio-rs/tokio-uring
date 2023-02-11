@@ -11,6 +11,16 @@ use std::task::{Context, Poll};
 
 pub(crate) use handle::*;
 
+#[cfg(not(feature = "sqe128"))]
+pub(crate) type SEntry = squeue::Entry;
+#[cfg(feature = "sqe128")]
+pub(crate) type SEntry = squeue::Entry128;
+
+#[cfg(not(feature = "cqe32"))]
+pub(crate) type CEntry = cqueue::Entry;
+#[cfg(feature = "cqe32")]
+pub(crate) type CEntry = cqueue::Entry32;
+
 mod handle;
 pub(crate) mod op;
 
@@ -19,7 +29,7 @@ pub(crate) struct Driver {
     ops: Ops,
 
     /// IoUring bindings
-    uring: IoUring,
+    uring: IoUring<SEntry, CEntry>,
 
     /// Reference to the currently registered buffers.
     /// Ensures that the buffers are not dropped until
@@ -122,7 +132,7 @@ impl Driver {
         ))
     }
 
-    pub(crate) fn submit_op<T, S, F>(
+    pub(crate) fn submit_op<T, S, F, A>(
         &mut self,
         mut data: T,
         f: F,
@@ -130,12 +140,14 @@ impl Driver {
     ) -> io::Result<Op<T, S>>
     where
         T: Completable,
-        F: FnOnce(&mut T) -> squeue::Entry,
+        A: Into<SEntry>,
+        F: FnOnce(&mut T) -> A,
     {
         let index = self.ops.insert();
 
         // Configure the SQE
-        let sqe = f(&mut data).user_data(index as _);
+        let sqe: SEntry = f(&mut data).into();
+        let sqe = sqe.user_data(index as _);
 
         // Create the operation
         let op = Op::new(handle, data, index);
@@ -343,7 +355,15 @@ impl Drop for Driver {
                     while self
                         .uring
                         .submission()
-                        .push(&AsyncCancel::new(id as u64).build().user_data(u64::MAX))
+                        .push(
+                            // Conversion to configured squeue::EntryMarker is useless when
+                            // sqe128 feature is disabled.
+                            #[allow(clippy::useless_conversion)]
+                            &AsyncCancel::new(id as u64)
+                                .build()
+                                .user_data(u64::MAX)
+                                .into(),
+                        )
                         .is_err()
                     {
                         self.uring

@@ -90,6 +90,19 @@ impl From<cqueue::Entry> for CqeResult {
     }
 }
 
+impl From<cqueue::Entry32> for CqeResult {
+    fn from(cqe: cqueue::Entry32) -> Self {
+        let res = cqe.result();
+        let flags = cqe.flags();
+        let result = if res >= 0 {
+            Ok(res as u32)
+        } else {
+            Err(io::Error::from_raw_os_error(-res))
+        };
+        CqeResult { result, flags }
+    }
+}
+
 impl<T, CqeType> Op<T, CqeType> {
     /// Create a new operation
     pub(super) fn new(driver: driver::WeakHandle, data: T, index: usize) -> Self {

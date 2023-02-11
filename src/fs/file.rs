@@ -181,6 +181,19 @@ impl File {
         op.await
     }
 
+    /// A file/device-specific 16-byte command, akin (but not equivalent) to ioctl(2).
+    pub async fn uring_cmd16(&self, cmd_op: u32, cmd: [u8; 16]) -> io::Result<u32> {
+        let op = Op::uring_cmd16(&self.fd, cmd_op, cmd).unwrap();
+        op.await
+    }
+
+    #[cfg(feature = "sqe128")]
+    /// A file/device-specific 80-byte command, akin (but not equivalent) to ioctl(2).
+    pub async fn uring_cmd80(&self, cmd_op: u32, cmd: [u8; 80]) -> io::Result<u32> {
+        let op = Op::uring_cmd80(&self.fd, cmd_op, cmd).unwrap();
+        op.await
+    }
+
     /// Read some bytes at the specified offset from the file into the specified
     /// array of buffers, returning how many bytes were read.
     ///

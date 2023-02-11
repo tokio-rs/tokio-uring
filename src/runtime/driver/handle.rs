@@ -12,7 +12,6 @@
 //! The weak handle should be used by anything which is stored in the driver or does not need to
 //! keep the driver alive for it's duration.
 
-use io_uring::squeue;
 use std::cell::RefCell;
 use std::io;
 use std::ops::Deref;
@@ -22,7 +21,7 @@ use std::task::{Context, Poll};
 
 use crate::buf::fixed::FixedBuffers;
 use crate::runtime::driver::op::{Completable, MultiCQEFuture, Op, Updateable};
-use crate::runtime::driver::Driver;
+use crate::runtime::driver::{Driver, SEntry};
 
 #[derive(Clone)]
 pub(crate) struct Handle {
@@ -63,10 +62,11 @@ impl Handle {
         self.inner.borrow_mut().unregister_buffers(buffers)
     }
 
-    pub(crate) fn submit_op<T, S, F>(&self, data: T, f: F) -> io::Result<Op<T, S>>
+    pub(crate) fn submit_op<T, S, F, A>(&self, data: T, f: F) -> io::Result<Op<T, S>>
     where
         T: Completable,
-        F: FnOnce(&mut T) -> squeue::Entry,
+        A: Into<SEntry>,
+        F: FnOnce(&mut T) -> A,
     {
         self.inner.borrow_mut().submit_op(data, f, self.into())
     }
