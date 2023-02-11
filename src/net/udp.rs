@@ -261,6 +261,9 @@ impl UdpSocket {
     /// > it replaces per byte copy cost with page accounting and completion
     /// > notification overhead. As a result, zero copy is generally only effective
     /// > at writes over around 10 KB.
+    ///
+    /// Can be used with socket_addr: None on connected sockets, which can have performance
+    /// benefits if multiple datagrams are sent to the same destination address.
     pub async fn sendmsg_zc<T: BoundedBuf, U: BoundedBuf>(
         &self,
         io_slices: Vec<T>,
