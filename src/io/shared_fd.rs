@@ -50,13 +50,6 @@ impl SharedFd {
         Self::_new(CommonFd::Raw(fd))
     }
 
-    // TODO once we implement a request that creates a fixed file descriptor, remove this 'allow'.
-    // It would be possible to create a fixed file using a `register` command to store a raw fd
-    // into the fixed table, but that's a whole other can of worms - do we track both, can either
-    // be closed while the other remains active and functional?
-    // So as a first step, we will likely be creating fixed file versions from fixed file opens.
-    // Further down the line, from fixed file multi-accept.
-    #[allow(dead_code)]
     pub(crate) fn new_fixed(slot: u32) -> SharedFd {
         Self::_new(CommonFd::Fixed(slot))
     }
@@ -77,25 +70,17 @@ impl SharedFd {
      */
     /// Returns the RawFd.
     pub(crate) fn raw_fd(&self) -> RawFd {
-        // TODO remove self.inner.raw_fd()
-
         match self.inner.fd {
             CommonFd::Raw(raw) => raw,
             CommonFd::Fixed(_fixed) => {
-                // TODO Introduce the fixed option for file read and write first.
+                // TODO remove this function completely once all the uring opcodes that accept
+                // a fixed file table slot have been modified. For now, we have to keep it to avoid
+                // too many file changes all at once.
                 unreachable!("fixed file support not yet added for this call stack");
             }
         }
     }
 
-    /*
-     * TODO remove this, it doesn't seem appropriate any longer.
-    /// Returns true if self represents a RawFd.
-    #[allow(dead_code)]
-    pub(crate) fn is_raw_fd(&self) -> bool {
-        self.inner.is_raw_fd()
-    }
-    */
     // Returns the common fd, either a RawFd or the fixed fd slot number.
     #[allow(dead_code)]
     pub(crate) fn common_fd(&self) -> CommonFd {
@@ -151,29 +136,6 @@ impl SharedFd {
 }
 
 impl Inner {
-    /* TODO remove
-    // Returns the RawFd but panics if called on a fixed fd.
-    #[allow(dead_code)]
-    pub(crate) fn raw_fd(&self) -> Option<RawFd> {
-        //self.inner.fd.0
-        match self.fd {
-            CommonFd::Raw(raw) => Some(raw),
-            CommonFd::Fixed(_fixed) => None,
-        }
-    }
-    */
-
-    /* TODO remove
-    // Returns true if self represents a RawFd.
-    // Should be used before callinng
-    pub(crate) fn is_raw_fd(&self) -> bool {
-        match self.fd {
-            CommonFd::Raw(_) => true,
-            CommonFd::Fixed(_) => false,
-        }
-    }
-     */
-
     async fn async_close_op(&mut self) -> io::Result<()> {
         // &mut self implies there are no outstanding operations.
         // If state already closed, the user closed multiple times; simply return Ok.
@@ -261,21 +223,24 @@ impl Drop for Inner {
 
 // Enum and traits copied from the io-uring crate.
 
+/*
+ * TODO maybe these types aren't needed at all.
 /// A file descriptor that has not been registered with io_uring.
 #[derive(Debug, Clone, Copy)]
-pub struct Raw(pub RawFd); // Note: io-uring names this Fd
+pub(crate) struct Raw(pub RawFd); // Note: io-uring names this Fd
 
 /// A file descriptor that has been registered with io_uring using
 /// [`Submitter::register_files`](crate::Submitter::register_files) or [`Submitter::register_files_sparse`](crate::Submitter::register_files_sparse).
 /// This can reduce overhead compared to using [`Fd`] in some cases.
 #[derive(Debug, Clone, Copy)]
-pub struct Fixed(pub u32); // TODO consider renaming to Direct (but uring docs use both Fixed descriptor and Direct descriptor)
+pub(crate) struct Fixed(pub u32); // TODO consider renaming to Direct (but uring docs use both Fixed descriptor and Direct descriptor)
+ */
 
 // TODO definitely not sure this should be sealed. But leaving it for now. Could easily decide
 // there is nothing here to seal as our API is fluid for a while yet.
 
 pub(crate) mod sealed {
-    use super::{Fixed, Raw};
+    // use super::{Fixed, Raw};
     use std::os::unix::io::RawFd;
 
     #[derive(Debug, Clone, Copy)]
@@ -295,6 +260,7 @@ pub(crate) mod sealed {
         fn into(self) -> CommonFd;
     }
 
+    /* TODO maybe won't be needed at all.
     impl UseRawFd for Raw {
         #[inline]
         fn into(self) -> RawFd {
@@ -315,4 +281,5 @@ pub(crate) mod sealed {
             CommonFd::Fixed(self.0)
         }
     }
+    */
 }
