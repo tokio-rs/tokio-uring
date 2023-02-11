@@ -52,7 +52,7 @@ use std::{
 ///         assert_eq!(b"hello world", &buf[..n_bytes]);
 ///
 ///         // write data using send on connected socket
-///         let (result, _) = socket.send_to(b"hello world via send".as_slice(), None).await;
+///         let (result, _) = socket.send(b"hello world via send".as_slice()).await;
 ///         result.unwrap();
 ///
 ///         // read data
@@ -82,7 +82,7 @@ use std::{
 ///         let buf = vec![0; 32];
 ///
 ///         // write data
-///         let (result, _) = socket.send_to(b"hello world".as_slice(), Some(second_addr)).await;
+///         let (result, _) = socket.send_to(b"hello world".as_slice(), second_addr).await;
 ///         result.unwrap();
 ///
 ///         // read data
@@ -172,7 +172,7 @@ impl UdpSocket {
     ///
     ///         // write data
     ///         let (result, _) = std_socket
-    ///             .send_to(b"hello world".as_slice(), Some(second_addr))
+    ///             .send_to(b"hello world".as_slice(), second_addr)
     ///             .await;
     ///         result.unwrap();
     ///
@@ -208,15 +208,25 @@ impl UdpSocket {
         self.inner.connect(SockAddr::from(socket_addr)).await
     }
 
+    /// Sends data on the connected socket
+    ///
+    /// On success, returns the number of bytes written.
+    pub async fn send<T: BoundedBuf>(
+        &self,
+        buf: T,
+    ) -> crate::BufResult<usize, T> {
+        self.inner.send_to(buf, None).await
+    }
+
     /// Sends data on the socket to the given address or to previously connected remote peer.
     ///
     /// On success, returns the number of bytes written.
     pub async fn send_to<T: BoundedBuf>(
         &self,
         buf: T,
-        socket_addr: Option<SocketAddr>,
+        socket_addr: SocketAddr,
     ) -> crate::BufResult<usize, T> {
-        self.inner.send_to(buf, socket_addr).await
+        self.inner.send_to(buf, Some(socket_addr)).await
     }
 
     /// Sends data on the socket. Will attempt to do so without intermediate copies.
@@ -251,8 +261,6 @@ impl UdpSocket {
     /// > it replaces per byte copy cost with page accounting and completion
     /// > notification overhead. As a result, zero copy is generally only effective
     /// > at writes over around 10 KB.
-    ///
-    /// Note: Using fixed buffers [#54](https://github.com/tokio-rs/tokio-uring/pull/54), avoids the page-pinning overhead
     pub async fn sendmsg_zc<T: BoundedBuf, U: BoundedBuf>(
         &self,
         io_slices: Vec<T>,
