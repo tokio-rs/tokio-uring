@@ -10,6 +10,7 @@ use std::{
 
 use crate::io::shared_fd::sealed::CommonFd;
 use crate::runtime::driver::op::Op;
+use crate::runtime::CONTEXT;
 
 // Tracks in-flight operations on a file descriptor. Ensures all in-flight
 // operations complete before submitting the close.
@@ -213,8 +214,10 @@ impl Drop for SharedFd {
 
 impl Drop for Inner {
     fn drop(&mut self) {
-        // If the inner state isn't `Closed`, the user hasn't called close().await
-        // so do it synchronously.
+        // If the inner state isn't `Closed`, the user hasn't called close().await so close it now.
+        // At least for the case of a regular file descriptor we can do it synchronously. For the
+        // case of a fixed file table descriptor, we may already be out of the driver's context,
+        // but if we aren't we resort to the io_uring close operation - and spawn a task to do it.
 
         let state = self.state.borrow_mut();
 
@@ -222,14 +225,35 @@ impl Drop for Inner {
             return;
         }
 
-        // Perform one form of synchronous close or the other.
+        // Perform one form of close or the other.
         match self.fd {
             CommonFd::Raw(raw) => {
                 let _ = unsafe { std::fs::File::from_raw_fd(raw) };
             }
-            CommonFd::Fixed(_fixed) => {
-                // TODO replace with test for context and then use synchronous close
-                unreachable!();
+
+            CommonFd::Fixed(fixed) => {
+                // As there is no synchronous close for a fixed file table slot, we have to resort
+                // to the async close provided by the io_uring device. If we knew the fixed file
+                // table had been unregistered, this wouldn't be necessary either.
+
+                match CONTEXT.try_with(|cx| cx.is_set()) {
+                    Ok(true) => {}
+                    // If the driver is gone, nothing to do. The fixed table has already been taken
+                    // down by the device anyway.
+                    _ => return,
+                }
+
+                crate::spawn(async move {
+                    if let Ok(true) = CONTEXT.try_with(|cx| cx.is_set()) {
+                        let fd = CommonFd::Fixed(fixed);
+                        if let Ok(op) = Op::close(fd) {
+                            let _ = op.await;
+                        }
+                        // Else, should warn or panic if the Op::Close can't be built? It would
+                        // mean the fixed value was out of reach which would not be expected at
+                        // this point.
+                    }
+                });
             }
         }
     }
