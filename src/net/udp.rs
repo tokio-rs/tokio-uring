@@ -215,7 +215,7 @@ impl UdpSocket {
         self.inner.send_to(buf, None).await
     }
 
-    /// Sends data on the socket to the given address or to previously connected remote peer.
+    /// Sends data on the socket to the given address.
     ///
     /// On success, returns the number of bytes written.
     pub async fn send_to<T: BoundedBuf>(
