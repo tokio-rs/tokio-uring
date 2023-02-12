@@ -205,6 +205,11 @@ impl Drop for Inner {
                     _ => return,
                 }
 
+                // TODO Investigate the idea from the liburing team of replacing the one slot with
+                // a -1 by using the register/files_update synchronous command. If the current
+                // scheme that uses a spawn is initiallly acceptable, probably leave it like this
+                // for now and wait to be able to benchmark once we have streaming tcp sockets.
+
                 crate::spawn(async move {
                     if let Ok(true) = CONTEXT.try_with(|cx| cx.is_set()) {
                         let fd = CommonFd::Fixed(fixed);
