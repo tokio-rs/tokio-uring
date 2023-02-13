@@ -136,7 +136,7 @@ impl Socket {
     pub(crate) async fn send_to<T: BoundedBuf>(
         &self,
         buf: T,
-        socket_addr: SocketAddr,
+        socket_addr: Option<SocketAddr>,
     ) -> crate::BufResult<usize, T> {
         let op = Op::send_to(&self.fd, buf, socket_addr).unwrap();
         op.await
@@ -150,7 +150,7 @@ impl Socket {
     pub(crate) async fn sendmsg_zc<T: BoundedBuf, U: BoundedBuf>(
         &self,
         io_slices: Vec<T>,
-        socket_addr: SocketAddr,
+        socket_addr: Option<SocketAddr>,
         msg_control: Option<U>,
     ) -> (io::Result<usize>, Vec<T>, Option<U>) {
         let op = Op::sendmsg_zc(&self.fd, io_slices, socket_addr, msg_control).unwrap();
