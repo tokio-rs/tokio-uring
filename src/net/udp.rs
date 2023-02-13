@@ -51,6 +51,16 @@ use std::{
 ///
 ///         assert_eq!(b"hello world", &buf[..n_bytes]);
 ///
+///         // write data using send on connected socket
+///         let (result, _) = socket.send(b"hello world via send".as_slice()).await;
+///         result.unwrap();
+///
+///         // read data
+///         let (result, buf) = other_socket.read(buf).await;
+///         let n_bytes = result.unwrap();
+///
+///         assert_eq!(b"hello world via send", &buf[..n_bytes]);
+///
 ///         Ok(())
 ///     })
 /// }
@@ -198,6 +208,13 @@ impl UdpSocket {
         self.inner.connect(SockAddr::from(socket_addr)).await
     }
 
+    /// Sends data on the connected socket
+    ///
+    /// On success, returns the number of bytes written.
+    pub async fn send<T: BoundedBuf>(&self, buf: T) -> crate::BufResult<usize, T> {
+        self.inner.send_to(buf, None).await
+    }
+
     /// Sends data on the socket to the given address.
     ///
     /// On success, returns the number of bytes written.
@@ -206,7 +223,7 @@ impl UdpSocket {
         buf: T,
         socket_addr: SocketAddr,
     ) -> crate::BufResult<usize, T> {
-        self.inner.send_to(buf, socket_addr).await
+        self.inner.send_to(buf, Some(socket_addr)).await
     }
 
     /// Sends data on the socket. Will attempt to do so without intermediate copies.
@@ -242,11 +259,12 @@ impl UdpSocket {
     /// > notification overhead. As a result, zero copy is generally only effective
     /// > at writes over around 10 KB.
     ///
-    /// Note: Using fixed buffers [#54](https://github.com/tokio-rs/tokio-uring/pull/54), avoids the page-pinning overhead
+    /// Can be used with socket_addr: None on connected sockets, which can have performance
+    /// benefits if multiple datagrams are sent to the same destination address.
     pub async fn sendmsg_zc<T: BoundedBuf, U: BoundedBuf>(
         &self,
         io_slices: Vec<T>,
-        socket_addr: SocketAddr,
+        socket_addr: Option<SocketAddr>,
         msg_control: Option<U>,
     ) -> (io::Result<usize>, Vec<T>, Option<U>) {
         self.inner

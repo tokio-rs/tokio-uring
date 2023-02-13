@@ -13,7 +13,7 @@ pub(crate) struct SendMsgZc<T, U> {
     #[allow(dead_code)]
     io_bufs: Vec<T>,
     #[allow(dead_code)]
-    socket_addr: Box<SockAddr>,
+    socket_addr: Option<Box<SockAddr>>,
     msg_control: Option<U>,
     msghdr: libc::msghdr,
 
@@ -25,12 +25,10 @@ impl<T: BoundedBuf, U: BoundedBuf> Op<SendMsgZc<T, U>, MultiCQEFuture> {
     pub(crate) fn sendmsg_zc(
         fd: &SharedFd,
         io_bufs: Vec<T>,
-        socket_addr: SocketAddr,
+        socket_addr: Option<SocketAddr>,
         msg_control: Option<U>,
     ) -> io::Result<Self> {
         use io_uring::{opcode, types};
-
-        let socket_addr = Box::new(SockAddr::from(socket_addr));
 
         let mut msghdr: libc::msghdr = unsafe { std::mem::zeroed() };
 
@@ -44,8 +42,20 @@ impl<T: BoundedBuf, U: BoundedBuf> Op<SendMsgZc<T, U>, MultiCQEFuture> {
 
         msghdr.msg_iov = io_slices.as_ptr() as *mut _;
         msghdr.msg_iovlen = io_slices.len() as _;
-        msghdr.msg_name = socket_addr.as_ptr() as *mut libc::c_void;
-        msghdr.msg_namelen = socket_addr.len();
+
+        let socket_addr = match socket_addr {
+            Some(_socket_addr) => {
+                let socket_addr = Box::new(SockAddr::from(_socket_addr));
+                msghdr.msg_name = socket_addr.as_ptr() as *mut libc::c_void;
+                msghdr.msg_namelen = socket_addr.len();
+                Some(socket_addr)
+            }
+            None => {
+                msghdr.msg_name = std::ptr::null_mut();
+                msghdr.msg_namelen = 0;
+                None
+            }
+        };
 
         match msg_control {
             Some(ref _msg_control) => {
