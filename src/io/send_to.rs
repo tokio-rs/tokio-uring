@@ -14,7 +14,7 @@ pub(crate) struct SendTo<T> {
     #[allow(dead_code)]
     io_slices: Vec<IoSlice<'static>>,
     #[allow(dead_code)]
-    socket_addr: Box<SockAddr>,
+    socket_addr: Option<Box<SockAddr>>,
     pub(crate) msghdr: Box<libc::msghdr>,
 }
 
@@ -22,7 +22,7 @@ impl<T: BoundedBuf> Op<SendTo<T>> {
     pub(crate) fn send_to(
         fd: &SharedFd,
         buf: T,
-        socket_addr: SocketAddr,
+        socket_addr: Option<SocketAddr>,
     ) -> io::Result<Op<SendTo<T>>> {
         use io_uring::{opcode, types};
 
@@ -30,13 +30,23 @@ impl<T: BoundedBuf> Op<SendTo<T>> {
             std::slice::from_raw_parts(buf.stable_ptr(), buf.bytes_init())
         })];
 
-        let socket_addr = Box::new(SockAddr::from(socket_addr));
-
         let mut msghdr: Box<libc::msghdr> = Box::new(unsafe { std::mem::zeroed() });
         msghdr.msg_iov = io_slices.as_ptr() as *mut _;
         msghdr.msg_iovlen = io_slices.len() as _;
-        msghdr.msg_name = socket_addr.as_ptr() as *mut libc::c_void;
-        msghdr.msg_namelen = socket_addr.len();
+
+        let socket_addr = match socket_addr {
+            Some(_socket_addr) => {
+                let socket_addr = Box::new(SockAddr::from(_socket_addr));
+                msghdr.msg_name = socket_addr.as_ptr() as *mut libc::c_void;
+                msghdr.msg_namelen = socket_addr.len();
+                Some(socket_addr)
+            }
+            None => {
+                msghdr.msg_name = std::ptr::null_mut();
+                msghdr.msg_namelen = 0;
+                None
+            }
+        };
 
         CONTEXT.with(|x| {
             x.handle().expect("Not in a runtime context").submit_op(
