@@ -283,3 +283,7 @@ pub async fn no_op() -> std::io::Result<()> {
     let op = Op::<io::NoOp>::no_op().unwrap();
     op.await
 }
+
+#[cfg(feature = "macros")]
+#[cfg_attr(docsrs, doc(cfg(feature = "macros")))]
+pub use tokio_uring_macros::test;

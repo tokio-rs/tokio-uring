@@ -455,7 +455,7 @@ mod test {
             Completion {
                 result: cqe.result,
                 flags: cqe.flags,
-                data: self.clone(),
+                data: self,
             }
         }
     }

@@ -31,10 +31,8 @@ impl Completable for NoOp {
 mod test {
     use crate as tokio_uring;
 
-    #[test]
-    fn perform_no_op() -> () {
-        tokio_uring::start(async {
-            tokio_uring::no_op().await.unwrap();
-        })
+    #[tokio_uring::test]
+    async fn perform_no_op() {
+        tokio_uring::no_op().await.unwrap();
     }
 }
