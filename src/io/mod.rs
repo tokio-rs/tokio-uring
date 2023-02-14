@@ -42,6 +42,7 @@ mod statx;
 mod unlink_at;
 
 mod util;
+pub(crate) use util::cstr;
 
 mod write;
 
