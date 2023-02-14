@@ -124,10 +124,6 @@ impl DirBuilder {
     // recursion when only the first level of the directory needs to be built. For now, this serves
     // its purpose.
 
-    // TODO this is a bit expensive for the case of creating a directory that already exists
-    // because after the call to mkdir fails, it will make three more async calls to determine the
-    // path already exists and is a directory.
-
     fn recurse_create_dir_all<'a>(&'a self, path: &'a Path) -> LocalBoxFuture<io::Result<()>> {
         Box::pin(async move {
             if path == Path::new("") {
@@ -194,20 +190,16 @@ mod fs_imp {
 
 // Returns true if the path represents a directory.
 //
-// Uses three asynchronous uring calls to determine this.
+// Uses one asynchronous uring call to determine this.
 async fn is_dir<P: AsRef<Path>>(path: P) -> bool {
-    let f = match crate::fs::File::open(path).await {
-        Ok(f) => f,
-        _ => return false,
-    };
+    let mut builder = crate::fs::StatxBuilder::new();
+    if builder.mask(libc::STATX_TYPE).pathname(path).is_err() {
+        return false;
+    }
 
-    // f is closed asynchronously, regardless of the statx result.
-
-    let b: bool = match f.statx().await {
+    let res = builder.statx().await;
+    match res {
         Ok(statx) => (u32::from(statx.stx_mode) & libc::S_IFMT) == libc::S_IFDIR,
-        _ => false,
-    };
-
-    let _ = f.close().await;
-    b
+        Err(_) => false,
+    }
 }
