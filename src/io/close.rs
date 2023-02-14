@@ -10,29 +10,24 @@ impl Op<Close> {
     pub(crate) fn close(fd: CommonFd) -> io::Result<Op<Close>> {
         use io_uring::{opcode, types};
 
-        let (raw, fixed) = match fd {
-            CommonFd::Raw(raw) => (raw, None),
-            CommonFd::Fixed(fixed) => {
-                let fixed = match types::DestinationSlot::try_from_slot_target(fixed) {
-                    Ok(n) => n,
-                    Err(n) => {
-                        return Err(std::io::Error::new(
-                            std::io::ErrorKind::Other,
-                            format!("invalid fixed slot: {n}"),
-                        ))
-                    }
-                };
-                (0, Some(fixed))
-            }
-        };
-
-        CONTEXT.with(|x| {
-            x.handle()
-                .expect("Not in a runtime context")
-                .submit_op(Close {}, |_close| {
-                    opcode::Close::new(types::Fd(raw)).file_index(fixed).build()
+        match fd {
+            CommonFd::Raw(raw) => {
+                let fd = types::Fd(raw);
+                CONTEXT.with(|x| {
+                    x.handle()
+                        .expect("Not in a runtime context")
+                        .submit_op(Close {}, |_close| opcode::Close::new(fd).build())
                 })
-        })
+            }
+            CommonFd::Fixed(fixed) => {
+                let fd = types::Fixed(fixed);
+                CONTEXT.with(|x| {
+                    x.handle()
+                        .expect("Not in a runtime context")
+                        .submit_op(Close {}, |_close| opcode::Close::new(fd).build())
+                })
+            }
+        }
     }
 }
 
