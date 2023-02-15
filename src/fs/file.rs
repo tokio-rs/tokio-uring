@@ -55,7 +55,7 @@ use std::path::Path;
 /// ```
 pub struct File {
     /// Open file descriptor
-    fd: SharedFd,
+    pub(crate) fd: SharedFd,
 }
 
 impl File {
@@ -226,7 +226,7 @@ impl File {
     ///     })
     /// }
     /// ```
-    pub async fn readv_at<T: IoBufMut>(
+    pub async fn readv_at<T: BoundedBufMut>(
         &self,
         bufs: Vec<T>,
         pos: u64,
@@ -283,12 +283,65 @@ impl File {
     /// ```
     ///
     /// [`Ok(n)`]: Ok
-    pub async fn writev_at<T: IoBuf>(
+    pub async fn writev_at<T: BoundedBuf>(
         &self,
         buf: Vec<T>,
         pos: u64,
     ) -> crate::BufResult<usize, Vec<T>> {
         let op = Op::writev_at(&self.fd, buf, pos).unwrap();
+        op.await
+    }
+
+    /// Like `writev_at` but will call the `io_uring` `writev` operation multiple times if
+    /// necessary.
+    ///
+    /// Parameter `pos` is an `Option<u64>` to allow this function to be used for both files that
+    /// are seekable and those that are not. The caller is responsible for knowing this.
+    ///
+    /// When `None` is supplied, the offset passed to the `io_uring` call will always be zero, even
+    /// if multiple writev calls are necessary; only the iovec information would be adjusted
+    /// between calls. A Unix pipe would fall into this category.
+    ///
+    /// When `Some(n)` is suppied, the offset passed to the writev call will be incremented by the
+    /// progress of prior writev calls. A file system's regular file would fall into this category.
+    ///
+    /// If the caller passes `Some(n)` for a file that is not seekable, the `io_uring` `writev`
+    /// operation will return an error once n is not zero.
+    ///
+    /// If the caller passes `None`, when the file *is* seekable, when multiple `writev` calls are
+    /// required to complete the writing of all the bytes, the bytes at position 0 of the file will
+    /// have been overwritten one or more times with incorrect data. This is true just as if the
+    /// caller had invoked seperate write calls to a file, all with position 0, when in fact the
+    /// file was seekable.
+    ///
+    /// Performance considerations:
+    ///
+    /// The user may want to check that this function is necessary in their use case or performs
+    /// better than a series of write_all operations would. There is overhead either way and it is
+    /// not clear which should be faster or give better throughput.
+    ///
+    /// This function causes the temporary allocation of a Vec one time to hold the array of iovec
+    /// that is passed to the kernel. The same array is used for any subsequent calls to get all
+    /// the bytes written. Whereas individual calls to write_all do not require the Vec to be
+    /// allocated, they do each incur the normal overhead of setting up the submission and
+    /// completion structures and going through the future poll mechanism.
+    ///
+    /// TODO decide, would a separate `writev_all` function for `file` that did not take a `pos`
+    /// make things less ambiguous?
+    ///
+    /// TODO more complete documentation here.
+    /// TODO define writev_all functions for net/unix/stream, net/tcp/stream, io/socket.
+    /// TODO remove usize from result, to be consistent with other write_all_vectored functions.
+    /// TODO find a way to test this with some stress to the file so the writev calls don't all
+    /// succeed on their first try.
+    /// TODO consider replacing the current `write_all` and `write_all_at` functions with a similar
+    /// mechanism so all the write-all logic is in one place, in the io/write_all.rs file.
+    pub async fn writev_at_all<T: BoundedBuf>(
+        &self,
+        buf: Vec<T>,
+        pos: Option<u64>, // Use None for files that can't seek
+    ) -> crate::BufResult<usize, Vec<T>> {
+        let op = crate::io::writev_at_all(&self.fd, buf, pos);
         op.await
     }
 
@@ -408,7 +461,7 @@ impl File {
     ///# fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// use tokio_uring::fs::File;
     /// use tokio_uring::buf::fixed::FixedBufRegistry;
-    /// use tokio_uring::buf::IoBuf;
+    /// use tokio_uring::buf::BoundedBuf;
     /// use std::iter;
     ///
     /// tokio_uring::start(async {
@@ -601,7 +654,7 @@ impl File {
     ///# fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// use tokio_uring::fs::File;
     /// use tokio_uring::buf::fixed::FixedBufRegistry;
-    /// use tokio_uring::buf::IoBuf;
+    /// use tokio_uring::buf::BoundedBuf;
     ///
     /// tokio_uring::start(async {
     ///     let registry = FixedBufRegistry::new([b"some bytes".to_vec()]);
@@ -772,14 +825,46 @@ impl File {
         Op::datasync(&self.fd)?.await
     }
 
-    /// Closes the file.
+    /// Manipulate the allocated disk space of the file.
     ///
-    /// The method completes once the close operation has completed,
-    /// guaranteeing that resources associated with the file have been released.
+    /// The manipulated range starts at the `offset` and continues for `len` bytes.
     ///
-    /// If `close` is not called before dropping the file, the file is closed in
-    /// the background, but there is no guarantee as to **when** the close
-    /// operation will complete.
+    /// The specific manipulation to the allocated disk space are specified by
+    /// the `flags`, to understand what are the possible values here check
+    /// the `fallocate(2)` man page.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use tokio_uring::fs::File;
+    ///
+    /// fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ///     tokio_uring::start(async {
+    ///         let f = File::create("foo.txt").await?;
+    ///
+    ///         // Allocate a 1024 byte file setting all the bytes to zero
+    ///         f.fallocate(0, 1024, libc::FALLOC_FL_ZERO_RANGE).await?;
+    ///
+    ///         // Close the file
+    ///         f.close().await?;
+    ///         Ok(())
+    ///     })
+    /// }
+    pub async fn fallocate(&self, offset: u64, len: u64, flags: i32) -> io::Result<()> {
+        Op::fallocate(&self.fd, offset, len, flags)?.await
+    }
+
+    /// Closes the file using the uring asynchronous close operation and returns the possible error
+    /// as described in the close(2) man page.
+    ///
+    /// The programmer has the choice of calling this asynchronous close and waiting for the result
+    /// or letting the library close the file automatically and simply letting the file go out of
+    /// scope and having the library close the file descriptor automatically and synchronously.
+    ///
+    /// Calling this asynchronous close is to be preferred because it returns the close result
+    /// which as the man page points out, should not be ignored. This asynchronous close also
+    /// avoids the synchronous close system call and may result in better throughput as the thread
+    /// is not blocked during the close.
     ///
     /// # Examples
     ///
@@ -797,9 +882,8 @@ impl File {
     ///     })
     /// }
     /// ```
-    pub async fn close(self) -> io::Result<()> {
-        self.fd.close().await;
-        Ok(())
+    pub async fn close(mut self) -> io::Result<()> {
+        self.fd.close().await
     }
 }
 
@@ -825,6 +909,14 @@ impl fmt::Debug for File {
 
 /// Removes a File
 ///
+/// This function will return an error in the following situations, but is not
+/// limited to just these cases:
+///
+/// * `path` doesn't exist.
+///      * [`io::ErrorKind`] would be set to `NotFound`
+/// * The user lacks permissions to modify/remove the file at the provided `path`.
+///      * [`io::ErrorKind`] would be set to `PermissionDenied`
+///
 /// # Examples
 ///
 /// ```no_run
@@ -845,7 +937,14 @@ pub async fn remove_file<P: AsRef<Path>>(path: P) -> io::Result<()> {
 /// Renames a file or directory to a new name, replacing the original file if
 /// `to` already exists.
 ///
-/// This will not work if the new name is on a different mount point.
+/// #Errors
+///
+/// * `path` doesn't exist.
+///      * [`io::ErrorKind`] would be set to `NotFound`
+/// * The user lacks permissions to modify/remove the file at the provided `path`.
+///      * [`io::ErrorKind`] would be set to `PermissionDenied`
+/// * The new name/path is on a different mount point.
+///      * [`io::ErrorKind`] would be set to `CrossesDevices`
 ///
 /// # Example
 ///

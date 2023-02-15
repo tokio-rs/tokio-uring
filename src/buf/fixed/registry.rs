@@ -1,6 +1,7 @@
 use super::plumbing;
 use super::FixedBuf;
 
+use crate::buf::IoBufMut;
 use crate::runtime::CONTEXT;
 use std::cell::RefCell;
 use std::io;
@@ -29,11 +30,11 @@ use std::rc::Rc;
 /// [`check_out`]: Self::check_out
 /// [`Runtime`]: crate::Runtime
 #[derive(Clone)]
-pub struct FixedBufRegistry {
-    inner: Rc<RefCell<plumbing::Registry>>,
+pub struct FixedBufRegistry<T: IoBufMut> {
+    inner: Rc<RefCell<plumbing::Registry<T>>>,
 }
 
-impl FixedBufRegistry {
+impl<T: IoBufMut> FixedBufRegistry<T> {
     /// Creates a new collection of buffers from the provided allocated vectors.
     ///
     /// The buffers are assigned 0-based indices in the order of the iterable
@@ -97,7 +98,7 @@ impl FixedBufRegistry {
     /// })
     /// # }
     /// ```
-    pub fn new(bufs: impl IntoIterator<Item = Vec<u8>>) -> Self {
+    pub fn new(bufs: impl IntoIterator<Item = T>) -> Self {
         FixedBufRegistry {
             inner: Rc::new(RefCell::new(plumbing::Registry::new(bufs.into_iter()))),
         }

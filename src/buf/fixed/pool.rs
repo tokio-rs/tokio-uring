@@ -4,10 +4,13 @@
 //! dynamic management of sets of interchangeable memory buffers
 //! registered with the kernel for `io-uring` operations. Asynchronous
 //! rotation of the buffers shared by multiple tasks is also supported
-//! by `FixedBufPool`.
+//! by [`FixedBufPool`].
+//!
+//! [`FixedBufPool`]: self::FixedBufPool
 
 use super::plumbing;
 use super::FixedBuf;
+use crate::buf::IoBufMut;
 use crate::runtime::CONTEXT;
 
 use tokio::pin;
@@ -48,6 +51,7 @@ use std::sync::Arc;
 /// [`next`]: Self::next
 /// [`FixedBufRegistry`]: super::FixedBufRegistry
 /// [`Runtime`]: crate::Runtime
+/// [`FixedBuf`]: super::FixedBuf
 ///
 /// # Examples
 ///
@@ -90,11 +94,11 @@ use std::sync::Arc;
 /// # }
 /// ```
 #[derive(Clone)]
-pub struct FixedBufPool {
-    inner: Rc<RefCell<plumbing::Pool>>,
+pub struct FixedBufPool<T: IoBufMut> {
+    inner: Rc<RefCell<plumbing::Pool<T>>>,
 }
 
-impl FixedBufPool {
+impl<T: IoBufMut> FixedBufPool<T> {
     /// Creates a new collection of buffers from the provided allocated vectors.
     ///
     /// The buffers are assigned 0-based indices in the order of the iterable
@@ -158,7 +162,7 @@ impl FixedBufPool {
     /// })
     /// # }
     /// ```
-    pub fn new(bufs: impl IntoIterator<Item = Vec<u8>>) -> Self {
+    pub fn new(bufs: impl IntoIterator<Item = T>) -> Self {
         FixedBufPool {
             inner: Rc::new(RefCell::new(plumbing::Pool::new(bufs.into_iter()))),
         }

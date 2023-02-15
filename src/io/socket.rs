@@ -128,7 +128,7 @@ impl Socket {
         (Ok(()), buf.into_inner())
     }
 
-    pub async fn writev<T: IoBuf>(&self, buf: Vec<T>) -> crate::BufResult<usize, Vec<T>> {
+    pub async fn writev<T: BoundedBuf>(&self, buf: Vec<T>) -> crate::BufResult<usize, Vec<T>> {
         let op = Op::writev_at(&self.fd, buf, 0).unwrap();
         op.await
     }
@@ -136,7 +136,7 @@ impl Socket {
     pub(crate) async fn send_to<T: BoundedBuf>(
         &self,
         buf: T,
-        socket_addr: SocketAddr,
+        socket_addr: Option<SocketAddr>,
     ) -> crate::BufResult<usize, T> {
         let op = Op::send_to(&self.fd, buf, socket_addr).unwrap();
         op.await
@@ -144,6 +144,16 @@ impl Socket {
 
     pub(crate) async fn send_zc<T: BoundedBuf>(&self, buf: T) -> crate::BufResult<usize, T> {
         let op = Op::send_zc(&self.fd, buf).unwrap();
+        op.await
+    }
+
+    pub(crate) async fn sendmsg_zc<T: BoundedBuf, U: BoundedBuf>(
+        &self,
+        io_slices: Vec<T>,
+        socket_addr: Option<SocketAddr>,
+        msg_control: Option<U>,
+    ) -> (io::Result<usize>, Vec<T>, Option<U>) {
+        let op = Op::sendmsg_zc(&self.fd, io_slices, socket_addr, msg_control).unwrap();
         op.await
     }
 

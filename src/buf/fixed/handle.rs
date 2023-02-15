@@ -4,7 +4,6 @@ use crate::buf::{IoBuf, IoBufMut};
 use libc::iovec;
 use std::cell::RefCell;
 use std::fmt::{self, Debug};
-use std::mem::ManuallyDrop;
 use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 
@@ -33,8 +32,7 @@ pub(crate) struct CheckedOutBuf {
 ///
 pub struct FixedBuf {
     registry: Rc<RefCell<dyn FixedBuffers>>,
-    buf: ManuallyDrop<Vec<u8>>,
-    index: u16,
+    buf: CheckedOutBuf,
 }
 
 impl Drop for FixedBuf {
@@ -44,59 +42,48 @@ impl Drop for FixedBuf {
         // maintained accordingly to the safety contracts on
         // Self::new and IoBufMut.
         unsafe {
-            registry.check_in(self.index, self.buf.len());
+            registry.check_in(self.buf.index, self.buf.init_len);
         }
     }
 }
 
 impl FixedBuf {
     // Safety: Validity constraints must apply to CheckedOutBuf members:
-    // - iovec must refer to an array allocated by Vec<u8>;
     // - the array will not be deallocated until the buffer is checked in;
     // - the data in the array must be initialized up to the number of bytes
     //   given in init_len.
-    pub(super) unsafe fn new(registry: Rc<RefCell<dyn FixedBuffers>>, data: CheckedOutBuf) -> Self {
-        let CheckedOutBuf {
-            iovec,
-            init_len,
-            index,
-        } = data;
-        let buf = Vec::from_raw_parts(iovec.iov_base as _, init_len, iovec.iov_len);
-        FixedBuf {
-            registry,
-            buf: ManuallyDrop::new(buf),
-            index,
-        }
+    pub(super) unsafe fn new(registry: Rc<RefCell<dyn FixedBuffers>>, buf: CheckedOutBuf) -> Self {
+        FixedBuf { registry, buf }
     }
 
     /// Index of the underlying registry buffer
     pub fn buf_index(&self) -> u16 {
-        self.index
+        self.buf.index
     }
 }
 
 unsafe impl IoBuf for FixedBuf {
     fn stable_ptr(&self) -> *const u8 {
-        self.buf.as_ptr()
+        self.buf.iovec.iov_base as _
     }
 
     fn bytes_init(&self) -> usize {
-        self.buf.len()
+        self.buf.init_len
     }
 
     fn bytes_total(&self) -> usize {
-        self.buf.capacity()
+        self.buf.iovec.iov_len
     }
 }
 
 unsafe impl IoBufMut for FixedBuf {
     fn stable_mut_ptr(&mut self) -> *mut u8 {
-        self.buf.as_mut_ptr()
+        self.buf.iovec.iov_base as _
     }
 
     unsafe fn set_init(&mut self, pos: usize) {
-        if self.buf.len() < pos {
-            self.buf.set_len(pos)
+        if self.buf.init_len < pos {
+            self.buf.init_len = pos
         }
     }
 }
@@ -105,21 +92,24 @@ impl Deref for FixedBuf {
     type Target = [u8];
 
     fn deref(&self) -> &[u8] {
-        &self.buf
+        // Safety: The iovec points to a slice held  in self.buffers, to which no mutable reference exists.
+        unsafe { std::slice::from_raw_parts(self.buf.iovec.iov_base as _, self.buf.init_len) }
     }
 }
 
 impl DerefMut for FixedBuf {
     fn deref_mut(&mut self) -> &mut [u8] {
-        &mut self.buf
+        // Safety: The iovec points to a slice held in self.buffers, to which no other reference exists.
+        unsafe { std::slice::from_raw_parts_mut(self.buf.iovec.iov_base as _, self.buf.init_len) }
     }
 }
 
 impl Debug for FixedBuf {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let buf: &[u8] = self;
         f.debug_struct("FixedBuf")
-            .field("buf", &*self.buf) // deref ManuallyDrop
-            .field("index", &self.index)
+            .field("buf", &buf) // as slice
+            .field("index", &self.buf.index)
             .finish_non_exhaustive()
     }
 }

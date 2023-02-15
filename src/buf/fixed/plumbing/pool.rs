@@ -1,4 +1,5 @@
 use crate::buf::fixed::{handle::CheckedOutBuf, FixedBuffers};
+use crate::buf::IoBufMut;
 
 use libc::{iovec, UIO_MAXIOV};
 use tokio::sync::Notify;
@@ -11,7 +12,7 @@ use std::slice;
 use std::sync::Arc;
 
 // Internal state shared by FixedBufPool and FixedBuf handles.
-pub(crate) struct Pool {
+pub(crate) struct Pool<T: IoBufMut> {
     // Pointer to an allocated array of iovec records referencing
     // the allocated buffers. The number of initialized records is the
     // same as the length of the states array.
@@ -23,6 +24,8 @@ pub(crate) struct Pool {
     states: Vec<BufState>,
     // Table of head indices of the free buffer lists in each size bucket.
     free_buf_head_by_cap: HashMap<usize, u16>,
+    // Original buffers, kept until drop
+    buffers: Vec<T>,
     // Used to notify tasks pending on `next`
     notify_next_by_cap: HashMap<usize, Arc<Notify>>,
 }
@@ -42,15 +45,20 @@ enum BufState {
     CheckedOut,
 }
 
-impl Pool {
-    pub(crate) fn new(bufs: impl Iterator<Item = Vec<u8>>) -> Self {
+impl<T: IoBufMut> Pool<T> {
+    pub(crate) fn new(bufs: impl Iterator<Item = T>) -> Self {
+        // Limit the number of buffers to the maximum allowable number.
         let bufs = bufs.take(cmp::min(UIO_MAXIOV as usize, u16::MAX as usize));
-        let (size_hint, _) = bufs.size_hint();
-        let mut iovecs = Vec::with_capacity(size_hint);
-        let mut states = Vec::with_capacity(size_hint);
+        // Collect into `buffers`, which holds the backing buffers for
+        // the lifetime of the pool. Using collect may allow
+        // the compiler to apply collect in place specialization,
+        // to avoid an allocation.
+        let mut buffers = bufs.collect::<Vec<T>>();
+        let mut iovecs = Vec::with_capacity(buffers.len());
+        let mut states = Vec::with_capacity(buffers.len());
         let mut free_buf_head_by_cap = HashMap::new();
-        for (index, mut buf) in bufs.enumerate() {
-            let cap = buf.capacity();
+        for (index, buf) in buffers.iter_mut().enumerate() {
+            let cap = buf.bytes_total();
 
             // Link the buffer as the head of the free list for its capacity.
             // This constructs the free buffer list to be initially retrieved
@@ -58,16 +66,16 @@ impl Pool {
             let next = free_buf_head_by_cap.insert(cap, index as u16);
 
             iovecs.push(iovec {
-                iov_base: buf.as_mut_ptr() as *mut _,
+                iov_base: buf.stable_mut_ptr() as *mut _,
                 iov_len: cap,
             });
             states.push(BufState::Free {
-                init_len: buf.len(),
+                init_len: buf.bytes_init(),
                 next,
             });
-            mem::forget(buf);
         }
         debug_assert_eq!(iovecs.len(), states.len());
+        debug_assert_eq!(iovecs.len(), buffers.len());
 
         // Safety: Vec::as_mut_ptr never returns null
         let raw_bufs = unsafe { ptr::NonNull::new_unchecked(iovecs.as_mut_ptr()) };
@@ -78,6 +86,7 @@ impl Pool {
             orig_cap,
             states,
             free_buf_head_by_cap,
+            buffers,
             notify_next_by_cap: HashMap::new(),
         }
     }
@@ -149,7 +158,7 @@ impl Pool {
     }
 }
 
-impl FixedBuffers for Pool {
+impl<T: IoBufMut> FixedBuffers for Pool<T> {
     fn iovecs(&self) -> &[iovec] {
         // Safety: the raw_bufs pointer is valid for the lifetime of self,
         // the length of the states array is also the length of buffers array
@@ -162,21 +171,23 @@ impl FixedBuffers for Pool {
     }
 }
 
-impl Drop for Pool {
+impl<T: IoBufMut> Drop for Pool<T> {
     fn drop(&mut self) {
-        let iovecs = unsafe {
-            Vec::from_raw_parts(self.raw_bufs.as_ptr(), self.states.len(), self.orig_cap)
-        };
-        for (i, iovec) in iovecs.iter().enumerate() {
-            match self.states[i] {
-                BufState::Free { init_len, next: _ } => {
-                    let ptr = iovec.iov_base as *mut u8;
-                    let cap = iovec.iov_len;
-                    let v = unsafe { Vec::from_raw_parts(ptr, init_len, cap) };
-                    mem::drop(v);
+        for (i, state) in self.states.iter().enumerate() {
+            match state {
+                BufState::Free { init_len, .. } => {
+                    // Update buffer initialization.
+                    // The buffer is about to dropped, but this may release it
+                    // from Registry ownership, rather than deallocate.
+                    unsafe { self.buffers[i].set_init(*init_len) };
                 }
                 BufState::CheckedOut => unreachable!("all buffers must be checked in"),
             }
         }
+
+        // Rebuild Vec<iovec>, so it's dropped
+        let _ = unsafe {
+            Vec::from_raw_parts(self.raw_bufs.as_ptr(), self.states.len(), self.orig_cap)
+        };
     }
 }
