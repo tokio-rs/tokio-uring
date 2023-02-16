@@ -10,7 +10,8 @@ provides new resource types that work with [`io-uring`].
 [`fs::File`]: https://docs.rs/tokio-uring/latest/tokio_uring/fs/struct.File.html
 
 [API Docs](https://docs.rs/tokio-uring/latest/tokio_uring) |
-[Chat](https://discord.gg/tokio)
+[Chat](https://discord.gg/tokio) |
+![rust 1.64.0 required](https://img.shields.io/badge/rust-1.64.0-blue.svg?label=MSRV)
 
 # Getting started
 

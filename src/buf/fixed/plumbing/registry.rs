@@ -73,23 +73,23 @@ impl<T: IoBufMut> Registry<T> {
     // If the buffer is already checked out, returns None.
     pub(crate) fn check_out(&mut self, index: usize) -> Option<CheckedOutBuf> {
         let state = self.states.get_mut(index)?;
-        let BufState::Free { init_len } = *state else {
-            return None
-        };
+        if let BufState::Free { init_len } = *state {
+            *state = BufState::CheckedOut;
 
-        *state = BufState::CheckedOut;
-
-        // Safety: the allocated array under the pointer is valid
-        // for the lifetime of self, the index is inside the array
-        // as checked by Vec::get_mut above, called on the array of
-        // states that has the same length.
-        let iovec = unsafe { self.raw_bufs.as_ptr().add(index).read() };
-        debug_assert!(index <= u16::MAX as usize);
-        Some(CheckedOutBuf {
-            iovec,
-            init_len,
-            index: index as u16,
-        })
+            // Safety: the allocated array under the pointer is valid
+            // for the lifetime of self, the index is inside the array
+            // as checked by Vec::get_mut above, called on the array of
+            // states that has the same length.
+            let iovec = unsafe { self.raw_bufs.as_ptr().add(index).read() };
+            debug_assert!(index <= u16::MAX as usize);
+            Some(CheckedOutBuf {
+                iovec,
+                init_len,
+                index: index as u16,
+            })
+        } else {
+            None
+        }
     }
 
     fn check_in_internal(&mut self, index: u16, init_len: usize) {

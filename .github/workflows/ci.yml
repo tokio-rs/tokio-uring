@@ -11,6 +11,7 @@ on:
 env:
   RUSTFLAGS: -Dwarnings
   RUST_BACKTRACE: 1
+  RUST_VERSION: 1.64.0
 
 jobs:
   # Depends on all actions that are required for a "successful" CI run.
@@ -54,9 +55,14 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout sources
+        uses: actions/checkout@v3
       - name: Install Rust
-        run: rustup update stable
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          profile: minimal
+          override: true
       - run: cargo test
 
   test-docs:
