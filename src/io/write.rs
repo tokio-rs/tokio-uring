@@ -1,4 +1,4 @@
-use crate::io::shared_fd::sealed::CommonFd;
+use crate::io::shared_fd::CommonFd;
 use crate::runtime::driver::op::{Completable, CqeResult, Op};
 use crate::runtime::CONTEXT;
 use crate::{buf::BoundedBuf, io::SharedFd, BufResult};

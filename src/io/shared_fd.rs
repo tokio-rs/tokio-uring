@@ -8,7 +8,6 @@ use std::{
     task::Waker,
 };
 
-use crate::io::shared_fd::sealed::CommonFd;
 use crate::runtime::driver::op::Op;
 use crate::runtime::CONTEXT;
 
@@ -23,6 +22,12 @@ use crate::runtime::CONTEXT;
 #[derive(Clone)]
 pub(crate) struct SharedFd {
     inner: Rc<Inner>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum CommonFd {
+    Raw(RawFd),
+    Fixed(u32),
 }
 
 struct Inner {
@@ -222,32 +227,5 @@ impl Drop for Inner {
                 });
             }
         }
-    }
-}
-
-// Enum and traits copied from the io-uring crate.
-
-// TODO definitely not sure this should be sealed. But leaving it for now. Could easily decide
-// there is nothing here to seal as our API is fluid for a while yet.
-
-pub(crate) mod sealed {
-    // use super::{Fixed, Raw};
-    use std::os::unix::io::RawFd;
-
-    #[derive(Debug, Clone, Copy)]
-    // Note: io-uring names this Target
-    pub(crate) enum CommonFd {
-        Raw(RawFd),
-        Fixed(u32),
-    }
-
-    // Note: io-uring names this UseFd
-    pub(crate) trait UseRawFd: Sized {
-        fn into(self) -> RawFd;
-    }
-
-    // Note: io-uring names this UseFixed
-    pub(crate) trait UseCommonFd: Sized {
-        fn into(self) -> CommonFd;
     }
 }

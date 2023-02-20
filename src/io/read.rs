@@ -2,7 +2,7 @@ use crate::buf::BoundedBufMut;
 use crate::io::SharedFd;
 use crate::BufResult;
 
-use crate::io::shared_fd::sealed::CommonFd;
+use crate::io::shared_fd::CommonFd;
 use crate::runtime::driver::op::{Completable, CqeResult, Op};
 use crate::runtime::CONTEXT;
 use std::io;
