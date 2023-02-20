@@ -89,7 +89,7 @@ impl Driver {
 
             let index = cqe.user_data() as _;
 
-            self.ops.complete(index, cqe.into());
+            self.ops.complete(index, cqe);
         }
     }
 
