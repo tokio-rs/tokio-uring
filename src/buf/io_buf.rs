@@ -81,6 +81,20 @@ unsafe impl IoBuf for &'static str {
     }
 }
 
+unsafe impl<T: IoBuf> IoBuf for std::rc::Rc<T> {
+    fn stable_ptr(&self) -> *const u8 {
+        self.as_ref().stable_ptr()
+    }
+
+    fn bytes_init(&self) -> usize {
+        self.as_ref().bytes_init()
+    }
+
+    fn bytes_total(&self) -> usize {
+        self.as_ref().bytes_total()
+    }
+}
+
 #[cfg(feature = "bytes")]
 unsafe impl IoBuf for bytes::Bytes {
     fn stable_ptr(&self) -> *const u8 {
