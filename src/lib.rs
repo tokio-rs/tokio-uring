@@ -78,6 +78,7 @@ pub mod buf;
 pub mod fs;
 pub mod net;
 
+pub use runtime::driver::op::{InFlightOneshot, OneshotOutputTransform, UnsubmittedOneshot};
 pub use runtime::spawn;
 pub use runtime::Runtime;
 
