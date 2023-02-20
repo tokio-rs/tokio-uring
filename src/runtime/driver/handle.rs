@@ -100,6 +100,10 @@ impl Handle {
     pub(crate) fn remove_op<T, CqeType>(&self, op: &mut Op<T, CqeType>) {
         self.inner.borrow_mut().remove_op(op)
     }
+
+    pub(crate) fn remove_op_2<T: 'static>(&self, index: usize, data: T) {
+        self.inner.borrow_mut().remove_op_2(index, data)
+    }
 }
 
 impl WeakHandle {

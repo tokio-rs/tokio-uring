@@ -21,7 +21,7 @@ use crate::runtime::{driver, CONTEXT};
 pub(crate) type Completion = SlabListEntry<CqeResult>;
 
 /// An unsubmitted oneshot operation.
-pub struct UnsubmittedOneshot<D, T: OneshotOutputTransform<StoredData = D>> {
+pub struct UnsubmittedOneshot<D: 'static, T: OneshotOutputTransform<StoredData = D>> {
     stable_data: D,
     post_op: T,
     sqe: squeue::Entry,
@@ -63,7 +63,7 @@ impl<D, T: OneshotOutputTransform<StoredData = D>> UnsubmittedOneshot<D, T> {
 }
 
 /// An in-progress oneshot operation which can be polled for completion.
-pub struct InFlightOneshot<D, T: OneshotOutputTransform<StoredData = D>> {
+pub struct InFlightOneshot<D: 'static, T: OneshotOutputTransform<StoredData = D>> {
     inner: Option<InFlightOneshotInner<D, T>>,
 }
 
@@ -101,6 +101,16 @@ impl<D: Unpin, T: OneshotOutputTransform<StoredData = D> + Unpin> Future for InF
                 .post_op
                 .transform_oneshot_output(inner.stable_data, cqe),
         )
+    }
+}
+
+impl<D: 'static, T: OneshotOutputTransform<StoredData = D>> Drop for InFlightOneshot<D, T> {
+    fn drop(&mut self) {
+        if let Some(inner) = self.inner.take() {
+            if let Some(driver) = inner.driver.upgrade() {
+                driver.remove_op_2(inner.index, inner.stable_data)
+            }
+        }
     }
 }
 

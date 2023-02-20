@@ -199,6 +199,41 @@ impl Driver {
         }
     }
 
+    pub(crate) fn remove_op_2<T: 'static>(&mut self, index: usize, data: T) {
+        // Get the Op Lifecycle state from the driver
+        let (lifecycle, completions) = match self.ops.get_mut(index) {
+            Some(val) => val,
+            None => {
+                // Op dropped after the driver
+                return;
+            }
+        };
+
+        match mem::replace(lifecycle, Lifecycle::Submitted) {
+            Lifecycle::Submitted | Lifecycle::Waiting(_) => {
+                *lifecycle = Lifecycle::Ignored(Box::new(data));
+            }
+            Lifecycle::Completed(..) => {
+                self.ops.remove(index);
+            }
+            Lifecycle::CompletionList(indices) => {
+                // Deallocate list entries, recording if more CQE's are expected
+                let more = {
+                    let mut list = indices.into_list(completions);
+                    cqueue::more(list.peek_end().unwrap().flags)
+                    // Dropping list deallocates the list entries
+                };
+                if more {
+                    // If more are expected, we have to keep the op around
+                    *lifecycle = Lifecycle::Ignored(Box::new(data));
+                } else {
+                    self.ops.remove(index);
+                }
+            }
+            Lifecycle::Ignored(..) => unreachable!(),
+        }
+    }
+
     pub(crate) fn poll_op_2(&mut self, index: usize, cx: &mut Context<'_>) -> Poll<cqueue::Entry> {
         let (lifecycle, _) = self.ops.get_mut(index).expect("invalid internal state");
 
