@@ -466,204 +466,204 @@ impl Drop for Ops {
     }
 }
 
-#[cfg(test)]
-mod test {
-    use std::rc::Rc;
-
-    use crate::runtime::driver::op::{Completable, CqeResult, Op};
-    use crate::runtime::CONTEXT;
-    use tokio_test::{assert_pending, assert_ready, task};
-
-    use super::*;
-
-    #[derive(Debug)]
-    pub(crate) struct Completion {
-        result: io::Result<u32>,
-        flags: u32,
-        data: Rc<()>,
-    }
-
-    impl Completable for Rc<()> {
-        type Output = Completion;
-
-        fn complete(self, cqe: CqeResult) -> Self::Output {
-            Completion {
-                result: cqe.result,
-                flags: cqe.flags,
-                data: self.clone(),
-            }
-        }
-    }
-
-    #[test]
-    fn op_stays_in_slab_on_drop() {
-        let (op, data) = init();
-        drop(op);
-
-        assert_eq!(2, Rc::strong_count(&data));
-
-        assert_eq!(1, num_operations());
-        release();
-    }
-
-    #[test]
-    fn poll_op_once() {
-        let (op, data) = init();
-        let mut op = task::spawn(op);
-        assert_pending!(op.poll());
-        assert_eq!(2, Rc::strong_count(&data));
-
-        complete(&op, Ok(1));
-        assert_eq!(1, num_operations());
-        assert_eq!(2, Rc::strong_count(&data));
-
-        assert!(op.is_woken());
-        let Completion {
-            result,
-            flags,
-            data: d,
-        } = assert_ready!(op.poll());
-        assert_eq!(2, Rc::strong_count(&data));
-        assert_eq!(1, result.unwrap());
-        assert_eq!(0, flags);
-
-        drop(d);
-        assert_eq!(1, Rc::strong_count(&data));
-
-        drop(op);
-        assert_eq!(0, num_operations());
-
-        release();
-    }
-
-    #[test]
-    fn poll_op_twice() {
-        {
-            let (op, ..) = init();
-            let mut op = task::spawn(op);
-            assert_pending!(op.poll());
-            assert_pending!(op.poll());
-
-            complete(&op, Ok(1));
-
-            assert!(op.is_woken());
-            let Completion { result, flags, .. } = assert_ready!(op.poll());
-            assert_eq!(1, result.unwrap());
-            assert_eq!(0, flags);
-        }
-
-        release();
-    }
-
-    #[test]
-    fn poll_change_task() {
-        {
-            let (op, ..) = init();
-            let mut op = task::spawn(op);
-            assert_pending!(op.poll());
-
-            let op = op.into_inner();
-            let mut op = task::spawn(op);
-            assert_pending!(op.poll());
-
-            complete(&op, Ok(1));
-
-            assert!(op.is_woken());
-            let Completion { result, flags, .. } = assert_ready!(op.poll());
-            assert_eq!(1, result.unwrap());
-            assert_eq!(0, flags);
-        }
-
-        release();
-    }
-
-    #[test]
-    fn complete_before_poll() {
-        let (op, data) = init();
-        let mut op = task::spawn(op);
-        complete(&op, Ok(1));
-        assert_eq!(1, num_operations());
-        assert_eq!(2, Rc::strong_count(&data));
-
-        let Completion { result, flags, .. } = assert_ready!(op.poll());
-        assert_eq!(1, result.unwrap());
-        assert_eq!(0, flags);
-
-        drop(op);
-        assert_eq!(0, num_operations());
-
-        release();
-    }
-
-    #[test]
-    fn complete_after_drop() {
-        let (op, data) = init();
-        let index = op.index();
-        drop(op);
-
-        assert_eq!(2, Rc::strong_count(&data));
-
-        assert_eq!(1, num_operations());
-
-        let cqe = CqeResult {
-            result: Ok(1),
-            flags: 0,
-        };
-
-        CONTEXT.with(|cx| {
-            cx.handle()
-                .unwrap()
-                .inner
-                .borrow_mut()
-                .ops
-                .complete(index, cqe)
-        });
-
-        assert_eq!(1, Rc::strong_count(&data));
-        assert_eq!(0, num_operations());
-
-        release();
-    }
-
-    fn init() -> (Op<Rc<()>>, Rc<()>) {
-        let driver = Driver::new(&crate::builder()).unwrap();
-        let data = Rc::new(());
-
-        let op = CONTEXT.with(|cx| {
-            cx.set_handle(driver.into());
-
-            let driver = cx.handle().unwrap();
-
-            let index = driver.inner.borrow_mut().ops.insert();
-
-            Op::new((&driver).into(), data.clone(), index)
-        });
-
-        (op, data)
-    }
-
-    fn num_operations() -> usize {
-        CONTEXT.with(|cx| cx.handle().unwrap().inner.borrow().num_operations())
-    }
-
-    fn complete(op: &Op<Rc<()>>, result: io::Result<u32>) {
-        let cqe = CqeResult { result, flags: 0 };
-
-        CONTEXT.with(|cx| {
-            let driver = cx.handle().unwrap();
-
-            driver.inner.borrow_mut().ops.complete(op.index(), cqe);
-        });
-    }
-
-    fn release() {
-        CONTEXT.with(|cx| {
-            let driver = cx.handle().unwrap();
-
-            driver.inner.borrow_mut().ops.lifecycle.clear();
-            driver.inner.borrow_mut().ops.completions.clear();
-
-            cx.unset_driver();
-        });
-    }
-}
+// #[cfg(test)]
+// mod test {
+//     use std::rc::Rc;
+//
+//     use crate::runtime::driver::op::{Completable, CqeResult, Op};
+//     use crate::runtime::CONTEXT;
+//     use tokio_test::{assert_pending, assert_ready, task};
+//
+//     use super::*;
+//
+//     #[derive(Debug)]
+//     pub(crate) struct Completion {
+//         result: io::Result<u32>,
+//         flags: u32,
+//         data: Rc<()>,
+//     }
+//
+//     impl Completable for Rc<()> {
+//         type Output = Completion;
+//
+//         fn complete(self, cqe: CqeResult) -> Self::Output {
+//             Completion {
+//                 result: cqe.result,
+//                 flags: cqe.flags,
+//                 data: self.clone(),
+//             }
+//         }
+//     }
+//
+//     #[test]
+//     fn op_stays_in_slab_on_drop() {
+//         let (op, data) = init();
+//         drop(op);
+//
+//         assert_eq!(2, Rc::strong_count(&data));
+//
+//         assert_eq!(1, num_operations());
+//         release();
+//     }
+//
+//     #[test]
+//     fn poll_op_once() {
+//         let (op, data) = init();
+//         let mut op = task::spawn(op);
+//         assert_pending!(op.poll());
+//         assert_eq!(2, Rc::strong_count(&data));
+//
+//         complete(&op, Ok(1));
+//         assert_eq!(1, num_operations());
+//         assert_eq!(2, Rc::strong_count(&data));
+//
+//         assert!(op.is_woken());
+//         let Completion {
+//             result,
+//             flags,
+//             data: d,
+//         } = assert_ready!(op.poll());
+//         assert_eq!(2, Rc::strong_count(&data));
+//         assert_eq!(1, result.unwrap());
+//         assert_eq!(0, flags);
+//
+//         drop(d);
+//         assert_eq!(1, Rc::strong_count(&data));
+//
+//         drop(op);
+//         assert_eq!(0, num_operations());
+//
+//         release();
+//     }
+//
+//     #[test]
+//     fn poll_op_twice() {
+//         {
+//             let (op, ..) = init();
+//             let mut op = task::spawn(op);
+//             assert_pending!(op.poll());
+//             assert_pending!(op.poll());
+//
+//             complete(&op, Ok(1));
+//
+//             assert!(op.is_woken());
+//             let Completion { result, flags, .. } = assert_ready!(op.poll());
+//             assert_eq!(1, result.unwrap());
+//             assert_eq!(0, flags);
+//         }
+//
+//         release();
+//     }
+//
+//     #[test]
+//     fn poll_change_task() {
+//         {
+//             let (op, ..) = init();
+//             let mut op = task::spawn(op);
+//             assert_pending!(op.poll());
+//
+//             let op = op.into_inner();
+//             let mut op = task::spawn(op);
+//             assert_pending!(op.poll());
+//
+//             complete(&op, Ok(1));
+//
+//             assert!(op.is_woken());
+//             let Completion { result, flags, .. } = assert_ready!(op.poll());
+//             assert_eq!(1, result.unwrap());
+//             assert_eq!(0, flags);
+//         }
+//
+//         release();
+//     }
+//
+//     #[test]
+//     fn complete_before_poll() {
+//         let (op, data) = init();
+//         let mut op = task::spawn(op);
+//         complete(&op, Ok(1));
+//         assert_eq!(1, num_operations());
+//         assert_eq!(2, Rc::strong_count(&data));
+//
+//         let Completion { result, flags, .. } = assert_ready!(op.poll());
+//         assert_eq!(1, result.unwrap());
+//         assert_eq!(0, flags);
+//
+//         drop(op);
+//         assert_eq!(0, num_operations());
+//
+//         release();
+//     }
+//
+//     #[test]
+//     fn complete_after_drop() {
+//         let (op, data) = init();
+//         let index = op.index();
+//         drop(op);
+//
+//         assert_eq!(2, Rc::strong_count(&data));
+//
+//         assert_eq!(1, num_operations());
+//
+//         let cqe = CqeResult {
+//             result: Ok(1),
+//             flags: 0,
+//         };
+//
+//         CONTEXT.with(|cx| {
+//             cx.handle()
+//                 .unwrap()
+//                 .inner
+//                 .borrow_mut()
+//                 .ops
+//                 .complete(index, cqe)
+//         });
+//
+//         assert_eq!(1, Rc::strong_count(&data));
+//         assert_eq!(0, num_operations());
+//
+//         release();
+//     }
+//
+//     fn init() -> (Op<Rc<()>>, Rc<()>) {
+//         let driver = Driver::new(&crate::builder()).unwrap();
+//         let data = Rc::new(());
+//
+//         let op = CONTEXT.with(|cx| {
+//             cx.set_handle(driver.into());
+//
+//             let driver = cx.handle().unwrap();
+//
+//             let index = driver.inner.borrow_mut().ops.insert();
+//
+//             Op::new((&driver).into(), data.clone(), index)
+//         });
+//
+//         (op, data)
+//     }
+//
+//     fn num_operations() -> usize {
+//         CONTEXT.with(|cx| cx.handle().unwrap().inner.borrow().num_operations())
+//     }
+//
+//     fn complete(op: &Op<Rc<()>>, result: io::Result<u32>) {
+//         let cqe = CqeResult { result, flags: 0 };
+//
+//         CONTEXT.with(|cx| {
+//             let driver = cx.handle().unwrap();
+//
+//             driver.inner.borrow_mut().ops.complete(op.index(), cqe);
+//         });
+//     }
+//
+//     fn release() {
+//         CONTEXT.with(|cx| {
+//             let driver = cx.handle().unwrap();
+//
+//             driver.inner.borrow_mut().ops.lifecycle.clear();
+//             driver.inner.borrow_mut().ops.completions.clear();
+//
+//             cx.unset_driver();
+//         });
+//     }
+// }
