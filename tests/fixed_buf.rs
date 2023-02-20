@@ -1,9 +1,11 @@
 use tokio_test::assert_err;
-use tokio_uring::buf::fixed::FixedBufRegistry;
-use tokio_uring::buf::BoundedBuf;
+use tokio_uring::buf::fixed::{FixedBufPool, FixedBufRegistry};
+use tokio_uring::buf::{BoundedBuf, BoundedBufMut};
 use tokio_uring::fs::File;
 
+use std::fs::File as StdFile;
 use std::io::prelude::*;
+use std::iter;
 use std::mem;
 use tempfile::NamedTempFile;
 
@@ -97,7 +99,7 @@ fn slicing() {
         tempfile.write_all(HELLO).unwrap();
 
         let file = File::from_std(
-            std::fs::File::options()
+            StdFile::options()
                 .read(true)
                 .write(true)
                 .open(tempfile.path())
@@ -134,6 +136,54 @@ fn slicing() {
         assert_eq!(n, HELLO.len() + 7);
         assert_eq!(slice[..HELLO.len()], HELLO[..]);
         assert_eq!(slice[HELLO.len()..], HELLO[4..11]);
+    })
+}
+
+#[test]
+fn pool_next_as_concurrency_limit() {
+    tokio_uring::start(async move {
+        const BUF_SIZE: usize = 80;
+
+        let mut tempfile = tempfile();
+        let file = StdFile::options()
+            .write(true)
+            .open(tempfile.path())
+            .unwrap();
+
+        let buffers = FixedBufPool::new(iter::repeat_with(|| Vec::with_capacity(BUF_SIZE)).take(2));
+        buffers.register().unwrap();
+
+        let mut join_handles = vec![];
+        for i in 0..10 {
+            let mut buf = buffers.next(BUF_SIZE).await;
+            println!(
+                "[main] iteration {}: obtained buffer {}",
+                i,
+                buf.buf_index()
+            );
+            let cloned_file = file.try_clone().unwrap();
+
+            let handle = tokio_uring::spawn(async move {
+                let file = File::from_std(cloned_file);
+                let data = [b'0' + i as u8; BUF_SIZE];
+                buf.put_slice(&data);
+                let (res, buf) = file.write_fixed_all_at(buf, BUF_SIZE as u64 * i).await;
+                res.unwrap();
+                println!("[worker {}]: dropping buffer {}", i, buf.buf_index());
+            });
+
+            join_handles.push(handle);
+        }
+        for (i, handle) in join_handles.into_iter().enumerate() {
+            handle
+                .await
+                .unwrap_or_else(|e| panic!("worker {} terminated abnormally: {}", i, e));
+        }
+
+        mem::drop(file);
+        let mut content = String::new();
+        tempfile.read_to_string(&mut content).unwrap();
+        println!("{}", content);
     })
 }
 

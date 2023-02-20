@@ -21,7 +21,9 @@ pub use handle::FixedBuf;
 mod buffers;
 pub(crate) use buffers::FixedBuffers;
 
-mod pool;
+mod plumbing;
+
+pub mod pool;
 pub use pool::FixedBufPool;
 
 mod registry;
