@@ -82,7 +82,6 @@ impl SharedFd {
     }
 
     // Returns the common fd, either a RawFd or the fixed fd slot number.
-    #[allow(dead_code)]
     pub(crate) fn common_fd(&self) -> CommonFd {
         self.inner.fd
     }
