@@ -227,19 +227,6 @@ impl Drop for Inner {
 
 // Enum and traits copied from the io-uring crate.
 
-/*
- * TODO maybe these types aren't needed at all.
-/// A file descriptor that has not been registered with io_uring.
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct Raw(pub RawFd); // Note: io-uring names this Fd
-
-/// A file descriptor that has been registered with io_uring using
-/// [`Submitter::register_files`](crate::Submitter::register_files) or [`Submitter::register_files_sparse`](crate::Submitter::register_files_sparse).
-/// This can reduce overhead compared to using [`Fd`] in some cases.
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct Fixed(pub u32); // TODO consider renaming to Direct (but uring docs use both Fixed descriptor and Direct descriptor)
- */
-
 // TODO definitely not sure this should be sealed. But leaving it for now. Could easily decide
 // there is nothing here to seal as our API is fluid for a while yet.
 
@@ -263,27 +250,4 @@ pub(crate) mod sealed {
     pub(crate) trait UseCommonFd: Sized {
         fn into(self) -> CommonFd;
     }
-
-    /* TODO maybe won't be needed at all.
-    impl UseRawFd for Raw {
-        #[inline]
-        fn into(self) -> RawFd {
-            self.0
-        }
-    }
-
-    impl UseCommonFd for Raw {
-        #[inline]
-        fn into(self) -> CommonFd {
-            CommonFd::Raw(self.0)
-        }
-    }
-
-    impl UseCommonFd for Fixed {
-        #[inline]
-        fn into(self) -> CommonFd {
-            CommonFd::Fixed(self.0)
-        }
-    }
-    */
 }
