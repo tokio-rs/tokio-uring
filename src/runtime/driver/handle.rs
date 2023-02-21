@@ -63,6 +63,21 @@ impl Handle {
         self.inner.borrow_mut().unregister_buffers(buffers)
     }
 
+    pub(crate) fn register_buf_ring(
+        &self,
+        ring_addr: u64,
+        ring_entries: u16,
+        bgid: u16,
+    ) -> io::Result<()> {
+        self.inner
+            .borrow_mut()
+            .register_buf_ring(ring_addr, ring_entries, bgid)
+    }
+
+    pub(crate) fn unregister_buf_ring(&self, bgid: u16) -> io::Result<()> {
+        self.inner.borrow_mut().unregister_buf_ring(bgid)
+    }
+
     pub(crate) fn submit_op<T, S, F>(&self, data: T, f: F) -> io::Result<Op<T, S>>
     where
         T: Completable,
