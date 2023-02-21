@@ -93,7 +93,7 @@ impl TcpStream {
         &self,
         group: crate::buf::bufring::BufRing,
     ) -> Result<crate::buf::bufgroup::BufX, io::Error> {
-        self.inner.recv_provbuf(group).await
+        self.inner.recv_provbuf(group).submit().await
     }
 
     /// Read some data from the stream into a registered buffer.

@@ -1,4 +1,5 @@
 use crate::io::recv::UnsubmittedRecv;
+use crate::io::recv_provbuf::UnsubmittedRecvProvBuf;
 use crate::io::write::UnsubmittedWrite;
 use crate::runtime::driver::op::Op;
 use crate::{
@@ -168,12 +169,11 @@ impl Socket {
         UnsubmittedOneshot::recv(&self.fd, buf, None)
     }
 
-    pub(crate) async fn recv_provbuf(
+    pub(crate) fn recv_provbuf(
         &self,
         group: crate::buf::bufring::BufRing,
-    ) -> Result<crate::buf::bufgroup::BufX, io::Error> {
-        let op = Op::recv_provbuf(&self.fd, group, None).unwrap();
-        op.await
+    ) -> UnsubmittedRecvProvBuf {
+        UnsubmittedOneshot::recv_provbuf(&self.fd, group, None)
     }
 
     pub(crate) async fn read_fixed<T>(&self, buf: T) -> crate::BufResult<usize, T>
