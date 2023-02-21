@@ -1,50 +1,59 @@
-use crate::runtime::driver::op::{Completable, CqeResult, Op};
-use crate::runtime::CONTEXT;
-use crate::{buf::BoundedBuf, io::SharedFd, BufResult};
+use crate::{buf::BoundedBuf, io::SharedFd, BufResult, OneshotOutputTransform, UnsubmittedOneshot};
+use io_uring::cqueue::Entry;
 use std::io;
+use std::marker::PhantomData;
 
-pub(crate) struct Write<T> {
+/// An unsubmitted write operation.
+pub type UnsubmittedWrite<T> = UnsubmittedOneshot<WriteData<T>, WriteTransform<T>>;
+
+#[allow(missing_docs)]
+pub struct WriteData<T> {
     /// Holds a strong ref to the FD, preventing the file from being closed
     /// while the operation is in-flight.
-    #[allow(dead_code)]
-    fd: SharedFd,
+    _fd: SharedFd,
 
     buf: T,
 }
 
-impl<T: BoundedBuf> Op<Write<T>> {
-    pub(crate) fn write_at(fd: &SharedFd, buf: T, offset: u64) -> io::Result<Op<Write<T>>> {
-        use io_uring::{opcode, types};
+#[allow(missing_docs)]
+pub struct WriteTransform<T> {
+    _phantom: PhantomData<T>,
+}
 
-        CONTEXT.with(|x| {
-            x.handle().expect("Not in a runtime context").submit_op(
-                Write {
-                    fd: fd.clone(),
-                    buf,
-                },
-                |write| {
-                    // Get raw buffer info
-                    let ptr = write.buf.stable_ptr();
-                    let len = write.buf.bytes_init();
+impl<T> OneshotOutputTransform for WriteTransform<T> {
+    type Output = BufResult<usize, T>;
+    type StoredData = WriteData<T>;
 
-                    opcode::Write::new(types::Fd(fd.raw_fd()), ptr, len as _)
-                        .offset(offset as _)
-                        .build()
-                },
-            )
-        })
+    fn transform_oneshot_output(self, data: Self::StoredData, cqe: Entry) -> Self::Output {
+        let res = if cqe.result() >= 0 {
+            Ok(cqe.result() as usize)
+        } else {
+            Err(io::Error::from_raw_os_error(cqe.result()))
+        };
+
+        (res, data.buf)
     }
 }
 
-impl<T> Completable for Write<T> {
-    type Output = BufResult<usize, T>;
+impl<T: BoundedBuf> UnsubmittedWrite<T> {
+    pub(crate) fn write_at(fd: &SharedFd, buf: T, offset: u64) -> Self {
+        use io_uring::{opcode, types};
 
-    fn complete(self, cqe: CqeResult) -> Self::Output {
-        // Convert the operation result to `usize`
-        let res = cqe.result.map(|v| v as usize);
-        // Recover the buffer
-        let buf = self.buf;
+        // Get raw buffer info
+        let ptr = buf.stable_ptr();
+        let len = buf.bytes_init();
 
-        (res, buf)
+        Self::new(
+            WriteData {
+                _fd: fd.clone(),
+                buf,
+            },
+            WriteTransform {
+                _phantom: PhantomData::default(),
+            },
+            opcode::Write::new(types::Fd(fd.raw_fd()), ptr, len as _)
+                .offset(offset as _)
+                .build(),
+        )
     }
 }

@@ -4,14 +4,14 @@ use std::marker::PhantomData;
 use std::pin::Pin;
 use std::task::{Context, Poll, Waker};
 
-use io_uring::cqueue;
+use io_uring::{cqueue, squeue};
 
 mod slab_list;
 
 use slab::Slab;
 use slab_list::{SlabListEntry, SlabListIndices};
 
-use crate::runtime::driver;
+use crate::runtime::{driver, CONTEXT};
 
 /// A SlabList is used to hold unserved completions.
 ///
@@ -19,6 +19,110 @@ use crate::runtime::driver;
 /// which require an unknown number of CQE events to be
 /// captured before completion.
 pub(crate) type Completion = SlabListEntry<CqeResult>;
+
+/// An unsubmitted oneshot operation.
+pub struct UnsubmittedOneshot<D: 'static, T: OneshotOutputTransform<StoredData = D>> {
+    stable_data: D,
+    post_op: T,
+    sqe: squeue::Entry,
+}
+
+impl<D, T: OneshotOutputTransform<StoredData = D>> UnsubmittedOneshot<D, T> {
+    /// Construct a new operation for later submission.
+    pub fn new(stable_data: D, post_op: T, sqe: squeue::Entry) -> Self {
+        Self {
+            stable_data,
+            post_op,
+            sqe,
+        }
+    }
+
+    /// Submit an operation to the driver for batched entry to the kernel.
+    pub fn submit(self) -> InFlightOneshot<D, T> {
+        let handle = CONTEXT
+            .with(|x| x.handle())
+            .expect("Could not submit op; not in runtime context");
+
+        self.submit_with_driver(&handle)
+    }
+
+    fn submit_with_driver(self, driver: &driver::Handle) -> InFlightOneshot<D, T> {
+        let index = driver.submit_op_2(self.sqe);
+
+        let driver = driver.into();
+
+        let inner = InFlightOneshotInner {
+            index,
+            driver,
+            stable_data: self.stable_data,
+            post_op: self.post_op,
+        };
+
+        InFlightOneshot { inner: Some(inner) }
+    }
+}
+
+/// An in-progress oneshot operation which can be polled for completion.
+pub struct InFlightOneshot<D: 'static, T: OneshotOutputTransform<StoredData = D>> {
+    inner: Option<InFlightOneshotInner<D, T>>,
+}
+
+struct InFlightOneshotInner<D, T: OneshotOutputTransform<StoredData = D>> {
+    driver: driver::WeakHandle,
+    index: usize,
+    stable_data: D,
+    post_op: T,
+}
+
+impl<D: Unpin, T: OneshotOutputTransform<StoredData = D> + Unpin> Future for InFlightOneshot<D, T> {
+    type Output = T::Output;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let this = self.get_mut();
+
+        let inner = this
+            .inner
+            .as_mut()
+            .expect("Cannot poll already-completed operation");
+
+        let index = inner.index;
+
+        let upgraded = inner
+            .driver
+            .upgrade()
+            .expect("Failed to poll op: driver no longer exists");
+
+        let cqe = ready!(upgraded.poll_op_2(index, cx));
+
+        let inner = this.inner.take().unwrap();
+
+        Poll::Ready(
+            inner
+                .post_op
+                .transform_oneshot_output(inner.stable_data, cqe),
+        )
+    }
+}
+
+impl<D: 'static, T: OneshotOutputTransform<StoredData = D>> Drop for InFlightOneshot<D, T> {
+    fn drop(&mut self) {
+        if let Some(inner) = self.inner.take() {
+            if let Some(driver) = inner.driver.upgrade() {
+                driver.remove_op_2(inner.index, inner.stable_data)
+            }
+        }
+    }
+}
+
+/// Transforms the output of a oneshot operation into a more user-friendly format.
+pub trait OneshotOutputTransform {
+    /// The final output after the transformation.
+    type Output;
+    /// The stored data within the op.
+    type StoredData;
+    /// Transform the stored data and the cqe into the final output.
+    fn transform_oneshot_output(self, data: Self::StoredData, cqe: cqueue::Entry) -> Self::Output;
+}
 
 /// In-flight operation
 pub(crate) struct Op<T: 'static, CqeType = SingleCQE> {
@@ -64,7 +168,7 @@ pub(crate) enum Lifecycle {
     Ignored(Box<dyn std::any::Any>),
 
     /// The operation has completed with a single cqe result
-    Completed(CqeResult),
+    Completed(cqueue::Entry),
 
     /// One or more completion results have been recieved
     /// This holds the indices uniquely identifying the list within the slab
@@ -156,14 +260,18 @@ impl<T, CqeType> Drop for Op<T, CqeType> {
 }
 
 impl Lifecycle {
-    pub(crate) fn complete(&mut self, completions: &mut Slab<Completion>, cqe: CqeResult) -> bool {
+    pub(crate) fn complete(
+        &mut self,
+        completions: &mut Slab<Completion>,
+        cqe: cqueue::Entry,
+    ) -> bool {
         use std::mem;
 
         match mem::replace(self, Lifecycle::Submitted) {
             x @ Lifecycle::Submitted | x @ Lifecycle::Waiting(..) => {
-                if io_uring::cqueue::more(cqe.flags) {
+                if io_uring::cqueue::more(cqe.flags()) {
                     let mut list = SlabListIndices::new().into_list(completions);
-                    list.push(cqe);
+                    list.push(cqe.into());
                     *self = Lifecycle::CompletionList(list.into_indices());
                 } else {
                     *self = Lifecycle::Completed(cqe);
@@ -177,7 +285,7 @@ impl Lifecycle {
             }
 
             lifecycle @ Lifecycle::Ignored(..) => {
-                if io_uring::cqueue::more(cqe.flags) {
+                if io_uring::cqueue::more(cqe.flags()) {
                     // Not yet complete. The Op has been dropped, so we can drop the CQE
                     // but we must keep the lifecycle alive until no more CQE's expected
                     *self = lifecycle;
@@ -200,7 +308,7 @@ impl Lifecycle {
                 // A completion list may contain CQE's with and without `more` flag set.
                 // Only the final one may have `more` unset, although we don't check.
                 let mut list = indices.into_list(completions);
-                list.push(cqe);
+                list.push(cqe.into());
                 *self = Lifecycle::CompletionList(list.into_indices());
                 false
             }

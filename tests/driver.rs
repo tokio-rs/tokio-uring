@@ -83,7 +83,11 @@ fn too_many_submissions() {
         let file = File::create(tempfile.path()).await.unwrap();
         for _ in 0..600 {
             poll_once(async {
-                file.write_at(b"hello world".to_vec(), 0).await.0.unwrap();
+                file.write_at(b"hello world".to_vec(), 0)
+                    .submit()
+                    .await
+                    .0
+                    .unwrap();
             })
             .await;
         }

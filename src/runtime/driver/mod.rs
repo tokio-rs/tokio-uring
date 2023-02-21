@@ -4,10 +4,10 @@ use io_uring::opcode::AsyncCancel;
 use io_uring::{cqueue, squeue, IoUring};
 use slab::Slab;
 use std::cell::RefCell;
-use std::io;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::rc::Rc;
 use std::task::{Context, Poll};
+use std::{io, mem};
 
 pub(crate) use handle::*;
 
@@ -89,7 +89,7 @@ impl Driver {
 
             let index = cqe.user_data() as _;
 
-            self.ops.complete(index, cqe.into());
+            self.ops.complete(index, cqe);
         }
     }
 
@@ -146,6 +146,21 @@ impl Driver {
         Ok(())
     }
 
+    pub(crate) fn submit_op_2(&mut self, sqe: squeue::Entry) -> usize {
+        let index = self.ops.insert();
+
+        // Configure the SQE
+        let sqe = sqe.user_data(index as _);
+
+        // Push the new operation
+        while unsafe { self.uring.submission().push(&sqe).is_err() } {
+            // If the submission queue is full, flush it to the kernel
+            self.submit().expect("Internal error, failed to submit ops");
+        }
+
+        index
+    }
+
     pub(crate) fn submit_op<T, S, F>(
         &mut self,
         mut data: T,
@@ -174,8 +189,6 @@ impl Driver {
     }
 
     pub(crate) fn remove_op<T, CqeType>(&mut self, op: &mut Op<T, CqeType>) {
-        use std::mem;
-
         // Get the Op Lifecycle state from the driver
         let (lifecycle, completions) = match self.ops.get_mut(op.index()) {
             Some(val) => val,
@@ -210,12 +223,72 @@ impl Driver {
         }
     }
 
+    pub(crate) fn remove_op_2<T: 'static>(&mut self, index: usize, data: T) {
+        // Get the Op Lifecycle state from the driver
+        let (lifecycle, completions) = match self.ops.get_mut(index) {
+            Some(val) => val,
+            None => {
+                // Op dropped after the driver
+                return;
+            }
+        };
+
+        match mem::replace(lifecycle, Lifecycle::Submitted) {
+            Lifecycle::Submitted | Lifecycle::Waiting(_) => {
+                *lifecycle = Lifecycle::Ignored(Box::new(data));
+            }
+            Lifecycle::Completed(..) => {
+                self.ops.remove(index);
+            }
+            Lifecycle::CompletionList(indices) => {
+                // Deallocate list entries, recording if more CQE's are expected
+                let more = {
+                    let mut list = indices.into_list(completions);
+                    cqueue::more(list.peek_end().unwrap().flags)
+                    // Dropping list deallocates the list entries
+                };
+                if more {
+                    // If more are expected, we have to keep the op around
+                    *lifecycle = Lifecycle::Ignored(Box::new(data));
+                } else {
+                    self.ops.remove(index);
+                }
+            }
+            Lifecycle::Ignored(..) => unreachable!(),
+        }
+    }
+
+    pub(crate) fn poll_op_2(&mut self, index: usize, cx: &mut Context<'_>) -> Poll<cqueue::Entry> {
+        let (lifecycle, _) = self.ops.get_mut(index).expect("invalid internal state");
+
+        match mem::replace(lifecycle, Lifecycle::Submitted) {
+            Lifecycle::Submitted => {
+                *lifecycle = Lifecycle::Waiting(cx.waker().clone());
+                Poll::Pending
+            }
+            Lifecycle::Waiting(waker) if !waker.will_wake(cx.waker()) => {
+                *lifecycle = Lifecycle::Waiting(cx.waker().clone());
+                Poll::Pending
+            }
+            Lifecycle::Waiting(waker) => {
+                *lifecycle = Lifecycle::Waiting(waker);
+                Poll::Pending
+            }
+            Lifecycle::Ignored(..) => unreachable!(),
+            Lifecycle::Completed(cqe) => {
+                self.ops.remove(index);
+                Poll::Ready(cqe)
+            }
+            Lifecycle::CompletionList(..) => {
+                unreachable!("No `more` flag set for SingleCQE")
+            }
+        }
+    }
+
     pub(crate) fn poll_op<T>(&mut self, op: &mut Op<T>, cx: &mut Context<'_>) -> Poll<T::Output>
     where
         T: Unpin + 'static + Completable,
     {
-        use std::mem;
-
         let (lifecycle, _) = self
             .ops
             .get_mut(op.index())
@@ -237,7 +310,7 @@ impl Driver {
             Lifecycle::Ignored(..) => unreachable!(),
             Lifecycle::Completed(cqe) => {
                 self.ops.remove(op.index());
-                Poll::Ready(op.take_data().unwrap().complete(cqe))
+                Poll::Ready(op.take_data().unwrap().complete(cqe.into()))
             }
             Lifecycle::CompletionList(..) => {
                 unreachable!("No `more` flag set for SingleCQE")
@@ -253,8 +326,6 @@ impl Driver {
     where
         T: Unpin + 'static + Completable + Updateable,
     {
-        use std::mem;
-
         let (lifecycle, completions) = self
             .ops
             .get_mut(op.index())
@@ -278,7 +349,7 @@ impl Driver {
                 // This is possible. We may have previously polled a CompletionList,
                 // and the final CQE registered as Completed
                 self.ops.remove(op.index());
-                Poll::Ready(op.take_data().unwrap().complete(cqe))
+                Poll::Ready(op.take_data().unwrap().complete(cqe.into()))
             }
             Lifecycle::CompletionList(indices) => {
                 let mut data = op.take_data().unwrap();
@@ -346,10 +417,9 @@ impl Drop for Driver {
                     let mut list = indices.clone().into_list(&mut self.ops.completions);
                     if !io_uring::cqueue::more(list.peek_end().unwrap().flags) {
                         // This op is complete. Replace with a null Completed entry
-                        *cycle = Lifecycle::Completed(op::CqeResult {
-                            result: Ok(0),
-                            flags: 0,
-                        });
+                        // safety: zeroed memory is entirely valid with this underlying
+                        // representation
+                        *cycle = Lifecycle::Completed(unsafe { mem::zeroed() });
                     }
                 }
 
@@ -438,7 +508,7 @@ impl Ops {
         self.lifecycle.remove(index);
     }
 
-    fn complete(&mut self, index: usize, cqe: op::CqeResult) {
+    fn complete(&mut self, index: usize, cqe: cqueue::Entry) {
         let completions = &mut self.completions;
         if self.lifecycle[index].complete(completions, cqe) {
             self.lifecycle.remove(index);
@@ -502,7 +572,7 @@ mod test {
         assert_pending!(op.poll());
         assert_eq!(2, Rc::strong_count(&data));
 
-        complete(&op, Ok(1));
+        complete(&op);
         assert_eq!(1, num_operations());
         assert_eq!(2, Rc::strong_count(&data));
 
@@ -513,7 +583,7 @@ mod test {
             data: d,
         } = assert_ready!(op.poll());
         assert_eq!(2, Rc::strong_count(&data));
-        assert_eq!(1, result.unwrap());
+        assert_eq!(0, result.unwrap());
         assert_eq!(0, flags);
 
         drop(d);
@@ -533,11 +603,11 @@ mod test {
             assert_pending!(op.poll());
             assert_pending!(op.poll());
 
-            complete(&op, Ok(1));
+            complete(&op);
 
             assert!(op.is_woken());
             let Completion { result, flags, .. } = assert_ready!(op.poll());
-            assert_eq!(1, result.unwrap());
+            assert_eq!(0, result.unwrap());
             assert_eq!(0, flags);
         }
 
@@ -555,11 +625,11 @@ mod test {
             let mut op = task::spawn(op);
             assert_pending!(op.poll());
 
-            complete(&op, Ok(1));
+            complete(&op);
 
             assert!(op.is_woken());
             let Completion { result, flags, .. } = assert_ready!(op.poll());
-            assert_eq!(1, result.unwrap());
+            assert_eq!(0, result.unwrap());
             assert_eq!(0, flags);
         }
 
@@ -570,12 +640,12 @@ mod test {
     fn complete_before_poll() {
         let (op, data) = init();
         let mut op = task::spawn(op);
-        complete(&op, Ok(1));
+        complete(&op);
         assert_eq!(1, num_operations());
         assert_eq!(2, Rc::strong_count(&data));
 
         let Completion { result, flags, .. } = assert_ready!(op.poll());
-        assert_eq!(1, result.unwrap());
+        assert_eq!(0, result.unwrap());
         assert_eq!(0, flags);
 
         drop(op);
@@ -594,18 +664,13 @@ mod test {
 
         assert_eq!(1, num_operations());
 
-        let cqe = CqeResult {
-            result: Ok(1),
-            flags: 0,
-        };
-
         CONTEXT.with(|cx| {
             cx.handle()
                 .unwrap()
                 .inner
                 .borrow_mut()
                 .ops
-                .complete(index, cqe)
+                .complete(index, unsafe { mem::zeroed() })
         });
 
         assert_eq!(1, Rc::strong_count(&data));
@@ -635,8 +700,8 @@ mod test {
         CONTEXT.with(|cx| cx.handle().unwrap().inner.borrow().num_operations())
     }
 
-    fn complete(op: &Op<Rc<()>>, result: io::Result<u32>) {
-        let cqe = CqeResult { result, flags: 0 };
+    fn complete(op: &Op<Rc<()>>) {
+        let cqe = unsafe { mem::zeroed() };
 
         CONTEXT.with(|cx| {
             let driver = cx.handle().unwrap();

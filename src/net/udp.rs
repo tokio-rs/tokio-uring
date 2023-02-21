@@ -2,6 +2,7 @@ use crate::{
     buf::fixed::FixedBuf,
     buf::{BoundedBuf, BoundedBufMut},
     io::{SharedFd, Socket},
+    UnsubmittedWrite,
 };
 use socket2::SockAddr;
 use std::{
@@ -42,7 +43,7 @@ use std::{
 ///         let buf = vec![0; 32];
 ///
 ///         // write data
-///         let (result, _) = socket.write(b"hello world".as_slice()).await;
+///         let (result, _) = socket.write(b"hello world".as_slice()).submit().await;
 ///         result.unwrap();
 ///
 ///         // read data
@@ -312,8 +313,8 @@ impl UdpSocket {
     /// Writes data into the socket from the specified buffer.
     ///
     /// Returns the original buffer and quantity of data written.
-    pub async fn write<T: BoundedBuf>(&self, buf: T) -> crate::BufResult<usize, T> {
-        self.inner.write(buf).await
+    pub fn write<T: BoundedBuf>(&self, buf: T) -> UnsubmittedWrite<T> {
+        self.inner.write(buf)
     }
 
     /// Writes data into the socket from a registered buffer.

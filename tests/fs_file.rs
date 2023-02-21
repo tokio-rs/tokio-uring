@@ -60,7 +60,7 @@ fn basic_write() {
 
         let file = File::create(tempfile.path()).await.unwrap();
 
-        file.write_at(HELLO, 0).await.0.unwrap();
+        file.write_at(HELLO, 0).submit().await.0.unwrap();
 
         let file = std::fs::read(tempfile.path()).unwrap();
         assert_eq!(file, HELLO);
@@ -155,7 +155,7 @@ fn drop_open() {
         // Do something else
         let file = File::create(tempfile.path()).await.unwrap();
 
-        file.write_at(HELLO, 0).await.0.unwrap();
+        file.write_at(HELLO, 0).submit().await.0.unwrap();
 
         let file = std::fs::read(tempfile.path()).unwrap();
         assert_eq!(file, HELLO);
@@ -183,7 +183,7 @@ fn sync_doesnt_kill_anything() {
         let file = File::create(tempfile.path()).await.unwrap();
         file.sync_all().await.unwrap();
         file.sync_data().await.unwrap();
-        file.write_at(&b"foo"[..], 0).await.0.unwrap();
+        file.write_at(&b"foo"[..], 0).submit().await.0.unwrap();
         file.sync_all().await.unwrap();
         file.sync_data().await.unwrap();
     });

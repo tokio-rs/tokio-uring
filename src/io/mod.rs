@@ -48,7 +48,7 @@ mod unlink_at;
 mod util;
 pub(crate) use util::cstr;
 
-mod write;
+pub(crate) mod write;
 
 mod write_fixed;
 
