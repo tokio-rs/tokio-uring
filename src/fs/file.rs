@@ -4,6 +4,7 @@ use crate::fs::OpenOptions;
 use crate::io::SharedFd;
 
 use crate::runtime::driver::op::Op;
+use crate::{UnsubmittedOneshot, UnsubmittedWrite};
 use std::fmt;
 use std::io;
 use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
@@ -38,7 +39,7 @@ use std::path::Path;
 ///         let file = File::create("hello.txt").await?;
 ///
 ///         // Write some data
-///         let (res, buf) = file.write_at(&b"hello world"[..], 0).await;
+///         let (res, buf) = file.write_at(&b"hello world"[..], 0).submit().await;
 ///         let n = res?;
 ///
 ///         println!("wrote {} bytes", n);
@@ -525,7 +526,7 @@ impl File {
     ///         let file = File::create("foo.txt").await?;
     ///
     ///         // Writes some prefix of the byte string, not necessarily all of it.
-    ///         let (res, _) = file.write_at(&b"some bytes"[..], 0).await;
+    ///         let (res, _) = file.write_at(&b"some bytes"[..], 0).submit().await;
     ///         let n = res?;
     ///
     ///         println!("wrote {} bytes", n);
@@ -538,9 +539,8 @@ impl File {
     /// ```
     ///
     /// [`Ok(n)`]: Ok
-    pub async fn write_at<T: BoundedBuf>(&self, buf: T, pos: u64) -> crate::BufResult<usize, T> {
-        let op = Op::write_at(&self.fd, buf, pos).unwrap();
-        op.await
+    pub fn write_at<T: BoundedBuf>(&self, buf: T, pos: u64) -> UnsubmittedWrite<T> {
+        UnsubmittedOneshot::write_at(&self.fd, buf, pos)
     }
 
     /// Attempts to write an entire buffer into this file at the specified offset.
@@ -609,7 +609,7 @@ impl File {
         }
 
         while buf.bytes_init() != 0 {
-            let (res, slice) = self.write_at(buf, pos).await;
+            let (res, slice) = self.write_at(buf, pos).submit().await;
             match res {
                 Ok(0) => {
                     return (
@@ -773,7 +773,7 @@ impl File {
     /// fn main() -> Result<(), Box<dyn std::error::Error>> {
     ///     tokio_uring::start(async {
     ///         let f = File::create("foo.txt").await?;
-    ///         let (res, buf) = f.write_at(&b"Hello, world!"[..], 0).await;
+    ///         let (res, buf) = f.write_at(&b"Hello, world!"[..], 0).submit().await;
     ///         let n = res?;
     ///
     ///         f.sync_all().await?;
@@ -810,7 +810,7 @@ impl File {
     /// fn main() -> Result<(), Box<dyn std::error::Error>> {
     ///     tokio_uring::start(async {
     ///         let f = File::create("foo.txt").await?;
-    ///         let (res, buf) = f.write_at(&b"Hello, world!"[..], 0).await;
+    ///         let (res, buf) = f.write_at(&b"Hello, world!"[..], 0).submit().await;
     ///         let n = res?;
     ///
     ///         f.sync_data().await?;
