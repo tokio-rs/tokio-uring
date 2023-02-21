@@ -41,7 +41,7 @@ fn main() {
                         break;
                     }
 
-                    let (res, b) = socket.write(b).await;
+                    let (res, b) = socket.write(b).submit().await;
                     pos += res.unwrap() as u64;
 
                     buf = b;
