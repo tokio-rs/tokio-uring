@@ -5,6 +5,7 @@ use tokio_uring::buf::bufring;
 
 mod common;
 
+use common::probe;
 use common::Rx;
 
 #[test]
@@ -66,6 +67,10 @@ fn net_tcp_ping_pong_recv() {
 
 #[test]
 fn net_tcp_ping_pong_recv_bufring() {
+    if !probe::is_buf_ring_supported() {
+        eprintln!("skipping test, buf_ring is not supported in this kernel");
+        return;
+    }
     // Run 5 clients. Both clients and server use the TcpStream `recv` method with a BufRing pool
     // that is built small enough (4 entries) that there will be some pool exhaustion that has to
     // be handled by retrying the requests.
@@ -107,6 +112,10 @@ fn net_tcp_ping_pong_recv_bufring() {
 
 #[test]
 fn net_tcp_ping_pong_recv_bufring_2_threads() {
+    if !probe::is_buf_ring_supported() {
+        eprintln!("skipping test, buf_ring is not supported in this kernel");
+        return;
+    }
     // Similar to test net_tcp_ping_pong_recv_bufring above, but uses two new threads,
     // one for the server code, one for all the clients.
     //

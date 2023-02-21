@@ -1,3 +1,5 @@
+pub mod probe;
+
 use std::net::SocketAddr;
 
 use tokio::sync::oneshot;
