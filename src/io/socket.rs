@@ -47,6 +47,16 @@ impl Socket {
         UnsubmittedOneshot::write_at(&self.fd, buf, 0)
     }
 
+    // new begin
+    #[allow(dead_code)]
+    pub(crate) fn write_builder<T: BoundedBuf>(&self) -> WriteBuilder {
+        WriteBuilder {
+            fd: self.fd.clone(),
+            all: false,
+        }
+    }
+    // new end
+
     pub async fn write_all<T: BoundedBuf>(&self, buf: T) -> crate::BufResult<(), T> {
         let orig_bounds = buf.bounds();
         let (res, buf) = self.write_all_slice(buf.slice_full()).await;
@@ -267,3 +277,70 @@ impl AsRawFd for Socket {
         self.fd.raw_fd()
     }
 }
+
+// new begin
+
+// The point of this example is to show a Builder, created specifically for the write_at class of
+// socket functions.
+//
+// It starts by cloning the SharedFd, and it can later pass ownership to the actual op call so the
+// op call doesn't have to clone it yet again.
+//
+// There will be one or more builder properties the user can set. The first I thought of was `all`,
+// to let the builder subsum the write_all functions.
+//
+// Then, what I consider the most interesting part: the builder terminates by building a future
+// that is designed for one of the particular buffer types this crate supports. For now those are
+// the owned BoundedBuf, like a Vec<u8>, and the `fixed` buffer. But soon there will be the buffer
+// that comes back from the kernel, having used a BufRing to identify it. Whether that BufRing is a
+// concrete type like my first implementation defines, or a trait, that could be defined later.
+#[allow(dead_code)]
+pub(crate) struct WriteBuilder {
+    fd: SharedFd,
+    all: bool,
+}
+
+#[allow(dead_code)]
+impl WriteBuilder {
+    pub fn all(mut self, b: bool) -> Self {
+        self.all = b;
+        self
+    }
+
+    // One builder terminator
+    pub(crate) fn build_buf<T: BoundedBuf>(self, buf: T) -> UnsubmittedWrite<T> {
+        // TODO: somehow use the `all` boolean to loop through write_all logic.
+        UnsubmittedOneshot::write_at(&self.fd, buf, 0)
+    }
+
+    // Another builder terminator
+    //
+    // This one would ultimated be changed to return the same type as build_buf just above.
+    pub(crate) async fn build_fixed<T: BoundedBuf>(self, buf: T) -> crate::BufResult<usize, T>
+    where
+        T: BoundedBuf<Buf = FixedBuf>,
+    {
+        // TODO: somehow use the `all` boolean to loop through write_all logic.
+        let op = Op::write_fixed_at(&self.fd, buf, 0).unwrap();
+        op.await
+    }
+
+    // Another builder terminator
+    //
+    pub(crate) async fn build_buf_ring<T: BoundedBuf>(
+        self,
+        _buf_ring: BufRing,
+    ) -> crate::BufResult<usize, T>
+    where
+        T: BoundedBuf<Buf = FixedBuf>,
+    {
+        // TODO: somehow use the `all` boolean to loop through write_all logic.
+
+        unreachable!("this not implementd yet, build is for demonstration purposes only");
+
+        //UnsubmittedOneshot::write_buf_ring_at(&self.fd, buf_ring, 0)
+    }
+}
+
+pub(crate) struct BufRing {} // just for demonstration purposes above.
+                             // new end
