@@ -162,6 +162,19 @@ impl Socket {
         op.await
     }
 
+    pub(crate) async fn recv<T: BoundedBufMut>(&self, buf: T) -> crate::BufResult<usize, T> {
+        let op = Op::recv(&self.fd, buf, None).unwrap();
+        op.await
+    }
+
+    pub(crate) async fn recv_provbuf(
+        &self,
+        group: crate::buf::bufring::BufRing,
+    ) -> Result<crate::buf::bufgroup::BufX, io::Error> {
+        let op = Op::recv_provbuf(&self.fd, group, None).unwrap();
+        op.await
+    }
+
     pub(crate) async fn read_fixed<T>(&self, buf: T) -> crate::BufResult<usize, T>
     where
         T: BoundedBufMut<BufMut = FixedBuf>,
