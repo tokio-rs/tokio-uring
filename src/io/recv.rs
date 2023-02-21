@@ -1,66 +1,61 @@
-use crate::buf::BoundedBufMut;
-use crate::io::SharedFd;
-use crate::BufResult;
-
-use crate::runtime::driver::op::{Completable, CqeResult, Op};
-use crate::runtime::CONTEXT;
+use crate::{
+    buf::BoundedBufMut, io::SharedFd, BufResult, OneshotOutputTransform, UnsubmittedOneshot,
+};
+use io_uring::cqueue::Entry;
 use std::io;
+use std::marker::PhantomData;
 
-pub(crate) struct Recv<T> {
+/// An unsubmitted recv operation.
+pub type UnsubmittedRecv<T> = UnsubmittedOneshot<RecvData<T>, RecvTransform<T>>;
+
+#[allow(missing_docs)]
+pub struct RecvData<T> {
     /// Holds a strong ref to the FD, preventing the file from being closed
     /// while the operation is in-flight.
-    #[allow(dead_code)]
-    fd: SharedFd,
+    _fd: SharedFd,
 
-    /// Reference to the in-flight buffer.
-    pub(crate) buf: T,
+    buf: T,
 }
 
-impl<T: BoundedBufMut> Op<Recv<T>> {
-    // TODO remove allow
-    #[allow(dead_code)]
-    pub(crate) fn recv(fd: &SharedFd, buf: T, flags: Option<i32>) -> io::Result<Op<Recv<T>>> {
-        use io_uring::{opcode, types};
+#[allow(missing_docs)]
+pub struct RecvTransform<T> {
+    _phantom: PhantomData<T>,
+}
 
-        CONTEXT.with(|x| {
-            x.handle().expect("Not in a runtime context").submit_op(
-                Recv {
-                    fd: fd.clone(),
-                    buf,
-                },
-                |s| {
-                    // Get raw buffer info
-                    let ptr = s.buf.stable_mut_ptr();
-                    let len = s.buf.bytes_total();
-                    opcode::Recv::new(types::Fd(fd.raw_fd()), ptr, len as _)
-                        .flags(flags.unwrap_or(0))
-                        .build()
-                },
-            )
-        })
+impl<T> OneshotOutputTransform for RecvTransform<T> {
+    type Output = BufResult<usize, T>;
+    type StoredData = RecvData<T>;
+
+    fn transform_oneshot_output(self, data: Self::StoredData, cqe: Entry) -> Self::Output {
+        let res = if cqe.result() >= 0 {
+            Ok(cqe.result() as usize)
+        } else {
+            Err(io::Error::from_raw_os_error(cqe.result()))
+        };
+
+        (res, data.buf)
     }
 }
 
-impl<T> Completable for Recv<T>
-where
-    T: BoundedBufMut,
-{
-    type Output = BufResult<usize, T>;
+impl<T: BoundedBufMut> UnsubmittedRecv<T> {
+    pub(crate) fn recv(fd: &SharedFd, mut buf: T, flags: Option<i32>) -> Self {
+        use io_uring::{opcode, types};
 
-    fn complete(self, cqe: CqeResult) -> Self::Output {
-        // Convert the operation result to `usize`
-        let res = cqe.result.map(|v| v as usize);
-        // Recover the buffer
-        let mut buf = self.buf;
+        // Get raw buffer info
+        let ptr = buf.stable_mut_ptr();
+        let len = buf.bytes_init();
 
-        // If the operation was successful, advance the initialized cursor.
-        if let Ok(n) = res {
-            // Safety: the kernel wrote `n` bytes to the buffer.
-            unsafe {
-                buf.set_init(n);
-            }
-        }
-
-        (res, buf)
+        Self::new(
+            RecvData {
+                _fd: fd.clone(),
+                buf,
+            },
+            RecvTransform {
+                _phantom: PhantomData::default(),
+            },
+            opcode::Recv::new(types::Fd(fd.raw_fd()), ptr, len as _)
+                .flags(flags.unwrap_or(0))
+                .build(),
+        )
     }
 }

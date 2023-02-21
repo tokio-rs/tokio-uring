@@ -82,7 +82,7 @@ impl TcpStream {
     ///
     /// Returns the original buffer and quantity of data received.
     pub async fn recv<T: BoundedBufMut>(&self, buf: T) -> crate::BufResult<usize, T> {
-        self.inner.recv(buf).await
+        self.inner.recv(buf).submit().await
     }
 
     /// (Experimental: type BufRing and BufX likely to change.)
