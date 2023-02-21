@@ -29,7 +29,7 @@ use std::{io, net::SocketAddr};
 ///     let tx = TcpStream::connect("127.0.0.1:2345".parse().unwrap()).await.unwrap();
 ///     let rx = rx_ch.await.expect("The spawned task expected to send a TcpStream");
 ///
-///     tx.write(b"test" as &'static [u8]).await.0.unwrap();
+///     tx.write(b"test" as &'static [u8]).submit().await.0.unwrap();
 ///
 ///     let (_, buf) = rx.read(vec![0; 4]).await;
 ///

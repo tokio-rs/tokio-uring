@@ -12,7 +12,7 @@
 //! The weak handle should be used by anything which is stored in the driver or does not need to
 //! keep the driver alive for it's duration.
 
-use io_uring::squeue;
+use io_uring::{cqueue, squeue};
 use std::cell::RefCell;
 use std::io;
 use std::ops::Deref;
@@ -63,6 +63,10 @@ impl Handle {
         self.inner.borrow_mut().unregister_buffers(buffers)
     }
 
+    pub(crate) fn submit_op_2(&self, sqe: squeue::Entry) -> usize {
+        self.inner.borrow_mut().submit_op_2(sqe)
+    }
+
     pub(crate) fn submit_op<T, S, F>(&self, data: T, f: F) -> io::Result<Op<T, S>>
     where
         T: Completable,
@@ -78,6 +82,10 @@ impl Handle {
         self.inner.borrow_mut().poll_op(op, cx)
     }
 
+    pub(crate) fn poll_op_2(&self, index: usize, cx: &mut Context<'_>) -> Poll<cqueue::Entry> {
+        self.inner.borrow_mut().poll_op_2(index, cx)
+    }
+
     pub(crate) fn poll_multishot_op<T>(
         &self,
         op: &mut Op<T, MultiCQEFuture>,
@@ -91,6 +99,10 @@ impl Handle {
 
     pub(crate) fn remove_op<T, CqeType>(&self, op: &mut Op<T, CqeType>) {
         self.inner.borrow_mut().remove_op(op)
+    }
+
+    pub(crate) fn remove_op_2<T: 'static>(&self, index: usize, data: T) {
+        self.inner.borrow_mut().remove_op_2(index, data)
     }
 }
 

@@ -2,6 +2,7 @@ use crate::{
     buf::fixed::FixedBuf,
     buf::{BoundedBuf, BoundedBufMut},
     io::{SharedFd, Socket},
+    UnsubmittedWrite,
 };
 use socket2::SockAddr;
 use std::{
@@ -27,7 +28,7 @@ use std::{
 ///         let mut stream = UnixStream::connect("/tmp/tokio-uring-unix-test.sock").await?;
 ///
 ///         // Write some data.
-///         let (result, _) = stream.write(b"hello world!".as_slice()).await;
+///         let (result, _) = stream.write(b"hello world!".as_slice()).submit().await;
 ///         result.unwrap();
 ///
 ///         Ok(())
@@ -98,8 +99,8 @@ impl UnixStream {
 
     /// Write some data to the stream from the buffer, returning the original buffer and
     /// quantity of data written.
-    pub async fn write<T: BoundedBuf>(&self, buf: T) -> crate::BufResult<usize, T> {
-        self.inner.write(buf).await
+    pub fn write<T: BoundedBuf>(&self, buf: T) -> UnsubmittedWrite<T> {
+        self.inner.write(buf)
     }
 
     /// Attempts to write an entire buffer to the stream.

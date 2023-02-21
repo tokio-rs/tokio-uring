@@ -1,8 +1,10 @@
+use crate::io::write::UnsubmittedWrite;
 use crate::runtime::driver::op::Op;
 use crate::{
     buf::fixed::FixedBuf,
     buf::{BoundedBuf, BoundedBufMut, IoBuf, Slice},
     io::SharedFd,
+    UnsubmittedOneshot,
 };
 use std::{
     io,
@@ -41,9 +43,8 @@ impl Socket {
         Ok(Socket { fd })
     }
 
-    pub(crate) async fn write<T: BoundedBuf>(&self, buf: T) -> crate::BufResult<usize, T> {
-        let op = Op::write_at(&self.fd, buf, 0).unwrap();
-        op.await
+    pub(crate) fn write<T: BoundedBuf>(&self, buf: T) -> UnsubmittedWrite<T> {
+        UnsubmittedOneshot::write_at(&self.fd, buf, 0)
     }
 
     pub async fn write_all<T: BoundedBuf>(&self, buf: T) -> crate::BufResult<(), T> {
@@ -54,7 +55,7 @@ impl Socket {
 
     async fn write_all_slice<T: IoBuf>(&self, mut buf: Slice<T>) -> crate::BufResult<(), T> {
         while buf.bytes_init() != 0 {
-            let res = self.write(buf).await;
+            let res = self.write(buf).submit().await;
             match res {
                 (Ok(0), slice) => {
                     return (
