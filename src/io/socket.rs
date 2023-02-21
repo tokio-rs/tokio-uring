@@ -49,7 +49,7 @@ impl Socket {
 
     // new begin
     #[allow(dead_code)]
-    pub(crate) fn write_builder<T: BoundedBuf>(&self) -> WriteBuilder {
+    pub(crate) fn write_builder(&self) -> WriteBuilder {
         WriteBuilder {
             fd: self.fd.clone(),
             all: false,
@@ -327,20 +327,15 @@ impl WriteBuilder {
 
     // Another builder terminator
     //
-    pub(crate) async fn build_buf_ring<T: BoundedBuf>(
-        self,
-        _buf_ring: BufRing,
-    ) -> crate::BufResult<usize, T>
-    where
-        T: BoundedBuf<Buf = FixedBuf>,
-    {
+    pub(crate) async fn build_buf_ring(self, _buf_ring: BufRing) -> io::Result<BufX> {
         // TODO: somehow use the `all` boolean to loop through write_all logic.
 
-        unreachable!("this not implementd yet, build is for demonstration purposes only");
+        unreachable!("this not implemented yet, build is for demonstration purposes only");
 
         //UnsubmittedOneshot::write_buf_ring_at(&self.fd, buf_ring, 0)
     }
 }
 
 pub(crate) struct BufRing {} // just for demonstration purposes above.
-                             // new end
+pub(crate) struct BufX {} // just for demonstration purposes above.
+                          // new end
