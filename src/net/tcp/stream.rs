@@ -77,6 +77,24 @@ impl TcpStream {
         self.inner.read(buf).await
     }
 
+    /// Recv some data from the stream into the buffer.
+    ///
+    /// Returns the original buffer and quantity of data received.
+    pub async fn recv<T: BoundedBufMut>(&self, buf: T) -> crate::BufResult<usize, T> {
+        self.inner.recv(buf).await
+    }
+
+    /// (Experimental: type BufRing and BufX likely to change.)
+    /// Recv some data from the stream into a buffer picked from the provided buffers.
+    ///
+    /// Returns the chosen buffer.
+    pub async fn recv_provbuf(
+        &self,
+        group: crate::buf::bufring::BufRing,
+    ) -> Result<crate::buf::bufgroup::BufX, io::Error> {
+        self.inner.recv_provbuf(group).await
+    }
+
     /// Read some data from the stream into a registered buffer.
     ///
     /// Like [`read`], but using a pre-mapped buffer
