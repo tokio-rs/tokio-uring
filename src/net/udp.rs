@@ -43,7 +43,7 @@ use std::{
 ///         let buf = vec![0; 32];
 ///
 ///         // write data
-///         let (result, _) = socket.write(b"hello world".as_slice()).await;
+///         let (result, _) = socket.write(b"hello world".as_slice()).submit().await;
 ///         result.unwrap();
 ///
 ///         // read data

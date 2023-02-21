@@ -39,7 +39,7 @@ use std::path::Path;
 ///         let file = File::create("hello.txt").await?;
 ///
 ///         // Write some data
-///         let (res, buf) = file.write_at(&b"hello world"[..], 0).await;
+///         let (res, buf) = file.write_at(&b"hello world"[..], 0).submit().await;
 ///         let n = res?;
 ///
 ///         println!("wrote {} bytes", n);
@@ -526,7 +526,7 @@ impl File {
     ///         let file = File::create("foo.txt").await?;
     ///
     ///         // Writes some prefix of the byte string, not necessarily all of it.
-    ///         let (res, _) = file.write_at(&b"some bytes"[..], 0).await;
+    ///         let (res, _) = file.write_at(&b"some bytes"[..], 0).submit().await;
     ///         let n = res?;
     ///
     ///         println!("wrote {} bytes", n);
@@ -773,7 +773,7 @@ impl File {
     /// fn main() -> Result<(), Box<dyn std::error::Error>> {
     ///     tokio_uring::start(async {
     ///         let f = File::create("foo.txt").await?;
-    ///         let (res, buf) = f.write_at(&b"Hello, world!"[..], 0).await;
+    ///         let (res, buf) = f.write_at(&b"Hello, world!"[..], 0).submit().await;
     ///         let n = res?;
     ///
     ///         f.sync_all().await?;
@@ -810,7 +810,7 @@ impl File {
     /// fn main() -> Result<(), Box<dyn std::error::Error>> {
     ///     tokio_uring::start(async {
     ///         let f = File::create("foo.txt").await?;
-    ///         let (res, buf) = f.write_at(&b"Hello, world!"[..], 0).await;
+    ///         let (res, buf) = f.write_at(&b"Hello, world!"[..], 0).submit().await;
     ///         let n = res?;
     ///
     ///         f.sync_data().await?;

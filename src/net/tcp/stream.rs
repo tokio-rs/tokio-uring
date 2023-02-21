@@ -28,7 +28,7 @@ use crate::{
 ///         let mut stream = TcpStream::connect("127.0.0.1:8080".parse().unwrap()).await?;
 ///
 ///         // Write some data.
-///         let (result, _) = stream.write(b"hello world!".as_slice()).await;
+///         let (result, _) = stream.write(b"hello world!".as_slice()).submit().await;
 ///         result.unwrap();
 ///
 ///         Ok(())
