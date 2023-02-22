@@ -37,7 +37,7 @@ impl OneshotOutputTransform for RecvProvBufTransform {
         let flags = cqe.flags();
 
         // Safety: getting a buffer from the group requires the res and flags values accurately
-        // indentify a buffer and the length which was written to by the kernel. The res and flags
+        // identify a buffer and the length which was written to by the kernel. The res and flags
         // passed here are those provided by the kernel.
         unsafe { data.group.get_buf(res, flags) }
     }
