@@ -4,6 +4,7 @@ use std::{
     os::unix::prelude::{AsRawFd, FromRawFd, RawFd},
 };
 
+use crate::buf::{bufgroup::BufX, bufring};
 use crate::{
     buf::fixed::FixedBuf,
     buf::{BoundedBuf, BoundedBufMut},
@@ -78,22 +79,60 @@ impl TcpStream {
         self.inner.read(buf).await
     }
 
-    /// Recv some data from the stream into the buffer.
+    /// Creates a oneshot recv(2) operation using the provided buffer.
     ///
     /// Returns the original buffer and quantity of data received.
-    pub async fn recv<T: BoundedBufMut>(&self, buf: T) -> crate::BufResult<usize, T> {
-        self.inner.recv(buf).submit().await
+    pub async fn recv<T: BoundedBufMut>(
+        &self,
+        buf: T,
+        flags: Option<i32>,
+    ) -> crate::BufResult<usize, T> {
+        self.inner.recv(buf, flags).submit().await
     }
 
-    /// (Experimental: type BufRing and BufX likely to change.)
-    /// Recv some data from the stream into a buffer picked from the provided buffers.
+    /// Creates a oneshot recv(2) operation using the provided buf_ring pool.
     ///
-    /// Returns the chosen buffer.
+    /// (Experimental: type BufRing and BufX likely to change.)
+    ///
+    /// Returns a Result<Option<BufX>, io::Error> meaning it returns Ok(None) when there is no more
+    /// data to read.
+    ///
+    /// When the buffer goes out of scope, it is returned to the buf_ring pool.
+    ///
+    /// Refer to io_uring_prep_recv(3) for a description of 'flags'.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use tokio_uring::buf::bufring;
+    /// use tokio_uring::net::TcpStream;
+    ///
+    /// async fn recv_once(
+    ///     stream: TcpStream,
+    ///     group: bufring::BufRing,
+    ///     flags: Option<i32>,
+    /// ) -> Result<(), std::io::Error> {
+    ///     let bufx = match stream.recv_provbuf(group, flags).await {
+    ///         Ok(Some(bufx)) => bufx,
+    ///         Ok(None) => return Ok(()),
+    ///         Err(e) => return Err(e),
+    ///     };
+    ///
+    ///     let read = bufx.len();
+    ///     if read == 0 {
+    ///         unreachable!();
+    ///     }
+    ///
+    ///     // use bufx ..
+    ///     Ok(())
+    /// }
+    /// ```
     pub async fn recv_provbuf(
         &self,
-        group: crate::buf::bufring::BufRing,
-    ) -> Result<crate::buf::bufgroup::BufX, io::Error> {
-        self.inner.recv_provbuf(group).submit().await
+        group: bufring::BufRing,
+        flags: Option<i32>,
+    ) -> Result<Option<BufX>, io::Error> {
+        self.inner.recv_provbuf(group, flags).submit().await
     }
 
     /// Read some data from the stream into a registered buffer.

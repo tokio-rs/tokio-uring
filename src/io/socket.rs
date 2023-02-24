@@ -165,15 +165,16 @@ impl Socket {
         op.await
     }
 
-    pub(crate) fn recv<T: BoundedBufMut>(&self, buf: T) -> UnsubmittedRecv<T> {
-        UnsubmittedOneshot::recv(&self.fd, buf, None)
+    pub(crate) fn recv<T: BoundedBufMut>(&self, buf: T, flags: Option<i32>) -> UnsubmittedRecv<T> {
+        UnsubmittedOneshot::recv(&self.fd, buf, flags)
     }
 
     pub(crate) fn recv_provbuf(
         &self,
         group: crate::buf::bufring::BufRing,
+        flags: Option<i32>,
     ) -> UnsubmittedRecvProvBuf {
-        UnsubmittedOneshot::recv_provbuf(&self.fd, group, None)
+        UnsubmittedOneshot::recv_provbuf(&self.fd, group, flags)
     }
 
     pub(crate) async fn read_fixed<T>(&self, buf: T) -> crate::BufResult<usize, T>

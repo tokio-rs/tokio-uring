@@ -25,14 +25,14 @@ pub struct RecvProvBufTransform {
 }
 
 impl OneshotOutputTransform for RecvProvBufTransform {
-    type Output = Result<BufX, io::Error>;
+    type Output = Result<Option<BufX>, io::Error>;
     type StoredData = RecvProvBufData;
 
     fn transform_oneshot_output(self, data: Self::StoredData, cqe: Entry) -> Self::Output {
         let res = if cqe.result() >= 0 {
             cqe.result() as u32
         } else {
-            return Err(io::Error::from_raw_os_error(cqe.result()));
+            return Err(io::Error::from_raw_os_error(-cqe.result()));
         };
         let flags = cqe.flags();
 

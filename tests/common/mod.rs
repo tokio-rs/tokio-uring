@@ -10,8 +10,8 @@ use tokio_uring::net::{TcpListener, TcpStream};
 #[derive(Clone)]
 pub enum Rx {
     Read,
-    Recv,
-    RecvBufRing(bufring::BufRing),
+    Recv(Option<i32>),
+    RecvBufRing(bufring::BufRing, Option<i32>),
 }
 
 pub async fn tcp_listener() -> Result<(TcpListener, SocketAddr), std::io::Error> {
@@ -24,6 +24,11 @@ pub async fn tcp_listener() -> Result<(TcpListener, SocketAddr), std::io::Error>
     Ok((listener, socket_addr))
 }
 
+#[inline]
+pub fn is_no_buffer_space_available(e: &std::io::Error) -> bool {
+    e.raw_os_error() == Some(105)
+}
+
 async fn client_ping_pong(rx: Rx, stream: &TcpStream, send_cnt: usize, send_length: usize) {
     // Implement client ping-pong loop. Make several read variations available.
 
@@ -33,12 +38,10 @@ async fn client_ping_pong(rx: Rx, stream: &TcpStream, send_cnt: usize, send_leng
 
         let (result, buf) = stream.write_all(buf).await;
         let _result = result.unwrap();
-        // println!("client: written: {}", _result);
 
         let expect = buf.len();
         let mut got: usize = 0;
 
-        // println!("client: buf.len {}", buf.len());
         let mut buf = buf;
         while got < expect {
             let result;
@@ -49,16 +52,16 @@ async fn client_ping_pong(rx: Rx, stream: &TcpStream, send_cnt: usize, send_leng
                     (result, buf) = stream.read(buf).await;
                     result
                 }
-                Rx::Recv => {
+                Rx::Recv(flags) => {
                     let result;
-                    (result, buf) = stream.recv(buf).await;
+                    (result, buf) = stream.recv(buf, *flags).await;
                     result
                 }
-                Rx::RecvBufRing(group) => {
+                Rx::RecvBufRing(group, flags) => {
                     loop {
-                        let buf = stream.recv_provbuf(group.clone()).await;
+                        let buf = stream.recv_provbuf(group.clone(), *flags).await;
                         match buf {
-                            Ok(buf) => {
+                            Ok(Some(buf)) => {
                                 // If returning a Vec<u8> were necessary:
                                 //  Either form of conversion from Bufx data to Vec<u8> could be appropriate here.
                                 //  One consumes the BufX, the other doesn't and let's it drop here.
@@ -66,8 +69,13 @@ async fn client_ping_pong(rx: Rx, stream: &TcpStream, send_cnt: usize, send_leng
                                 // break (Ok(buf.len()), buf.as_slice().to_vec());
                                 break Ok(buf.len());
                             }
+                            Ok(None) => {
+                                // The connection is closed. Report 0 bytes read.
+                                break Ok(0);
+                            }
                             Err(e) => {
                                 // Expected error: No buffer space available (os error 105)
+
                                 // but sometimes getting error indicating the returned res was 0
                                 // and flags was 4.
                                 if e.kind() == std::io::ErrorKind::Other {
@@ -77,13 +85,22 @@ async fn client_ping_pong(rx: Rx, stream: &TcpStream, send_cnt: usize, send_leng
                                     );
                                     break Err(e);
                                 }
-                                eprintln!("client: recv_provbuf error {}", e);
+                                // Normal for some of the tests cases to cause the bufring to be exhuasted.
+                                if !is_no_buffer_space_available(&e) {
+                                    panic!("client: recv_provbuf error {}", e);
+                                }
                             }
                         }
                     }
                 }
             };
             let read = result.unwrap();
+            if read == 0 {
+                panic!(
+                    "read of 0 but expected not yet reached, got {}, expected {}",
+                    got, expect
+                );
+            }
             got += read;
             // level1-println!("client: read {}", read);
             // println!("client: read: {:?}", &_buf[..read]);
@@ -106,8 +123,8 @@ async fn server_ping_pong_reusing_vec(
     loop {
         let (result, nbuf) = match &rx {
             Rx::Read => stream.read(buf).await,
-            Rx::Recv => stream.recv(buf).await,
-            Rx::RecvBufRing(_) => unreachable!(),
+            Rx::Recv(flags) => stream.recv(buf, *flags).await,
+            Rx::RecvBufRing(_, _) => unreachable!(),
         };
         buf = nbuf;
         let read = result.unwrap();
@@ -127,6 +144,7 @@ async fn server_ping_pong_reusing_vec(
 async fn server_ping_pong_using_buf_ring(
     stream: TcpStream,
     group: &bufring::BufRing,
+    flags: Option<i32>,
     _local_addr: SocketAddr,
 ) {
     // Serve the connection by looping on input, each received bufx from the kernel which
@@ -142,9 +160,15 @@ async fn server_ping_pong_using_buf_ring(
     loop {
         // Loop to allow trying again if there was no buffer space available.
         let bufx = loop {
-            let buf = stream.recv_provbuf(group.clone()).await;
+            let buf = stream.recv_provbuf(group.clone(), flags).await;
             match buf {
-                Ok(buf) => break buf,
+                Ok(Some(buf)) => break buf,
+                Ok(None) => {
+                    // Normal that the client closed its connection and this
+                    // server sees no more data is forthcoming. So the read
+                    // amount was zero, so there was no buffer picked.
+                    return;
+                }
                 Err(e) => {
                     // Expected error: No buffer space available (os error 105),
                     // for which we loop around.
@@ -154,12 +178,15 @@ async fn server_ping_pong_using_buf_ring(
                     // awaiting confirmation from the io_uring team.
                     if e.kind() == std::io::ErrorKind::Other {
                         eprintln!(
-                            "server: assuming connection is closed: ecv_provbuf error {}",
+                            "server: assuming connection is closed: recv_provbuf error {}",
                             e
                         );
                         return;
                     }
-                    eprintln!("server: recv_provbuf error {}", e);
+                    // Normal for some of the tests cases to cause the bufring to be exhuasted.
+                    if !is_no_buffer_space_available(&e) {
+                        panic!("server: recv_provbuf error {}", e);
+                    }
                 }
             }
         };
@@ -196,12 +223,12 @@ pub async fn async_block_ping_pong_listener_loop(server: Server, listener: TcpLi
         // Spawn new task for each connnection
         tokio_uring::spawn(async move {
             match &rx {
-                Rx::Read | Rx::Recv => {
+                Rx::Read | Rx::Recv(_) => {
                     let buf = vec![0u8; 16 * 1024];
                     server_ping_pong_reusing_vec(rx, stream, buf, socket_addr).await;
                 }
-                Rx::RecvBufRing(group) => {
-                    server_ping_pong_using_buf_ring(stream, group, socket_addr).await;
+                Rx::RecvBufRing(group, flags) => {
+                    server_ping_pong_using_buf_ring(stream, group, *flags, socket_addr).await;
                 }
             };
         });

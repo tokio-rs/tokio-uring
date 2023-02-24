@@ -150,13 +150,16 @@ impl BufRing {
     // The caller is responsible for these being correct. This is expected to be called
     // when these two values are received from the kernel via a CQE and we rely on the kernel to
     // give us correct information.
-    pub(crate) unsafe fn get_buf(&self, res: u32, flags: u32) -> io::Result<BufX> {
+    pub(crate) unsafe fn get_buf(&self, res: u32, flags: u32) -> io::Result<Option<BufX>> {
         let bid = match io_uring::cqueue::buffer_select(flags) {
             Some(bid) => bid,
             None => {
-                // Have seen res == 0, flags == 4. 4 meaning socket is non empty?
-                // eprintln!("res {res}, flags {flags}");
-                //unreachable!("flags should have the IORING_CQE_F_BUFFER bit");
+                // Have seen res == 0, flags == 4 with a TCP socket. res == 0 we take to mean the
+                // socket is empty so return None to show there is no buffer returned, which should
+                // be interpreted to mean there is no more data to read from this file or socket.
+                if res == 0 {
+                    return Ok(None);
+                }
 
                 return Err(io::Error::new(
                     io::ErrorKind::Other,
@@ -202,7 +205,7 @@ impl BufRing {
         */
 
         // Safety: the len provided to BufX::new is given to us from the kernel.
-        Ok(unsafe { BufX::new(self.clone(), bid, len) })
+        Ok(Some(unsafe { BufX::new(self.clone(), bid, len) }))
     }
 }
 

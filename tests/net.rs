@@ -53,12 +53,12 @@ fn net_tcp_ping_pong_recv() {
     tokio_uring::start(async {
         common::PingPong {
             clients: common::Clients {
-                rx: Rx::Recv,
+                rx: Rx::Recv(None),
                 client_cnt: 3,
                 send_cnt: 10,
                 send_length: 1024,
             },
-            server: common::Server { rx: Rx::Recv },
+            server: common::Server { rx: Rx::Recv(None) },
         }
         .run()
         .await;
@@ -66,7 +66,7 @@ fn net_tcp_ping_pong_recv() {
 }
 
 #[test]
-fn net_tcp_ping_pong_recv_bufring() {
+fn net_tcp_ping_pong_recv_oneshot_bufring() {
     if !probe::is_buf_ring_supported() {
         eprintln!("skipping test, buf_ring is not supported in this kernel");
         return;
@@ -91,13 +91,13 @@ fn net_tcp_ping_pong_recv_bufring() {
 
         common::PingPong {
             clients: common::Clients {
-                rx: Rx::RecvBufRing(buf_ring.clone()),
+                rx: Rx::RecvBufRing(buf_ring.clone(), None),
                 client_cnt: 3,
                 send_cnt: 10,
                 send_length: 1024,
             },
             server: common::Server {
-                rx: Rx::RecvBufRing(buf_ring.clone()),
+                rx: Rx::RecvBufRing(buf_ring.clone(), None),
             },
         }
         .run()
@@ -111,7 +111,7 @@ fn net_tcp_ping_pong_recv_bufring() {
 }
 
 #[test]
-fn net_tcp_ping_pong_recv_bufring_2_threads() {
+fn net_tcp_ping_pong_recv_oneshot_bufring_2_threads() {
     if !probe::is_buf_ring_supported() {
         eprintln!("skipping test, buf_ring is not supported in this kernel");
         return;
@@ -175,7 +175,7 @@ fn net_tcp_ping_pong_recv_bufring_2_threads() {
                 .build()
                 .unwrap();
             let server = common::Server {
-                rx: Rx::RecvBufRing(buf_ring.clone()),
+                rx: Rx::RecvBufRing(buf_ring.clone(), None),
             };
             let (listener, local_addr) = common::tcp_listener().await.unwrap();
             addr_tx.send(local_addr).unwrap();
@@ -195,7 +195,7 @@ fn net_tcp_ping_pong_recv_bufring_2_threads() {
                 .build()
                 .unwrap();
             let clients = common::Clients {
-                rx: Rx::RecvBufRing(buf_ring.clone()),
+                rx: Rx::RecvBufRing(buf_ring.clone(), None),
                 client_cnt: CLIENT_CNT,
                 send_cnt: SENDS_PER_CLIENT,
                 send_length: SEND_LENGTH,
