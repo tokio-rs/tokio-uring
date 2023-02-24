@@ -94,8 +94,8 @@ impl TcpStream {
     ///
     /// (Experimental: type BufRing and BufX likely to change.)
     ///
-    /// Returns a Result<Option<BufX>, io::Error> meaning it returns Ok(None) when there is no more
-    /// data to read.
+    /// Returns Result\<Option\<BufX>, io::Error> meaning it returns Ok(None)
+    /// when there is no more data to read.
     ///
     /// When the buffer goes out of scope, it is returned to the buf_ring pool.
     ///
