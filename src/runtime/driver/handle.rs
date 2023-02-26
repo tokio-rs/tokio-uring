@@ -21,7 +21,9 @@ use std::rc::{Rc, Weak};
 use std::task::{Context, Poll};
 
 use crate::buf::fixed::FixedBuffers;
-use crate::runtime::driver::op::{Completable, MultiCQEFuture, Op, Updateable};
+use crate::runtime::driver::op::{
+    Completable, MultiCQEFuture, MultiCQEStream, Op, Streamable, Updateable,
+};
 use crate::runtime::driver::Driver;
 
 #[derive(Clone)]
@@ -90,6 +92,16 @@ impl Handle {
         self.inner.borrow_mut().submit_op(data, f, self.into())
     }
 
+    pub(crate) fn submit_op_stream<T, S, F>(&self, data: T, f: F) -> io::Result<Op<T, S>>
+    where
+        T: Streamable,
+        F: FnOnce(&mut T) -> squeue::Entry,
+    {
+        self.inner
+            .borrow_mut()
+            .submit_op_stream(data, f, self.into())
+    }
+
     pub(crate) fn poll_op<T>(&self, op: &mut Op<T>, cx: &mut Context<'_>) -> Poll<T::Output>
     where
         T: Unpin + 'static + Completable,
@@ -110,6 +122,17 @@ impl Handle {
         T: Unpin + 'static + Completable + Updateable,
     {
         self.inner.borrow_mut().poll_multishot_op(op, cx)
+    }
+
+    pub(crate) fn poll_next_op<T>(
+        &self,
+        op: &mut Op<T, MultiCQEStream>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Option<T::Item>>
+    where
+        T: Unpin + 'static + Streamable,
+    {
+        self.inner.borrow_mut().poll_next_op(op, cx)
     }
 
     pub(crate) fn remove_op<T, CqeType>(&self, op: &mut Op<T, CqeType>) {

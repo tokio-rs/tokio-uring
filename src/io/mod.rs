@@ -25,6 +25,8 @@ mod recv;
 
 mod recv_from;
 
+mod recv_multi;
+
 mod recv_provbuf;
 
 mod rename_at;

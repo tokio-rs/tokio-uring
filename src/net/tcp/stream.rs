@@ -11,7 +11,9 @@ use crate::{
     io::{SharedFd, Socket},
     UnsubmittedWrite,
 };
+use futures_core::Stream;
 
+///
 /// A TCP stream between a local and a remote socket.
 ///
 /// A TCP stream can either be created by connecting to an endpoint, via the
@@ -133,6 +135,63 @@ impl TcpStream {
         flags: Option<i32>,
     ) -> Result<Option<BufX>, io::Error> {
         self.inner.recv_provbuf(group, flags).submit().await
+    }
+
+    /// Creates a streaming multishot recv(2) operation.
+    ///
+    /// Returns a stream from which next().await can be called, returning
+    /// a Result<BufX, io::Error>.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use tokio_stream::StreamExt;
+    /// use tokio_uring::buf::bufring;
+    /// use tokio_uring::net::TcpStream;
+    ///
+    /// async fn recv_multi(
+    ///     stream: TcpStream,
+    ///     group: bufring::BufRing,
+    ///     flags: Option<i32>,
+    /// ) {
+    ///     let buffers = stream.recv_multi(group, flags);
+    ///     tokio::pin!(buffers);
+    ///
+    ///     while let Some(b) = buffers.next().await {
+    ///     let bufx = match b {
+    ///         Ok(bufx) => bufx,
+    ///         Err(e) => break,
+    ///     };
+    ///
+    ///     let read = bufx.len();
+    ///     if read == 0 {
+    ///         unreachable!();
+    ///     }
+    ///
+    ///     // use bufx ..
+    ///     }
+    /// }
+    /// ```
+    // TODO: after the rewrite using the UnsubmittedXY API, see if this
+    // can simplified to return a public type that supports poll_next
+    // without having to resort to the stream! macro.
+    // For now, it's good enough. Eventually we want recv_multi support for all
+    // the socket types.
+    pub fn recv_multi(
+        &self,
+        group: bufring::BufRing,
+        flags: Option<i32>,
+    ) -> impl Stream<Item = io::Result<BufX>> + '_ {
+        use async_stream::stream;
+        use tokio::pin;
+        use tokio_stream::StreamExt;
+        stream! {
+            let s = self.inner.recv_multi(group, flags);
+            pin!(s);
+            while let Some(result) = s.next().await {
+                yield result
+            }
+        }
     }
 
     /// Read some data from the stream into a registered buffer.

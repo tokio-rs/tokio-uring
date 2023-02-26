@@ -3,6 +3,7 @@ use std::io;
 use std::marker::PhantomData;
 use std::pin::Pin;
 use std::task::{Context, Poll, Waker};
+use tokio_stream::Stream;
 
 use io_uring::{cqueue, squeue};
 
@@ -140,13 +141,28 @@ pub(crate) struct Op<T: 'static, CqeType = SingleCQE> {
 /// A Marker for Ops which expect only a single completion event
 pub(crate) struct SingleCQE;
 
-/// A Marker for Operations will process multiple completion events,
+/// A Marker for Operations that will process multiple completion events,
 /// which combined resolve to a single Future value
 pub(crate) struct MultiCQEFuture;
 
+/// A Marker for Operations that will process multiple completion events,
+/// each resolving in a streamed value.
+///
+/// The semantics of such a stream are:
+///
+/// While 'more' CQE are received, they are by definition, successful so the poll_next will return
+/// Some(Ok(item)). When the last CQE is received, the 'more' bit is no longer set, the stream's
+/// poll_next will return None, Some(Ok(item)) or Some(Err(e)), depending on the CQE result and
+/// flags values, after which additional poll_next calls will return None.
+pub(crate) struct MultiCQEStream;
+
+// TODO make the MultiCQEStream and the MultiCQEFuture cancel safe. At least in terms of getting
+// more-link entries removed from the slab so the drop of the driver does not hang.
+// Probably wait to do this until after the new Unsubmitted* API for the `more` cases is in place.
+
 pub(crate) trait Completable {
     type Output;
-    /// `complete` will be called for cqe's do not have the `more` flag set
+    /// `complete` will be called for cqe's which do not have the `more` flag set
     fn complete(self, cqe: CqeResult) -> Self::Output;
 }
 
@@ -154,6 +170,17 @@ pub(crate) trait Updateable: Completable {
     /// Update will be called for cqe's which have the `more` flag set.
     /// The Op should update any internal state as required.
     fn update(&mut self, cqe: CqeResult);
+}
+
+pub(crate) trait Streamable {
+    type Item;
+
+    /// `stream_next` will be called for cqe's which have the `more` flag set.
+    fn stream_next(&self, cqe: CqeResult) -> Self::Item;
+
+    /// `stream_complete` will be called for cqe's which do not have the `more` flag set and will
+    /// return None or Some(Self::Item).
+    fn stream_complete(self, cqe: CqeResult) -> Option<Self::Item>;
 }
 
 pub(crate) enum Lifecycle {
@@ -209,8 +236,18 @@ impl<T, CqeType> Op<T, CqeType> {
         self.index
     }
 
+    pub(super) fn take_index(&mut self) -> usize {
+        let index = self.index;
+        self.index = usize::MAX;
+        index
+    }
+
     pub(super) fn take_data(&mut self) -> Option<T> {
         self.data.take()
+    }
+
+    pub(super) fn data(&self) -> Option<&T> {
+        self.data.as_ref()
     }
 
     pub(super) fn insert_data(&mut self, data: T) {
@@ -243,6 +280,20 @@ where
             .upgrade()
             .expect("Not in runtime context")
             .poll_multishot_op(self.get_mut(), cx)
+    }
+}
+
+impl<T> Stream for Op<T, MultiCQEStream>
+where
+    T: Unpin + 'static + Streamable,
+{
+    type Item = T::Item;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        self.driver
+            .upgrade()
+            .expect("Not in runtime context")
+            .poll_next_op(self.get_mut(), cx)
     }
 }
 
