@@ -343,6 +343,7 @@ fn net_tcp_ping_pong_recv_multishot_bufring_2_threads() -> io::Result<()> {
      * while there was still more data to read. So the client logic had to be rewritten to allow
      * the multishot recv commands to be issued more than once while remembering how far the client
      * had gotten in sending packets and in receiving the parts of the packet.
+     */
     const CLIENT_CNT: usize = 32;
     const SENDS_PER_CLIENT: usize = 64 * 64;
     const SEND_LENGTH: usize = 64 * 1024;
@@ -350,7 +351,6 @@ fn net_tcp_ping_pong_recv_multishot_bufring_2_threads() -> io::Result<()> {
     const SERVER_BUFRING_SIZE: u16 = 16 * 64;
     const CLIENT_NODELAY: bool = true;
     const SERVER_NODELAY: bool = true;
-     */
     /*
      * These yields a test run that takes about 3s,
      * unless the SERVER_NODELAY is set to true, and then only .7s.
@@ -364,7 +364,6 @@ fn net_tcp_ping_pong_recv_multishot_bufring_2_threads() -> io::Result<()> {
      */
     /*
      * The normal small test case.
-     */
     const CLIENT_CNT: usize = 4;
     const SENDS_PER_CLIENT: usize = 4;
     const SEND_LENGTH: usize = 4 * 1024;
@@ -372,6 +371,7 @@ fn net_tcp_ping_pong_recv_multishot_bufring_2_threads() -> io::Result<()> {
     const SERVER_BUFRING_SIZE: u16 = 8;
     const CLIENT_NODELAY: bool = false;
     const SERVER_NODELAY: bool = false;
+     */
 
     const CLIENT_BUF_LEN: usize = 4096;
     const SERVER_BUF_LEN: usize = 4096;

@@ -102,6 +102,10 @@ impl Handle {
             .submit_op_stream(data, f, self.into())
     }
 
+    pub(crate) fn resubmit_op_stream(&self, index: usize, entry: squeue::Entry) -> io::Result<()> {
+        self.inner.borrow_mut().resubmit_op_stream(index, entry)
+    }
+
     pub(crate) fn poll_op<T>(&self, op: &mut Op<T>, cx: &mut Context<'_>) -> Poll<T::Output>
     where
         T: Unpin + 'static + Completable,

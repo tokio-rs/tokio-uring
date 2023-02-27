@@ -180,7 +180,7 @@ pub(crate) trait Streamable {
 
     /// `stream_complete` will be called for cqe's which do not have the `more` flag set and will
     /// return None or Some(Self::Item).
-    fn stream_complete(self, cqe: CqeResult) -> Option<Self::Item>;
+    fn stream_complete(&self, cqe: CqeResult, index: usize) -> Option<(Self::Item, bool)>;
 }
 
 pub(crate) enum Lifecycle {

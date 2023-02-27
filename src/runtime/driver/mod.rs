@@ -217,6 +217,22 @@ impl Driver {
         Ok(op)
     }
 
+    pub(crate) fn resubmit_op_stream(
+        &mut self,
+        index: usize,
+        entry: squeue::Entry,
+    ) -> io::Result<()> {
+        let sqe = entry.user_data(index as _);
+
+        // Push the operation again
+        while unsafe { self.uring.submission().push(&sqe).is_err() } {
+            // If the submission queue is full, flush it to the kernel
+            self.submit()?;
+        }
+
+        Ok(())
+    }
+
     pub(crate) fn remove_op<T, CqeType>(&mut self, op: &mut Op<T, CqeType>) {
         // Get the Op Lifecycle state from the driver
         let (lifecycle, completions) = match self.ops.get_mut(op.index()) {
@@ -474,10 +490,24 @@ impl Driver {
                         } else {
                             // The first of two ways the op is removed from the slab.
                             // Duplicate logic below. Also more details below.
+                            /*
                             let index = op.take_index();
                             self.ops.remove(index);
                             let data = op.take_data().unwrap();
-                            Poll::Ready(data.stream_complete(cqe))
+                            Poll::Ready(data.stream_complete(cqe, index))
+                             */
+                            let index = op.take_index();
+                            let data = op.data().unwrap();
+                            let res = data.stream_complete(cqe, index);
+                            match res {
+                                Some((res, resubmitted)) => {
+                                    if !resubmitted {
+                                        self.ops.remove(index);
+                                    }
+                                    Poll::Ready(Some(res))
+                                }
+                                None => Poll::Ready(None),
+                            }
                         }
                     }
                     None => {
@@ -486,7 +516,7 @@ impl Driver {
                     }
                 }
             }
-            Lifecycle::Completed(_entry) => {
+            Lifecycle::Completed(entry) => {
                 // The second of two ways the op is removed from the slab.
                 // Duplicate logic above.
 
@@ -497,9 +527,19 @@ impl Driver {
                 // stream_complete() is interesting. It can return None or Some(item) so this is
                 // also a place with Poll::Ready(None) might be returned.
                 let index = op.take_index();
-                self.ops.remove(index);
-                let data = op.take_data().unwrap();
-                Poll::Ready(data.stream_complete(_entry.into()))
+                //let data = op.take_data().unwrap();
+                let data = op.data().unwrap();
+                let res = data.stream_complete(entry.into(), index);
+                match res {
+                    Some((res, resubmitted)) => {
+                        if !resubmitted {
+                            self.ops.remove(index);
+                        }
+                        Poll::Ready(Some(res))
+                    }
+                    None => Poll::Ready(None),
+                }
+                //Poll::Ready(data.stream_complete(_entry.into(), index))
             }
             Lifecycle::Ignored(..) => unreachable!(),
         }

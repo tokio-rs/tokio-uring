@@ -76,8 +76,15 @@ async fn _client_ping_pong_recv_multi(
     let expect = send_buf.len();
     let mut got: usize = expect;
 
+    let mut recv_multi_call_count: usize = 0;
+
     // Invert the normal loop counters in order to perform the multishot recv at the top.
     while sent < send_cnt || got < expect {
+        recv_multi_call_count += 1;
+        if recv_multi_call_count > 1 {
+            println!("recv_multi being called more than once: now {recv_multi_call_count} addition time(s)");
+        }
+
         let buffers = stream.recv_multi(buf_ring.clone(), *flags);
         tokio::pin!(buffers);
 
