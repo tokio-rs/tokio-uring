@@ -23,6 +23,8 @@ mod readv;
 
 mod recv_from;
 
+mod recvmsg;
+
 mod rename_at;
 
 mod send_to;
