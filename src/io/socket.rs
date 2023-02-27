@@ -202,6 +202,14 @@ impl Socket {
         op.await
     }
 
+    pub(crate) async fn recvmsg<T: BoundedBufMut>(
+        &self,
+        buf: Vec<T>,
+    ) -> crate::BufResult<(usize, SocketAddr), Vec<T>> {
+        let op = Op::recvmsg(&self.fd, buf).unwrap();
+        op.await
+    }
+
     pub(crate) async fn accept(&self) -> io::Result<(Socket, Option<SocketAddr>)> {
         let op = Op::accept(&self.fd)?;
         op.await
