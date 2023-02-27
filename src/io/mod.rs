@@ -27,6 +27,8 @@ mod recv_from;
 
 mod recv_provbuf;
 
+mod recvmsg;
+
 mod rename_at;
 
 mod send_to;
