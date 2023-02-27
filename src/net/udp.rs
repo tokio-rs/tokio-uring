@@ -283,6 +283,16 @@ impl UdpSocket {
         self.inner.recv_from(buf).await
     }
 
+    /// Receives a single datagram message on the socket, into multiple buffers
+    ///
+    /// On success, returns the number of bytes read and the origin.
+    pub async fn recvmsg<T: BoundedBufMut>(
+        &self,
+        buf: Vec<T>,
+    ) -> crate::BufResult<(usize, SocketAddr), Vec<T>> {
+        self.inner.recvmsg(buf).await
+    }
+
     /// Reads a packet of data from the socket into the buffer.
     ///
     /// Returns the original buffer and quantity of data read.
