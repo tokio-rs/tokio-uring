@@ -1,3 +1,4 @@
+use crate::io::accept_multi::AcceptMultiStream;
 use crate::io::recv::UnsubmittedRecv;
 use crate::io::recv_multi::RecvMultiStream;
 use crate::io::recv_provbuf::UnsubmittedRecvProvBuf;
@@ -213,6 +214,10 @@ impl Socket {
     pub(crate) async fn accept(&self) -> io::Result<(Socket, Option<SocketAddr>)> {
         let op = Op::accept(&self.fd)?;
         op.await
+    }
+
+    pub(crate) fn accept_multi(&self, flags: Option<i32>) -> AcceptMultiStream {
+        Op::accept_multi(&self.fd, flags).unwrap()
     }
 
     pub(crate) async fn connect(&self, socket_addr: socket2::SockAddr) -> io::Result<()> {

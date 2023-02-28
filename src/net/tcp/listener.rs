@@ -1,5 +1,6 @@
 use super::TcpStream;
 use crate::io::Socket;
+use futures_core::Stream;
 use std::{io, net::SocketAddr};
 
 /// A TCP socket server, listening for connections.
@@ -96,5 +97,22 @@ impl TcpListener {
             io::Error::new(io::ErrorKind::Other, "Could not get socket IP address")
         })?;
         Ok((stream, socket_addr))
+    }
+
+    /// Accepts multiple incoming connections from this listener.
+    pub fn accept_multi(
+        &self,
+        flags: Option<i32>,
+    ) -> impl Stream<Item = io::Result<TcpStream>> + '_ {
+        use async_stream::stream;
+        use tokio::pin;
+        use tokio_stream::StreamExt;
+        stream! {
+            let s = self.inner.accept_multi(flags);
+            pin!(s);
+            while let Some(socket) = s.next().await {
+                yield socket.map(|s| TcpStream { inner: s })
+            }
+        }
     }
 }

@@ -1,8 +1,9 @@
 use std::sync::mpsc::sync_channel;
 use std::thread;
 use tokio::io;
-
+use tokio_stream::StreamExt;
 use tokio_uring::buf::bufring;
+use tokio_uring::net::TcpStream;
 
 mod common;
 
@@ -433,4 +434,51 @@ fn net_tcp_ping_pong_recv_multishot_bufring_2_threads() -> io::Result<()> {
 
     // Wait for the clients thread to finish.
     clients_handle.join().unwrap()
+}
+
+#[test]
+fn net_accept_multi_1_thread() -> io::Result<()> {
+    const CONNECTIONS: usize = 4;
+
+    println!("Test to get {CONNECTIONS} TCP connections accepted");
+
+    tokio_uring::start(async {
+        let (listener, listener_addr) = common::tcp_listener().await.unwrap();
+
+        let mut clients: Vec<_> = vec![];
+
+        for _ in 0..CONNECTIONS {
+            let stream = TcpStream::connect(listener_addr).await;
+            let stream = match stream {
+                Ok(stream) => stream,
+                Err(e) => {
+                    if common::is_too_many_open_files(&e) {
+                        println!("expected: {}", e);
+                    } else {
+                        println!("unexpected: {}", e);
+                    }
+                    break;
+                }
+            };
+            clients.push(stream);
+        }
+
+        let streams = listener.accept_multi(None);
+        tokio::pin!(streams);
+
+        let mut connected_count: usize = 0;
+        while let Some(_stream) = streams.next().await {
+            connected_count += 1;
+            println!("another stream connected, number {connected_count}");
+
+            if connected_count == clients.len() {
+                println!("breaking out of loop");
+                break;
+            }
+        }
+        println!("loop done");
+    });
+    println!("tokio_ring::start done");
+
+    Ok(())
 }

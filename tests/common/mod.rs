@@ -58,6 +58,10 @@ pub fn is_connection_reset_by_peer(e: &std::io::Error) -> bool {
 pub fn is_broken_pipe(e: &std::io::Error) -> bool {
     e.raw_os_error() == Some(32)
 }
+#[inline]
+pub fn is_too_many_open_files(e: &std::io::Error) -> bool {
+    e.raw_os_error() == Some(24)
+}
 
 async fn _client_ping_pong_recv_multi(
     stream: TcpStream,
