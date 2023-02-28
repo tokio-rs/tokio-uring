@@ -13,6 +13,7 @@ pub(crate) struct SendMsgZc<T, U> {
     #[allow(dead_code)]
     io_bufs: Vec<T>,
     #[allow(dead_code)]
+    io_slices: Vec<IoSlice<'static>>,
     socket_addr: Option<Box<SockAddr>>,
     msg_control: Option<U>,
     msghdr: libc::msghdr,
@@ -32,7 +33,7 @@ impl<T: BoundedBuf, U: BoundedBuf> Op<SendMsgZc<T, U>, MultiCQEFuture> {
 
         let mut msghdr: libc::msghdr = unsafe { std::mem::zeroed() };
 
-        let mut io_slices: Vec<IoSlice> = Vec::with_capacity(io_bufs.len());
+        let mut io_slices: Vec<IoSlice<'static>> = Vec::with_capacity(io_bufs.len());
 
         for io_buf in &io_bufs {
             io_slices.push(IoSlice::new(unsafe {
@@ -74,6 +75,7 @@ impl<T: BoundedBuf, U: BoundedBuf> Op<SendMsgZc<T, U>, MultiCQEFuture> {
                     fd: fd.clone(),
                     io_bufs,
                     socket_addr,
+                    io_slices,
                     msg_control,
                     msghdr,
                     bytes: 0,
