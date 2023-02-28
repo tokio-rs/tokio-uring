@@ -62,6 +62,7 @@ pub struct OpenOptions {
     truncate: bool,
     create: bool,
     create_new: bool,
+    pub(crate) fixed_file_auto_select: bool,
     pub(crate) mode: libc::mode_t,
     pub(crate) custom_flags: libc::c_int,
 }
@@ -95,6 +96,7 @@ impl OpenOptions {
             truncate: false,
             create: false,
             create_new: false,
+            fixed_file_auto_select: false,
             mode: 0o666,
             custom_flags: 0,
         }
@@ -214,6 +216,40 @@ impl OpenOptions {
     /// ```
     pub fn truncate(&mut self, truncate: bool) -> &mut OpenOptions {
         self.truncate = truncate;
+        self
+    }
+
+    /// Sets the option for using the io_uring fixed file table to manage
+    /// the file descriptor, rather than the kernel's process file descriptor table.
+    ///
+    /// The regular file descriptor, often referred to as the raw fd,
+    /// will not be available.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use tokio_uring::fs::OpenOptions;
+    ///
+    /// fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ///     tokio_uring::start(async {
+    ///         let file = OpenOptions::new()
+    ///             .write(true)
+    ///             .truncate(true)
+    ///             .fixed_file_auto_select(true)
+    ///             .open("foo.txt")
+    ///             .await?;
+    ///
+    ///         // Write to file. And then close.
+    ///
+    ///         // Close, returning close result.
+    ///         file.close().await?;
+    ///         Ok(())
+    ///     })
+    ///
+    /// }
+    /// ```
+    pub fn fixed_file_auto_select(&mut self, fixed_file_auto_select: bool) -> &mut OpenOptions {
+        self.fixed_file_auto_select = fixed_file_auto_select;
         self
     }
 

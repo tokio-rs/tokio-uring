@@ -5,13 +5,15 @@ use crate::runtime::driver::op::{Completable, CqeResult, Op};
 use crate::runtime::CONTEXT;
 use std::ffi::CString;
 use std::io;
+use std::os::unix::io::RawFd;
 use std::path::Path;
 
 /// Open a file
 #[allow(dead_code)]
 pub(crate) struct Open {
-    pub(crate) path: CString,
-    pub(crate) flags: libc::c_int,
+    path: CString,
+    flags: libc::c_int,
+    fixed_table_auto_select: bool,
 }
 
 impl Op<Open> {
@@ -24,10 +26,20 @@ impl Op<Open> {
             | options.creation_mode()?
             | (options.custom_flags & !libc::O_ACCMODE);
 
+        let (file_index, fixed_table_auto_select) = if options.fixed_file_auto_select {
+            (Some(types::DestinationSlot::auto_target()), true)
+        } else {
+            (None, false)
+        };
+
         CONTEXT.with(|x| {
-            x.handle()
-                .expect("Not in a runtime context")
-                .submit_op(Open { path, flags }, |open| {
+            x.handle().expect("Not in a runtime context").submit_op(
+                Open {
+                    path,
+                    flags,
+                    fixed_table_auto_select,
+                },
+                |open| {
                     // Get a reference to the memory. The string will be held by the
                     // operation state and will not be accessed again until the operation
                     // completes.
@@ -36,8 +48,10 @@ impl Op<Open> {
                     opcode::OpenAt::new(types::Fd(libc::AT_FDCWD), p_ref)
                         .flags(flags)
                         .mode(options.mode)
+                        .file_index(file_index)
                         .build()
-                })
+                },
+            )
         })
     }
 }
@@ -46,6 +60,13 @@ impl Completable for Open {
     type Output = io::Result<File>;
 
     fn complete(self, cqe: CqeResult) -> Self::Output {
-        Ok(File::from_shared_fd(SharedFd::new(cqe.result? as _)))
+        let result = cqe.result?;
+        let shared_fd = if self.fixed_table_auto_select {
+            SharedFd::new_fixed(result)
+        } else {
+            SharedFd::new(result as RawFd)
+        };
+
+        Ok(File::from_shared_fd(shared_fd))
     }
 }

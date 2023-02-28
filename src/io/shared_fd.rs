@@ -9,6 +9,7 @@ use std::{
 };
 
 use crate::runtime::driver::op::Op;
+use crate::runtime::CONTEXT;
 
 // Tracks in-flight operations on a file descriptor. Ensures all in-flight
 // operations complete before submitting the close.
@@ -23,9 +24,15 @@ pub(crate) struct SharedFd {
     inner: Rc<Inner>,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum CommonFd {
+    Raw(RawFd),
+    Fixed(u32),
+}
+
 struct Inner {
     // Open file descriptor
-    fd: RawFd,
+    fd: CommonFd,
 
     // Track the sharing state of the file descriptor:
     // normal, being waited on to allow a close by the parent's owner, or already closed.
@@ -45,6 +52,14 @@ enum State {
 
 impl SharedFd {
     pub(crate) fn new(fd: RawFd) -> SharedFd {
+        Self::_new(CommonFd::Raw(fd))
+    }
+
+    pub(crate) fn new_fixed(slot: u32) -> SharedFd {
+        Self::_new(CommonFd::Fixed(slot))
+    }
+
+    fn _new(fd: CommonFd) -> SharedFd {
         SharedFd {
             inner: Rc::new(Inner {
                 fd,
@@ -53,8 +68,26 @@ impl SharedFd {
         }
     }
 
-    /// Returns the RawFd
+    /*
+     * This function name won't make sense when this fixed file feature
+     * is fully fleshed out. For now, we panic if called on
+     * a fixed file.
+     */
+    /// Returns the RawFd.
     pub(crate) fn raw_fd(&self) -> RawFd {
+        match self.inner.fd {
+            CommonFd::Raw(raw) => raw,
+            CommonFd::Fixed(_fixed) => {
+                // TODO remove this function completely once all the uring opcodes that accept
+                // a fixed file table slot have been modified. For now, we have to keep it to avoid
+                // too many file changes all at once.
+                unreachable!("fixed file support not yet added for this call stack");
+            }
+        }
+    }
+
+    // Returns the common fd, either a RawFd or the fixed fd slot number.
+    pub(crate) fn common_fd(&self) -> CommonFd {
         self.inner.fd
     }
 
@@ -147,14 +180,52 @@ impl Drop for SharedFd {
 
 impl Drop for Inner {
     fn drop(&mut self) {
-        // If the inner state isn't `Closed`, the user hasn't called close().await
-        // so do it synchronously.
+        // If the inner state isn't `Closed`, the user hasn't called close().await so close it now.
+        // At least for the case of a regular file descriptor we can do it synchronously. For the
+        // case of a fixed file table descriptor, we may already be out of the driver's context,
+        // but if we aren't we resort to the io_uring close operation - and spawn a task to do it.
 
         let state = self.state.borrow_mut();
 
         if let State::Closed = *state {
             return;
         }
-        let _ = unsafe { std::fs::File::from_raw_fd(self.fd) };
+
+        // Perform one form of close or the other.
+        match self.fd {
+            CommonFd::Raw(raw) => {
+                let _ = unsafe { std::fs::File::from_raw_fd(raw) };
+            }
+
+            CommonFd::Fixed(fixed) => {
+                // As there is no synchronous close for a fixed file table slot, we have to resort
+                // to the async close provided by the io_uring device. If we knew the fixed file
+                // table had been unregistered, this wouldn't be necessary either.
+
+                match CONTEXT.try_with(|cx| cx.is_set()) {
+                    Ok(true) => {}
+                    // If the driver is gone, nothing to do. The fixed table has already been taken
+                    // down by the device anyway.
+                    _ => return,
+                }
+
+                // TODO Investigate the idea from the liburing team of replacing the one slot with
+                // a -1 by using the register/files_update synchronous command. If the current
+                // scheme that uses a spawn is initiallly acceptable, probably leave it like this
+                // for now and wait to be able to benchmark once we have streaming tcp sockets.
+
+                crate::spawn(async move {
+                    if let Ok(true) = CONTEXT.try_with(|cx| cx.is_set()) {
+                        let fd = CommonFd::Fixed(fixed);
+                        if let Ok(op) = Op::close(fd) {
+                            let _ = op.await;
+                        }
+                        // Else, should warn or panic if the Op::Close can't be built? It would
+                        // mean the fixed value was out of reach which would not be expected at
+                        // this point.
+                    }
+                });
+            }
+        }
     }
 }
