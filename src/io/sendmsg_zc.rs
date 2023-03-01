@@ -14,6 +14,7 @@ pub(crate) struct SendMsgZc<T, U> {
     io_bufs: Vec<T>,
     #[allow(dead_code)]
     io_slices: Vec<IoSlice<'static>>,
+    #[allow(dead_code)]
     socket_addr: Option<Box<SockAddr>>,
     msg_control: Option<U>,
     msghdr: libc::msghdr,
