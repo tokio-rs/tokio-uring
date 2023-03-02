@@ -1,5 +1,7 @@
 mod accept;
 
+mod accept_multi;
+
 mod close;
 
 mod connect;
@@ -21,7 +23,13 @@ mod read_fixed;
 
 mod readv;
 
+mod recv;
+
 mod recv_from;
+
+mod recv_multi;
+
+mod recv_provbuf;
 
 mod recvmsg;
 
