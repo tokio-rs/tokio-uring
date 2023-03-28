@@ -31,6 +31,8 @@ mod send_to;
 
 mod send_zc;
 
+mod sendmsg;
+
 mod sendmsg_zc;
 
 mod shared_fd;
