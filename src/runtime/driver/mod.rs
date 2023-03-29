@@ -1,5 +1,7 @@
 use crate::buf::fixed::FixedBuffers;
-use crate::runtime::driver::op::{Completable, Lifecycle, MultiCQEFuture, Op, Updateable};
+use crate::runtime::driver::op::{
+    Completable, Lifecycle, MultiCQEFuture, MultiCQEStream, Op, Streamable, Updateable,
+};
 use io_uring::opcode::AsyncCancel;
 use io_uring::{cqueue, squeue, IoUring};
 use slab::Slab;
@@ -122,6 +124,30 @@ impl Driver {
         ))
     }
 
+    pub(crate) fn register_buf_ring(
+        &mut self,
+        ring_addr: u64,
+        ring_entries: u16,
+        bgid: u16,
+    ) -> io::Result<()> {
+        self.uring
+            .submitter()
+            .register_buf_ring(ring_addr, ring_entries, bgid)?;
+
+        // TODO should driver keep anything about the buf_ring?
+        // Perhaps something that maps the bgid to a creator, given a bid coming from the cqe?
+        // Or will the future that sent the command be able to convert the bid to a buffer pointer?
+        // And what if the future is dropped?
+        //self.fixed_buffers = Some(buffers);
+        Ok(())
+    }
+
+    pub(crate) fn unregister_buf_ring(&mut self, bgid: u16) -> io::Result<()> {
+        self.uring.submitter().unregister_buf_ring(bgid)?;
+
+        Ok(())
+    }
+
     pub(crate) fn submit_op_2(&mut self, sqe: squeue::Entry) -> usize {
         let index = self.ops.insert();
 
@@ -145,6 +171,33 @@ impl Driver {
     ) -> io::Result<Op<T, S>>
     where
         T: Completable,
+        F: FnOnce(&mut T) -> squeue::Entry,
+    {
+        let index = self.ops.insert();
+
+        // Configure the SQE
+        let sqe = f(&mut data).user_data(index as _);
+
+        // Create the operation
+        let op = Op::new(handle, data, index);
+
+        // Push the new operation
+        while unsafe { self.uring.submission().push(&sqe).is_err() } {
+            // If the submission queue is full, flush it to the kernel
+            self.submit()?;
+        }
+
+        Ok(op)
+    }
+
+    pub(crate) fn submit_op_stream<T, S, F>(
+        &mut self,
+        mut data: T,
+        f: F,
+        handle: WeakHandle,
+    ) -> io::Result<Op<T, S>>
+    where
+        T: Streamable,
         F: FnOnce(&mut T) -> squeue::Entry,
     {
         let index = self.ops.insert();
@@ -353,6 +406,102 @@ impl Driver {
                     }
                 }
             }
+        }
+    }
+
+    pub(crate) fn poll_next_op<T>(
+        &mut self,
+        op: &mut Op<T, MultiCQEStream>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Option<T::Item>>
+    where
+        T: Unpin + 'static + Streamable,
+    {
+        // The multishot operations result in zero or `more` CQE being received with no error
+        // possible. And the last (no `more`) CQE will be received when the operation is finished:
+        // either with or without an error.
+
+        // One source of Poll::Ready(None) is if this stream has already seen the final CQE in an
+        // earlier poll round, where the op.index was taken and replaced with usize::MAX.
+        let Some((lifecycle, completions)) = self
+            .ops
+            .get_mut(op.index())
+            else {
+                return Poll::Ready(None);
+            };
+
+        match mem::replace(lifecycle, Lifecycle::Submitted) {
+            Lifecycle::Submitted => {
+                *lifecycle = Lifecycle::Waiting(cx.waker().clone());
+                Poll::Pending
+            }
+            Lifecycle::Waiting(waker) => {
+                if waker.will_wake(cx.waker()) {
+                    *lifecycle = Lifecycle::Waiting(waker);
+                } else {
+                    *lifecycle = Lifecycle::Waiting(cx.waker().clone());
+                }
+                Poll::Pending
+            }
+            Lifecycle::CompletionList(indices) => {
+                let mut list = indices.into_list(completions);
+
+                let item = list.pop();
+
+                match item {
+                    Some(cqe) => {
+                        if list.is_empty() {
+                            // Empty list now. Leave Lifecycle newly set to Submitted.
+                            // Forgetting list lets us mutably borrow self.ops again below.
+                            std::mem::forget(list);
+                        } else {
+                            // Update the Lifecycle with the shortened list.
+                            *lifecycle = Lifecycle::CompletionList(list.into_indices());
+                        }
+
+                        if cqueue::more(cqe.flags) {
+                            // Not the last CQE for this operation.
+                            // Borrow op.data to call its stream_next.
+                            match op.data() {
+                                Some(data) => Poll::Ready(Some(data.stream_next(cqe))),
+                                None => {
+                                    // No data also means no index, so this state is unreachable.
+                                    // The Poll::None would have already been returned at the top
+                                    // of this function.
+                                    unreachable!("Streaming CompletionList/data-None case");
+                                }
+                            }
+                        } else {
+                            // The first of two ways the op is removed from the slab.
+                            // Duplicate logic below. Also more details below.
+                            let index = op.take_index();
+                            self.ops.remove(index);
+                            let data = op.take_data().unwrap();
+                            Poll::Ready(data.stream_complete(cqe))
+                        }
+                    }
+                    None => {
+                        // List was already empty. This poll function makes this state impossible.
+                        unreachable!("Streaming CompletionList empty case");
+                    }
+                }
+            }
+            Lifecycle::Completed(_entry) => {
+                // The second of two ways the op is removed from the slab.
+                // Duplicate logic above.
+
+                // Take the index, leaving a value that will be out of bounds so on the next
+                // poll of the steam, None can be returned.
+                // And take the data, passing ownership to stream_complete.
+                //
+                // stream_complete() is interesting. It can return None or Some(item) so this is
+                // also a place with Poll::Ready(None) might be returned.
+                let index = op.take_index();
+                self.ops.remove(index);
+                let data = op.take_data().unwrap();
+                Poll::Ready(data.stream_complete(_entry.into()))
+            }
+            Lifecycle::Ignored(..) => unreachable!(),
         }
     }
 }

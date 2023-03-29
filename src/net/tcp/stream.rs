@@ -4,13 +4,16 @@ use std::{
     os::unix::prelude::{AsRawFd, FromRawFd, RawFd},
 };
 
+use crate::buf::{bufgroup::BufX, bufring};
 use crate::{
     buf::fixed::FixedBuf,
     buf::{BoundedBuf, BoundedBufMut},
     io::{SharedFd, Socket},
     UnsubmittedWrite,
 };
+use futures_core::Stream;
 
+///
 /// A TCP stream between a local and a remote socket.
 ///
 /// A TCP stream can either be created by connecting to an endpoint, via the
@@ -76,6 +79,119 @@ impl TcpStream {
     /// Returns the original buffer and quantity of data read.
     pub async fn read<T: BoundedBufMut>(&self, buf: T) -> crate::BufResult<usize, T> {
         self.inner.read(buf).await
+    }
+
+    /// Creates a oneshot recv(2) operation using the provided buffer.
+    ///
+    /// Returns the original buffer and quantity of data received.
+    pub async fn recv<T: BoundedBufMut>(
+        &self,
+        buf: T,
+        flags: Option<i32>,
+    ) -> crate::BufResult<usize, T> {
+        self.inner.recv(buf, flags).submit().await
+    }
+
+    /// Creates a oneshot recv(2) operation using the provided buf_ring pool.
+    ///
+    /// (Experimental: type BufRing and BufX likely to change.)
+    ///
+    /// Returns Result\<Option\<BufX>, io::Error> meaning it returns Ok(None)
+    /// when there is no more data to read.
+    ///
+    /// When the buffer goes out of scope, it is returned to the buf_ring pool.
+    ///
+    /// Refer to io_uring_prep_recv(3) for a description of 'flags'.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use tokio_uring::buf::bufring;
+    /// use tokio_uring::net::TcpStream;
+    ///
+    /// async fn recv_once(
+    ///     stream: TcpStream,
+    ///     group: bufring::BufRing,
+    ///     flags: Option<i32>,
+    /// ) -> Result<(), std::io::Error> {
+    ///     let bufx = match stream.recv_provbuf(group, flags).await {
+    ///         Ok(Some(bufx)) => bufx,
+    ///         Ok(None) => return Ok(()),
+    ///         Err(e) => return Err(e),
+    ///     };
+    ///
+    ///     let read = bufx.len();
+    ///     if read == 0 {
+    ///         unreachable!();
+    ///     }
+    ///
+    ///     // use bufx ..
+    ///     Ok(())
+    /// }
+    /// ```
+    pub async fn recv_provbuf(
+        &self,
+        group: bufring::BufRing,
+        flags: Option<i32>,
+    ) -> Result<Option<BufX>, io::Error> {
+        self.inner.recv_provbuf(group, flags).submit().await
+    }
+
+    /// Creates a streaming multishot recv(2) operation.
+    ///
+    /// Returns a stream from which next().await can be called, returning
+    /// a Result<BufX, io::Error>.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use tokio_stream::StreamExt;
+    /// use tokio_uring::buf::bufring;
+    /// use tokio_uring::net::TcpStream;
+    ///
+    /// async fn recv_multi(
+    ///     stream: TcpStream,
+    ///     group: bufring::BufRing,
+    ///     flags: Option<i32>,
+    /// ) {
+    ///     let buffers = stream.recv_multi(group, flags);
+    ///     tokio::pin!(buffers);
+    ///
+    ///     while let Some(b) = buffers.next().await {
+    ///     let bufx = match b {
+    ///         Ok(bufx) => bufx,
+    ///         Err(e) => break,
+    ///     };
+    ///
+    ///     let read = bufx.len();
+    ///     if read == 0 {
+    ///         unreachable!();
+    ///     }
+    ///
+    ///     // use bufx ..
+    ///     }
+    /// }
+    /// ```
+    // TODO: after the rewrite using the UnsubmittedXY API, see if this
+    // can simplified to return a public type that supports poll_next
+    // without having to resort to the stream! macro.
+    // For now, it's good enough. Eventually we want recv_multi support for all
+    // the socket types.
+    pub fn recv_multi(
+        &self,
+        group: bufring::BufRing,
+        flags: Option<i32>,
+    ) -> impl Stream<Item = io::Result<BufX>> + '_ {
+        use async_stream::stream;
+        use tokio::pin;
+        use tokio_stream::StreamExt;
+        stream! {
+            let s = self.inner.recv_multi(group, flags);
+            pin!(s);
+            while let Some(result) = s.next().await {
+                yield result
+            }
+        }
     }
 
     /// Read some data from the stream into a registered buffer.

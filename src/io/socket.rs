@@ -1,3 +1,6 @@
+use crate::io::recv::UnsubmittedRecv;
+use crate::io::recv_multi::RecvMultiStream;
+use crate::io::recv_provbuf::UnsubmittedRecvProvBuf;
 use crate::io::write::UnsubmittedWrite;
 use crate::runtime::driver::op::Op;
 use crate::{
@@ -171,6 +174,26 @@ impl Socket {
     pub(crate) async fn read<T: BoundedBufMut>(&self, buf: T) -> crate::BufResult<usize, T> {
         let op = Op::read_at(&self.fd, buf, 0).unwrap();
         op.await
+    }
+
+    pub(crate) fn recv<T: BoundedBufMut>(&self, buf: T, flags: Option<i32>) -> UnsubmittedRecv<T> {
+        UnsubmittedOneshot::recv(&self.fd, buf, flags)
+    }
+
+    pub(crate) fn recv_multi(
+        &self,
+        group: crate::buf::bufring::BufRing,
+        flags: Option<i32>,
+    ) -> RecvMultiStream {
+        Op::recv_multi(&self.fd, group, flags).unwrap()
+    }
+
+    pub(crate) fn recv_provbuf(
+        &self,
+        group: crate::buf::bufring::BufRing,
+        flags: Option<i32>,
+    ) -> UnsubmittedRecvProvBuf {
+        UnsubmittedOneshot::recv_provbuf(&self.fd, group, flags)
     }
 
     pub(crate) async fn read_fixed<T>(&self, buf: T) -> crate::BufResult<usize, T>
