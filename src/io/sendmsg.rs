@@ -13,7 +13,7 @@ pub(crate) struct SendMsg<T, U> {
     _io_slices: Vec<IoSlice<'static>>,
     _socket_addr: Option<Box<SockAddr>>,
     msg_control: Option<U>,
-    msghdr: libc::msghdr,
+    msghdr: Box<libc::msghdr>,
 }
 
 impl<T: BoundedBuf, U: BoundedBuf> Op<SendMsg<T, U>> {
@@ -25,7 +25,7 @@ impl<T: BoundedBuf, U: BoundedBuf> Op<SendMsg<T, U>> {
     ) -> io::Result<Self> {
         use io_uring::{opcode, types};
 
-        let mut msghdr: libc::msghdr = unsafe { std::mem::zeroed() };
+        let mut msghdr: Box<libc::msghdr> = Box::new(unsafe { std::mem::zeroed() });
 
         let mut io_slices: Vec<IoSlice<'static>> = Vec::with_capacity(io_bufs.len());
 
@@ -76,7 +76,7 @@ impl<T: BoundedBuf, U: BoundedBuf> Op<SendMsg<T, U>> {
                 |sendmsg| {
                     opcode::SendMsg::new(
                         types::Fd(sendmsg._fd.raw_fd()),
-                        &sendmsg.msghdr as *const _,
+                        &*sendmsg.msghdr as *const _,
                     )
                     .build()
                 },
