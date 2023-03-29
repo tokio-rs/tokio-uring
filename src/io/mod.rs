@@ -1,5 +1,7 @@
 mod accept;
 
+mod accept_multi;
+
 mod close;
 
 mod connect;
@@ -15,13 +17,23 @@ pub(crate) use noop::NoOp;
 
 mod open;
 
+mod poll;
+
+mod poll_multi;
+
 mod read;
 
 mod read_fixed;
 
 mod readv;
 
+mod recv;
+
 mod recv_from;
+
+mod recv_multi;
+
+mod recv_provbuf;
 
 mod recvmsg;
 
