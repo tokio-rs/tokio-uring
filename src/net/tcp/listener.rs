@@ -1,6 +1,10 @@
 use super::TcpStream;
-use crate::io::Socket;
-use std::{io, net::SocketAddr};
+use crate::io::{SharedFd, Socket};
+use std::{
+    io,
+    net::SocketAddr,
+    os::unix::prelude::{AsRawFd, FromRawFd, RawFd},
+};
 
 /// A TCP socket server, listening for connections.
 ///
@@ -53,6 +57,41 @@ impl TcpListener {
         Ok(TcpListener { inner: socket })
     }
 
+    /// Creates new `TcpListener` from a previously bound `std::net::TcpListener`.
+    ///
+    /// This function is intended to be used to wrap a TCP listener from the
+    /// standard library in the tokio-uring equivalent. The conversion assumes nothing
+    /// about the underlying socket; it is left up to the user to decide what socket
+    /// options are appropriate for their use case.
+    ///
+    /// This can be used in conjunction with socket2's `Socket` interface to
+    /// configure a socket before it's handed off, such as setting options like
+    /// `reuse_address` or binding to multiple addresses.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// tokio_uring::start(async {
+    ///     let address: std::net::SocketAddr = "[::0]:8443".parse().unwrap();
+    ///     let socket = tokio::net::TcpSocket::new_v6().unwrap();
+    ///     socket.set_reuseaddr(true).unwrap();
+    ///     socket.set_reuseport(true).unwrap();
+    ///     socket.bind(address).unwrap();
+    ///
+    ///     let listener = socket.listen(1024).unwrap();
+    ///
+    ///     let listener = tokio_uring::net::TcpListener::from_std(listener.into_std().unwrap());
+    /// })
+    /// ```
+    pub fn from_std(socket: std::net::TcpListener) -> Self {
+        let inner = Socket::from_std(socket);
+        Self { inner }
+    }
+
+    pub(crate) fn from_socket(inner: Socket) -> Self {
+        Self { inner }
+    }
+
     /// Returns the local address that this listener is bound to.
     ///
     /// This can be useful, for example, when binding to port 0 to
@@ -70,8 +109,6 @@ impl TcpListener {
     /// assert_eq!(addr, SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 8080)));
     /// ```
     pub fn local_addr(&self) -> io::Result<SocketAddr> {
-        use std::os::unix::io::{AsRawFd, FromRawFd};
-
         let fd = self.inner.as_raw_fd();
         // SAFETY: Our fd is the handle the kernel has given us for a TcpListener.
         // Create a std::net::TcpListener long enough to call its local_addr method
@@ -96,5 +133,17 @@ impl TcpListener {
             io::Error::new(io::ErrorKind::Other, "Could not get socket IP address")
         })?;
         Ok((stream, socket_addr))
+    }
+}
+
+impl FromRawFd for TcpListener {
+    unsafe fn from_raw_fd(fd: RawFd) -> Self {
+        TcpListener::from_socket(Socket::from_shared_fd(SharedFd::new(fd)))
+    }
+}
+
+impl AsRawFd for TcpListener {
+    fn as_raw_fd(&self) -> RawFd {
+        self.inner.as_raw_fd()
     }
 }
