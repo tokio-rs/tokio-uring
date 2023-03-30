@@ -23,7 +23,7 @@ libc = "0.2.80"
 io-uring = "0.5.13"
 socket2 = { version = "0.4.4", features = ["all"] }
 bytes = { version = "1.0", optional = true }
-futures = "0.3.26"
+futures-util = { version = "0.3.26", default-features = false, features = ["std"] }
 
 [dev-dependencies]
 tempfile = "3.2.0"
