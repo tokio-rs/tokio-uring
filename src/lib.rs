@@ -84,6 +84,8 @@ pub use runtime::spawn;
 pub use runtime::Runtime;
 
 use crate::runtime::driver::op::Op;
+use std::error::Error;
+use std::fmt::{Debug, Display};
 use std::future::Future;
 
 /// Starts an `io_uring` enabled Tokio runtime.
@@ -237,8 +239,7 @@ impl Builder {
 ///
 /// This type is used as a return value for asynchronous `io-uring` methods that
 /// require passing ownership of a buffer to the runtime. When the operation
-/// completes, the buffer is returned whether or not the operation completed
-/// successfully.
+/// completes, the buffer is returned both in the success tuple and as part of the error
 ///
 /// # Examples
 ///
@@ -254,8 +255,7 @@ impl Builder {
 ///         // Read some data, the buffer is passed by ownership and
 ///         // submitted to the kernel. When the operation completes,
 ///         // we get the buffer back.
-///         let (res, buf) = file.read_at(buf, 0).await;
-///         let n = res?;
+///         let (n, buf) = file.read_at(buf, 0).await?;
 ///
 ///         // Display the contents
 ///         println!("{:?}", &buf[..n]);
@@ -271,6 +271,17 @@ pub type BufResult<T, B> = std::result::Result<(T, B), BufError<B>>;
 #[derive(Debug)]
 pub struct BufError<B>(pub std::io::Error, pub B);
 
+impl<T> Display for BufError<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Debug::fmt(&self.0, f)
+    }
+}
+
+impl<T: Debug> Error for BufError<T> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        Some(&self.0)
+    }
+}
 
 impl<B> BufError<B> {
     /// Applies a function to the contained buffer, returning a new `BufError`.
