@@ -119,7 +119,8 @@ fn slicing() {
         // up to the end of the initialized bytes in the buffer.
         let (n, slice) = file
             .write_fixed_at(fixed_buf.slice(1..), HELLO.len() as u64)
-            .await.unwrap();
+            .await
+            .unwrap();
         assert_eq!(n, 7);
         assert_eq!(slice[..], HELLO[4..11]);
         let fixed_buf = slice.into_inner();
@@ -162,7 +163,10 @@ fn pool_next_as_concurrency_limit() {
                 let file = File::from_std(cloned_file);
                 let data = [b'0' + i as u8; BUF_SIZE];
                 buf.put_slice(&data);
-                let (_, buf) = file.write_fixed_all_at(buf, BUF_SIZE as u64 * i).await.unwrap();
+                let (_, buf) = file
+                    .write_fixed_all_at(buf, BUF_SIZE as u64 * i)
+                    .await
+                    .unwrap();
                 println!("[worker {}]: dropping buffer {}", i, buf.buf_index());
             });
 

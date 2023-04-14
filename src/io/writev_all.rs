@@ -1,6 +1,6 @@
-use crate::BufError;
 use crate::runtime::driver::op::{Completable, CqeResult, Op};
 use crate::runtime::CONTEXT;
+use crate::BufError;
 use crate::{buf::BoundedBuf, io::SharedFd};
 use libc::iovec;
 use std::io;

@@ -266,7 +266,6 @@ impl Builder {
 /// ```
 pub type BufResult<T, B> = std::result::Result<(T, B), BufError<B>>;
 
-
 /// A specialized `Error` type for `io-uring` operations with buffers.
 #[derive(Debug)]
 pub struct BufError<B>(pub std::io::Error, pub B);
