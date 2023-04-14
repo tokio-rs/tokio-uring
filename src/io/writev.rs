@@ -1,3 +1,4 @@
+use crate::BufError;
 use crate::runtime::driver::op::{Completable, CqeResult, Op};
 use crate::runtime::CONTEXT;
 use crate::{buf::BoundedBuf, io::SharedFd, BufResult};
@@ -66,6 +67,9 @@ where
         // Recover the buffer
         let buf = self.bufs;
 
-        (res, buf)
+        match res {
+            Ok(n) => Ok((n, buf)),
+            Err(e) => Err(BufError(e, buf)),
+        }
     }
 }

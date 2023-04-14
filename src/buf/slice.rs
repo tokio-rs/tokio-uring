@@ -23,6 +23,7 @@ use std::ops;
 ///
 /// assert_eq!(&slice[..], b"hello");
 /// ```
+#[derive(Debug)]
 pub struct Slice<T> {
     buf: T,
     begin: usize,

@@ -1,3 +1,4 @@
+use crate::BufError;
 use crate::{buf::BoundedBuf, io::SharedFd, BufResult, OneshotOutputTransform, UnsubmittedOneshot};
 use io_uring::cqueue::Entry;
 use std::io;
@@ -31,7 +32,10 @@ impl<T> OneshotOutputTransform for WriteTransform<T> {
             Err(io::Error::from_raw_os_error(-cqe.result()))
         };
 
-        (res, data.buf)
+        match res {
+            Ok(n) => Ok((n, data.buf)),
+            Err(e) => Err(BufError(e, data.buf)),
+        }
     }
 }
 

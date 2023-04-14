@@ -15,11 +15,10 @@ fn main() {
         let stream = TcpStream::connect(socket_addr).await.unwrap();
         let buf = vec![1u8; 128];
 
-        let (result, buf) = stream.write(buf).submit().await;
-        println!("written: {}", result.unwrap());
+        let (written, buf) = stream.write(buf).submit().await.unwrap();
+        println!("written: {}", written);
 
-        let (result, buf) = stream.read(buf).await;
-        let read = result.unwrap();
+        let (read, buf) = stream.read(buf).await.unwrap();
         println!("read: {:?}", &buf[..read]);
     });
 }

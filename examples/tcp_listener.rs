@@ -29,16 +29,14 @@ fn main() {
 
                 let mut buf = vec![0u8; 4096];
                 loop {
-                    let (result, nbuf) = stream.read(buf).await;
+                    let (read, nbuf) = stream.read(buf).await.unwrap();
                     buf = nbuf;
-                    let read = result.unwrap();
                     if read == 0 {
                         println!("{} closed, {} total ping-ponged", socket_addr, n);
                         break;
                     }
 
-                    let (res, slice) = stream.write_all(buf.slice(..read)).await;
-                    let _ = res.unwrap();
+                    let (_, slice) = stream.write_all(buf.slice(..read)).await.unwrap();
                     buf = slice.into_inner();
                     println!("{} all {} bytes ping-ponged", socket_addr, read);
                     n += read;

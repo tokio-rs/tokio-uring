@@ -1,5 +1,6 @@
 use crate::runtime::driver::op::{Completable, CqeResult, MultiCQEFuture, Op, Updateable};
 use crate::runtime::CONTEXT;
+use crate::BufError;
 use crate::{buf::BoundedBuf, io::SharedFd, BufResult};
 use std::io;
 
@@ -46,7 +47,11 @@ impl<T> Completable for SendZc<T> {
         let res = cqe.result.map(|v| self.bytes + v as usize);
         // Recover the buffer
         let buf = self.buf;
-        (res, buf)
+
+        match res {
+            Ok(n) => Ok((n, buf)),
+            Err(e) => Err(BufError(e, buf)),
+        }
     }
 }
 

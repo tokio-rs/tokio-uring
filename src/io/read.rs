@@ -1,6 +1,6 @@
 use crate::buf::BoundedBufMut;
 use crate::io::SharedFd;
-use crate::BufResult;
+use crate::{BufError, BufResult};
 
 use crate::runtime::driver::op::{Completable, CqeResult, Op};
 use crate::runtime::CONTEXT;
@@ -59,6 +59,9 @@ where
             }
         }
 
-        (res, buf)
+        match res {
+            Ok(n) => Ok((n, buf)),
+            Err(e) => Err(BufError(e, buf)),
+        }
     }
 }

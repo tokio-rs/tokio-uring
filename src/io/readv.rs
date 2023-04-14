@@ -1,5 +1,5 @@
 use crate::buf::BoundedBufMut;
-use crate::BufResult;
+use crate::{BufError, BufResult};
 
 use crate::io::SharedFd;
 use crate::runtime::driver::op::{Completable, CqeResult, Op};
@@ -87,6 +87,9 @@ where
             assert_eq!(count, 0);
         }
 
-        (res, bufs)
+        match res {
+            Ok(n) => Ok((n, bufs)),
+            Err(e) => Err(BufError(e, bufs)),
+        }
     }
 }

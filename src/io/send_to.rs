@@ -2,7 +2,7 @@ use crate::buf::BoundedBuf;
 use crate::io::SharedFd;
 use crate::runtime::driver::op::{Completable, CqeResult, Op};
 use crate::runtime::CONTEXT;
-use crate::BufResult;
+use crate::{BufError, BufResult};
 use socket2::SockAddr;
 use std::io::IoSlice;
 use std::{boxed::Box, io, net::SocketAddr};
@@ -78,6 +78,9 @@ impl<T> Completable for SendTo<T> {
         // Recover the buffer
         let buf = self.buf;
 
-        (res, buf)
+        match res {
+            Ok(n) => Ok((n, buf)),
+            Err(e) => Err(BufError(e, buf)),
+        }
     }
 }

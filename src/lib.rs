@@ -264,7 +264,34 @@ impl Builder {
 ///     })
 /// }
 /// ```
-pub type BufResult<T, B> = (std::io::Result<T>, B);
+pub type BufResult<T, B> = std::result::Result<(T, B), BufError<B>>;
+
+
+/// A specialized `Error` type for `io-uring` operations with buffers.
+#[derive(Debug)]
+pub struct BufError<B>(pub std::io::Error, pub B);
+
+
+impl<B> BufError<B> {
+    /// Applies a function to the contained buffer, returning a new `BufError`.
+    pub fn map_buf<F, U>(self, f: F) -> BufError<U>
+    where
+        F: FnOnce(B) -> U,
+    {
+        BufError(self.0, f(self.1))
+    }
+}
+
+/// Applies a function to the contained buffer, returning a new `BufResult`.
+pub fn map_buf<T, B, F, U>(buf_result: BufResult<T, B>, f: F) -> BufResult<T, U>
+where
+    F: FnOnce(B) -> U,
+{
+    match buf_result {
+        Ok((t, b)) => Ok((t, f(b))),
+        Err(e) => Err(e.map_buf(f)),
+    }
+}
 
 /// The simplest possible operation. Just posts a completion event, nothing else.
 ///

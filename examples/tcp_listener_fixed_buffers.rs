@@ -79,17 +79,15 @@ async fn echo_handler<T: IoBufMut>(
         // Each time through the loop, use fbuf and then get it back for the next
         // iteration.
 
-        let (result, fbuf1) = stream.read_fixed(fbuf).await;
+        let (read, fbuf1) = stream.read_fixed(fbuf).await.unwrap();
         fbuf = {
-            let read = result.unwrap();
             if read == 0 {
                 break;
             }
             assert_eq!(4096, fbuf1.len()); // To prove a point.
 
-            let (res, nslice) = stream.write_fixed_all(fbuf1.slice(..read)).await;
+            let (_, nslice) = stream.write_fixed_all(fbuf1.slice(..read)).await.unwrap();
 
-            let _ = res.unwrap();
             println!("peer {} all {} bytes ping-ponged", peer, read);
             n += read;
 

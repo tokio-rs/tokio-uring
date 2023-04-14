@@ -1,3 +1,4 @@
+use crate::BufError;
 use crate::runtime::driver::op::{Completable, CqeResult, Op};
 use crate::runtime::CONTEXT;
 use crate::{buf::BoundedBuf, io::SharedFd};
@@ -59,7 +60,7 @@ pub(crate) async fn writev_at_all<T: BoundedBuf>(
 
             // On error, there is no indication how many bytes were written. This is standard.
             // The device doesn't tell us that either.
-            Err(e) => return (Err(e), bufs),
+            Err(e) => return Err(BufError(e, bufs)),
         };
 
         // TODO if n is zero, while there was more data to be written, should this be interpreted
@@ -101,7 +102,7 @@ pub(crate) async fn writev_at_all<T: BoundedBuf>(
             break;
         }
     }
-    (Ok(total), bufs)
+    Ok((total, bufs))
 }
 
 struct WritevAll<T> {
