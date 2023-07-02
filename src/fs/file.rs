@@ -451,16 +451,18 @@ impl File {
     /// variant will be returned.
     /// On error the buffer will contain the partial data that was
     /// read up until this point.
-    pub async fn read_at_to_end(&self, mut pos: u64, mut result: Vec<u8>) -> crate::BufResult<(), Vec<u8>> {
+    pub async fn read_at_to_end(
+        &self,
+        mut pos: u64,
+        mut result: Vec<u8>,
+    ) -> crate::BufResult<(), Vec<u8>> {
         let mut buffer = vec![0u8; 1024];
 
         loop {
             let (res, buf) = self.read_at(buffer, pos).await;
 
             match res {
-                Ok(0) => {
-                    return (Ok(()), result)
-                }
+                Ok(0) => return (Ok(()), result),
                 Ok(n) => {
                     buffer = buf;
                     result.extend_from_slice(&buffer[..n]);
