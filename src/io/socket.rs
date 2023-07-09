@@ -6,6 +6,7 @@ use crate::{
     io::SharedFd,
     UnsubmittedOneshot,
 };
+use std::os::fd::{AsFd, BorrowedFd};
 use std::{
     io,
     net::SocketAddr,
@@ -277,6 +278,12 @@ impl Socket {
     pub fn set_nodelay(&self, nodelay: bool) -> io::Result<()> {
         let socket_ref = socket2::SockRef::from(self);
         socket_ref.set_nodelay(nodelay)
+    }
+}
+
+impl AsFd for Socket {
+    fn as_fd(&self) -> BorrowedFd<'_> {
+        unsafe { BorrowedFd::borrow_raw(self.fd.raw_fd()) }
     }
 }
 

@@ -134,7 +134,7 @@ impl<T: BoundedBuf> Op<WritevAll<T>> {
                 // So this wouldn't need to be a function. Just pass in the entry.
                 |write| {
                     opcode::Writev::new(types::Fd(write.fd.raw_fd()), iovs_ptr, iovs_len)
-                        .offset64(offset as _)
+                        .offset(offset)
                         .build()
                 },
             )
