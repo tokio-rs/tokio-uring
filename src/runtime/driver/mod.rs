@@ -97,9 +97,11 @@ impl Driver {
         &mut self,
         buffers: Rc<RefCell<dyn FixedBuffers>>,
     ) -> io::Result<()> {
-        self.uring
-            .submitter()
-            .register_buffers(buffers.borrow().iovecs())?;
+        unsafe {
+            self.uring
+                .submitter()
+                .register_buffers(buffers.borrow().iovecs())
+        }?;
 
         self.fixed_buffers = Some(buffers);
         Ok(())
