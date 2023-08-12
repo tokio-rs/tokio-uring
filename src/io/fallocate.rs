@@ -25,8 +25,8 @@ impl Op<Fallocate> {
             x.handle().expect("not in a runtime context").submit_op(
                 Fallocate { fd: fd.clone() },
                 |fallocate| {
-                    opcode::Fallocate64::new(types::Fd(fallocate.fd.raw_fd()), len as _)
-                        .offset64(offset as _)
+                    opcode::Fallocate::new(types::Fd(fallocate.fd.raw_fd()), len as _)
+                        .offset(offset as _)
                         .mode(flags)
                         .build()
                 },
