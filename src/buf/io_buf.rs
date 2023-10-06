@@ -110,3 +110,33 @@ unsafe impl IoBuf for bytes::BytesMut {
         self.capacity()
     }
 }
+
+#[cfg(feature = "mmap")]
+unsafe impl IoBuf for memmap2::Mmap {
+    fn stable_ptr(&self) -> *const u8 {
+        self.as_ptr()
+    }
+
+    fn bytes_init(&self) -> usize {
+        self.len()
+    }
+
+    fn bytes_total(&self) -> usize {
+        self.len()
+    }
+}
+
+#[cfg(feature = "mmap")]
+unsafe impl IoBuf for memmap2::MmapMut {
+    fn stable_ptr(&self) -> *const u8 {
+        self.as_ptr()
+    }
+
+    fn bytes_init(&self) -> usize {
+        self.len()
+    }
+
+    fn bytes_total(&self) -> usize {
+        self.len()
+    }
+}
