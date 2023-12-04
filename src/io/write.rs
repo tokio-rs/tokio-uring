@@ -28,7 +28,7 @@ impl<T> OneshotOutputTransform for WriteTransform<T> {
         let res = if cqe.result() >= 0 {
             Ok(cqe.result() as usize)
         } else {
-            Err(io::Error::from_raw_os_error(cqe.result()))
+            Err(io::Error::from_raw_os_error(-cqe.result()))
         };
 
         (res, data.buf)
@@ -49,7 +49,7 @@ impl<T: BoundedBuf> UnsubmittedWrite<T> {
                 buf,
             },
             WriteTransform {
-                _phantom: PhantomData::default(),
+                _phantom: PhantomData,
             },
             opcode::Write::new(types::Fd(fd.raw_fd()), ptr, len as _)
                 .offset(offset as _)

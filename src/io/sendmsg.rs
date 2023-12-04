@@ -1,30 +1,23 @@
 use crate::buf::BoundedBuf;
 use crate::io::SharedFd;
-use crate::runtime::driver::op::{Completable, CqeResult, MultiCQEFuture, Op, Updateable};
+use crate::runtime::driver::op::{Completable, CqeResult, Op};
 use crate::runtime::CONTEXT;
 use socket2::SockAddr;
 use std::io;
 use std::io::IoSlice;
 use std::net::SocketAddr;
 
-pub(crate) struct SendMsgZc<T, U> {
-    #[allow(dead_code)]
-    fd: SharedFd,
-    #[allow(dead_code)]
-    io_bufs: Vec<T>,
-    #[allow(dead_code)]
-    io_slices: Vec<IoSlice<'static>>,
-    #[allow(dead_code)]
-    socket_addr: Option<Box<SockAddr>>,
+pub(crate) struct SendMsg<T, U> {
+    _fd: SharedFd,
+    _io_bufs: Vec<T>,
+    _io_slices: Vec<IoSlice<'static>>,
+    _socket_addr: Option<Box<SockAddr>>,
     msg_control: Option<U>,
     msghdr: Box<libc::msghdr>,
-
-    /// Hold the number of transmitted bytes
-    bytes: usize,
 }
 
-impl<T: BoundedBuf, U: BoundedBuf> Op<SendMsgZc<T, U>, MultiCQEFuture> {
-    pub(crate) fn sendmsg_zc(
+impl<T: BoundedBuf, U: BoundedBuf> Op<SendMsg<T, U>> {
+    pub(crate) fn sendmsg(
         fd: &SharedFd,
         io_bufs: Vec<T>,
         socket_addr: Option<SocketAddr>,
@@ -72,19 +65,18 @@ impl<T: BoundedBuf, U: BoundedBuf> Op<SendMsgZc<T, U>, MultiCQEFuture> {
 
         CONTEXT.with(|x| {
             x.handle().expect("Not in a runtime context").submit_op(
-                SendMsgZc {
-                    fd: fd.clone(),
-                    io_bufs,
-                    socket_addr,
-                    io_slices,
+                SendMsg {
+                    _fd: fd.clone(),
+                    _io_bufs: io_bufs,
+                    _socket_addr: socket_addr,
+                    _io_slices: io_slices,
                     msg_control,
                     msghdr,
-                    bytes: 0,
                 },
-                |sendmsg_zc| {
-                    opcode::SendMsgZc::new(
-                        types::Fd(sendmsg_zc.fd.raw_fd()),
-                        sendmsg_zc.msghdr.as_mut() as *const _,
+                |sendmsg| {
+                    opcode::SendMsg::new(
+                        types::Fd(sendmsg._fd.raw_fd()),
+                        &*sendmsg.msghdr as *const _,
                     )
                     .build()
                 },
@@ -93,26 +85,19 @@ impl<T: BoundedBuf, U: BoundedBuf> Op<SendMsgZc<T, U>, MultiCQEFuture> {
     }
 }
 
-impl<T, U> Completable for SendMsgZc<T, U> {
+impl<T, U> Completable for SendMsg<T, U> {
     type Output = (io::Result<usize>, Vec<T>, Option<U>);
 
     fn complete(self, cqe: CqeResult) -> (io::Result<usize>, Vec<T>, Option<U>) {
-        // Convert the operation result to `usize`, and add previous byte count
-        let res = cqe.result.map(|v| self.bytes + v as usize);
+        // Convert the operation result to `usize`
+        let res = cqe.result.map(|n| n as usize);
 
         // Recover the data buffers.
-        let io_bufs = self.io_bufs;
+        let io_bufs = self._io_bufs;
 
         // Recover the ancillary data buffer.
         let msg_control = self.msg_control;
 
         (res, io_bufs, msg_control)
-    }
-}
-
-impl<T, U> Updateable for SendMsgZc<T, U> {
-    fn update(&mut self, cqe: CqeResult) {
-        // uring send_zc promises there will be no error on CQE's marked more
-        self.bytes += *cqe.result.as_ref().unwrap() as usize;
     }
 }

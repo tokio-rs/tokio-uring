@@ -252,6 +252,26 @@ impl UdpSocket {
     /// * The original `io_slices` `Vec<T>`
     /// * The original `msg_contol` `Option<U>`
     ///
+    /// Consider using [`Self::sendmsg_zc`] for a zero-copy alternative.
+    pub async fn sendmsg<T: BoundedBuf, U: BoundedBuf>(
+        &self,
+        io_slices: Vec<T>,
+        socket_addr: Option<SocketAddr>,
+        msg_control: Option<U>,
+    ) -> (io::Result<usize>, Vec<T>, Option<U>) {
+        self.inner
+            .sendmsg(io_slices, socket_addr, msg_control)
+            .await
+    }
+
+    /// Sends a message on the socket using a msghdr.
+    ///
+    /// Returns a tuple of:
+    ///
+    /// * Result containing bytes written on success
+    /// * The original `io_slices` `Vec<T>`
+    /// * The original `msg_contol` `Option<U>`
+    ///
     /// See the linux [kernel docs](https://www.kernel.org/doc/html/latest/networking/msg_zerocopy.html)
     /// for a discussion on when this might be appropriate. In particular:
     ///
@@ -281,6 +301,16 @@ impl UdpSocket {
         buf: T,
     ) -> crate::BufResult<(usize, SocketAddr), T> {
         self.inner.recv_from(buf).await
+    }
+
+    /// Receives a single datagram message on the socket, into multiple buffers
+    ///
+    /// On success, returns the number of bytes read and the origin.
+    pub async fn recvmsg<T: BoundedBufMut>(
+        &self,
+        buf: Vec<T>,
+    ) -> crate::BufResult<(usize, SocketAddr), Vec<T>> {
+        self.inner.recvmsg(buf).await
     }
 
     /// Reads a packet of data from the socket into the buffer.

@@ -23,11 +23,15 @@ mod readv;
 
 mod recv_from;
 
+mod recvmsg;
+
 mod rename_at;
 
 mod send_to;
 
 mod send_zc;
+
+mod sendmsg;
 
 mod sendmsg_zc;
 

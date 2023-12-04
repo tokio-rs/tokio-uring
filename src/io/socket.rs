@@ -148,6 +148,16 @@ impl Socket {
         op.await
     }
 
+    pub(crate) async fn sendmsg<T: BoundedBuf, U: BoundedBuf>(
+        &self,
+        io_slices: Vec<T>,
+        socket_addr: Option<SocketAddr>,
+        msg_control: Option<U>,
+    ) -> (io::Result<usize>, Vec<T>, Option<U>) {
+        let op = Op::sendmsg(&self.fd, io_slices, socket_addr, msg_control).unwrap();
+        op.await
+    }
+
     pub(crate) async fn sendmsg_zc<T: BoundedBuf, U: BoundedBuf>(
         &self,
         io_slices: Vec<T>,
@@ -176,6 +186,14 @@ impl Socket {
         buf: T,
     ) -> crate::BufResult<(usize, SocketAddr), T> {
         let op = Op::recv_from(&self.fd, buf).unwrap();
+        op.await
+    }
+
+    pub(crate) async fn recvmsg<T: BoundedBufMut>(
+        &self,
+        buf: Vec<T>,
+    ) -> crate::BufResult<(usize, SocketAddr), Vec<T>> {
+        let op = Op::recvmsg(&self.fd, buf).unwrap();
         op.await
     }
 

@@ -1,4 +1,4 @@
-use futures::future::LocalBoxFuture;
+use futures_util::future::LocalBoxFuture;
 use std::io;
 use std::path::Path;
 
