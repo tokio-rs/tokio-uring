@@ -1,5 +1,6 @@
 use crate::{buf::BoundedBuf, io::SharedFd, BufResult, OneshotOutputTransform, UnsubmittedOneshot};
 use io_uring::cqueue::Entry;
+use io_uring::squeue::Flags;
 use std::io;
 use std::marker::PhantomData;
 
@@ -54,6 +55,28 @@ impl<T: BoundedBuf> UnsubmittedWrite<T> {
             opcode::Write::new(types::Fd(fd.raw_fd()), ptr, len as _)
                 .offset(offset as _)
                 .build(),
+        )
+    }
+
+    pub(crate) fn write_at_with_flags(fd: &SharedFd, buf: T, offset: u64, flags: Flags) -> Self {
+        use io_uring::{opcode, types};
+
+        // Get raw buffer info
+        let ptr = buf.stable_ptr();
+        let len = buf.bytes_init();
+
+        Self::new(
+            WriteData {
+                _fd: fd.clone(),
+                buf,
+            },
+            WriteTransform {
+                _phantom: PhantomData,
+            },
+            opcode::Write::new(types::Fd(fd.raw_fd()), ptr, len as _)
+                .offset(offset as _)
+                .build()
+                .flags(flags),
         )
     }
 }

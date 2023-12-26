@@ -1,3 +1,5 @@
+use io_uring::squeue::Flags;
+
 use crate::buf::BoundedBufMut;
 use crate::io::SharedFd;
 use crate::BufResult;
@@ -18,6 +20,15 @@ pub(crate) struct Read<T> {
 
 impl<T: BoundedBufMut> Op<Read<T>> {
     pub(crate) fn read_at(fd: &SharedFd, buf: T, offset: u64) -> io::Result<Op<Read<T>>> {
+        Self::read_at_with_flags(fd, buf, offset, Flags::empty())
+    }
+
+    pub(crate) fn read_at_with_flags(
+        fd: &SharedFd,
+        buf: T,
+        offset: u64,
+        flags: Flags,
+    ) -> io::Result<Op<Read<T>>> {
         use io_uring::{opcode, types};
 
         CONTEXT.with(|x| {
@@ -33,6 +44,7 @@ impl<T: BoundedBufMut> Op<Read<T>> {
                     opcode::Read::new(types::Fd(fd.raw_fd()), ptr, len as _)
                         .offset(offset as _)
                         .build()
+                        .flags(flags)
                 },
             )
         })

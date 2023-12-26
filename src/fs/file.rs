@@ -1,3 +1,5 @@
+use io_uring::squeue::Flags;
+
 use crate::buf::fixed::FixedBuf;
 use crate::buf::{BoundedBuf, BoundedBufMut, IoBuf, IoBufMut, Slice};
 use crate::fs::OpenOptions;
@@ -179,6 +181,17 @@ impl File {
     pub async fn read_at<T: BoundedBufMut>(&self, buf: T, pos: u64) -> crate::BufResult<usize, T> {
         // Submit the read operation
         let op = Op::read_at(&self.fd, buf, pos).unwrap();
+        op.await
+    }
+
+    pub async fn read_at_with_flags<T: BoundedBufMut>(
+        &self,
+        buf: T,
+        pos: u64,
+        flags: Flags,
+    ) -> crate::BufResult<usize, T> {
+        // Submit the read operation
+        let op = Op::read_at_with_flags(&self.fd, buf, pos, flags).unwrap();
         op.await
     }
 
@@ -540,7 +553,16 @@ impl File {
     ///
     /// [`Ok(n)`]: Ok
     pub fn write_at<T: BoundedBuf>(&self, buf: T, pos: u64) -> UnsubmittedWrite<T> {
-        UnsubmittedOneshot::write_at(&self.fd, buf, pos)
+		self.write_at_with_flags(buf, pos, Flags::empty())
+    }
+
+    pub fn write_at_with_flags<T: BoundedBuf>(
+        &self,
+        buf: T,
+        pos: u64,
+        flags: Flags,
+    ) -> UnsubmittedWrite<T> {
+        UnsubmittedOneshot::write_at_with_flags(&self.fd, buf, pos, flags)
     }
 
     /// Attempts to write an entire buffer into this file at the specified offset.
