@@ -74,7 +74,7 @@ impl<T: IoBufMut> Registry<T> {
     pub(crate) fn check_out(&mut self, index: usize) -> Option<CheckedOutBuf> {
         let state = self.states.get_mut(index)?;
         let BufState::Free { init_len } = *state else {
-            return None
+            return None;
         };
 
         *state = BufState::CheckedOut;
