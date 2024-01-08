@@ -274,8 +274,10 @@ impl<T: IoBufMut> FixedBufPool<T> {
         pin!(notified);
         loop {
             // In the single-threaded case, no buffers could get checked in
-            // between us calling `try_next` and here, so we can't miss a wakeup.
-            notified.as_mut().await;
+            // between us calling `try_next` and here. However, we may still miss a wake-up,
+            // as multiple check-ins can occur before any waking tasks are scheduled,
+            // which would result in the loss of a permit
+            notified.as_mut().enable();
 
             if let Some(data) = self.inner.borrow_mut().try_next(cap) {
                 // Safety: the validity of buffer data is ensured by
@@ -283,6 +285,9 @@ impl<T: IoBufMut> FixedBufPool<T> {
                 let buf = unsafe { FixedBuf::new(Rc::clone(&self.inner) as _, data) };
                 return buf;
             }
+
+            // Await notify_one
+            notified.as_mut().await;
 
             // It's possible that the task did not get a buffer from `try_next`.
             // The `Notify` entries are created once for each requested capacity
