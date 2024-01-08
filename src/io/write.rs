@@ -53,7 +53,7 @@ impl<T: BoundedBuf> UnsubmittedWrite<T> {
                 buf,
             },
             WriteTransform {
-                _phantom: PhantomData::default(),
+                _phantom: PhantomData,
             },
             opcode::Write::new(types::Fd(fd.raw_fd()), ptr, len as _)
                 .offset(offset as _)
