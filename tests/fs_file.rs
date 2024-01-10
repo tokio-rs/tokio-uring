@@ -38,6 +38,23 @@ fn basic_read() {
 }
 
 #[test]
+fn read_exact_buf_too_long() {
+    tokio_uring::start(async {
+        let data = HELLO.repeat(1);
+        let buf = Vec::with_capacity(data.len() * 2);
+
+        let mut tempfile = tempfile();
+        tempfile.write_all(&data).unwrap();
+
+        let file = File::open(tempfile.path()).await.unwrap();
+        let (res, _buf) = file.read_exact_at(buf, 0).await;
+
+        assert!(res.is_err());
+        assert_eq!(res.unwrap_err().kind(), std::io::ErrorKind::UnexpectedEof);
+    });
+}
+
+#[test]
 fn basic_read_exact() {
     tokio_uring::start(async {
         let data = HELLO.repeat(1000);
@@ -48,6 +65,23 @@ fn basic_read_exact() {
 
         let file = File::open(tempfile.path()).await.unwrap();
         let (res, buf) = file.read_exact_at(buf, 0).await;
+        res.unwrap();
+        assert_eq!(buf, data);
+    });
+}
+
+#[test]
+fn basic_read_to_end() {
+    tokio_uring::start(async {
+        let data = HELLO.repeat(1);
+
+        let mut tempfile = tempfile();
+        tempfile.write_all(&data).unwrap();
+
+        let file = File::open(tempfile.path()).await.unwrap();
+
+        let buf = vec![];
+        let (res, buf) = file.read_at_to_end(0, buf).await;
         res.unwrap();
         assert_eq!(buf, data);
     });
