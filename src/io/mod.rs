@@ -21,7 +21,11 @@ mod read_fixed;
 
 mod readv;
 
+mod recv;
+
 mod recv_from;
+
+mod recv_provbuf;
 
 mod recvmsg;
 
