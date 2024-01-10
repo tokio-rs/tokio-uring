@@ -2,6 +2,7 @@ use crate::buf::BoundedBufMut;
 use crate::io::SharedFd;
 use crate::BufResult;
 
+use crate::io::shared_fd::CommonFd;
 use crate::runtime::driver::op::{Completable, CqeResult, Op};
 use crate::runtime::CONTEXT;
 use std::io;
@@ -30,9 +31,20 @@ impl<T: BoundedBufMut> Op<Read<T>> {
                     // Get raw buffer info
                     let ptr = read.buf.stable_mut_ptr();
                     let len = read.buf.bytes_total();
-                    opcode::Read::new(types::Fd(fd.raw_fd()), ptr, len as _)
-                        .offset(offset as _)
-                        .build()
+                    match read.fd.common_fd() {
+                        CommonFd::Raw(raw) => {
+                            let fd = types::Fd(raw);
+                            opcode::Read::new(fd, ptr, len as _)
+                                .offset(offset as _)
+                                .build()
+                        }
+                        CommonFd::Fixed(fixed) => {
+                            let fd = types::Fixed(fixed);
+                            opcode::Read::new(fd, ptr, len as _)
+                                .offset(offset as _)
+                                .build()
+                        }
+                    }
                 },
             )
         })
