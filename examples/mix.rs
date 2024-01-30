@@ -34,7 +34,7 @@ fn main() {
 
                 loop {
                     // Read a chunk
-                    let (res, b) = file.read_at(buf, pos).await;
+                    let (res, b) = file.read_at(buf, pos).submit().await;
                     let n = res.unwrap();
 
                     if n == 0 {

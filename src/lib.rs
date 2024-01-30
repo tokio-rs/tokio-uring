@@ -20,7 +20,7 @@
 //!         // Read some data, the buffer is passed by ownership and
 //!         // submitted to the kernel. When the operation completes,
 //!         // we get the buffer back.
-//!         let (res, buf) = file.read_at(buf, 0).await;
+//!         let (res, buf) = file.read_at(buf, 0).submit().await;
 //!         let n = res?;
 //!
 //!         // Display the contents
@@ -78,6 +78,7 @@ pub mod buf;
 pub mod fs;
 pub mod net;
 
+pub use io::read::*;
 pub use io::write::*;
 pub use runtime::driver::op::{InFlightOneshot, OneshotOutputTransform, UnsubmittedOneshot};
 pub use runtime::spawn;
@@ -115,7 +116,7 @@ use std::future::Future;
 ///         // Read some data, the buffer is passed by ownership and
 ///         // submitted to the kernel. When the operation completes,
 ///         // we get the buffer back.
-///         let (res, buf) = file.read_at(buf, 0).await;
+///         let (res, buf) = file.read_at(buf, 0).submit().await;
 ///         let n = res?;
 ///
 ///         // Display the contents
@@ -254,7 +255,7 @@ impl Builder {
 ///         // Read some data, the buffer is passed by ownership and
 ///         // submitted to the kernel. When the operation completes,
 ///         // we get the buffer back.
-///         let (res, buf) = file.read_at(buf, 0).await;
+///         let (res, buf) = file.read_at(buf, 0).submit().await;
 ///         let n = res?;
 ///
 ///         // Display the contents

@@ -19,7 +19,7 @@ const HELLO: &[u8] = b"hello world...";
 
 async fn read_hello(file: &File) {
     let buf = Vec::with_capacity(1024);
-    let (res, buf) = file.read_at(buf, 0).await;
+    let (res, buf) = file.read_at(buf, 0).submit().await;
     let n = res.unwrap();
 
     assert_eq!(n, HELLO.len());
@@ -312,6 +312,55 @@ fn basic_fallocate() {
         let statx = file.statx().await.unwrap();
         let size = statx.stx_size;
         assert_eq!(size, 1024);
+    });
+}
+
+#[test]
+fn write_linked() {
+    tokio_uring::start(async {
+        let tempfile = tempfile();
+        let file = File::create(tempfile.path()).await.unwrap();
+
+        let write1 = file
+            .write_at(HELLO, 0)
+            .set_flags(io_uring::squeue::Flags::IO_LINK)
+            .submit();
+        let write2 = file.write_at(HELLO, HELLO.len() as u64).submit();
+
+        let res1 = write1.await;
+        let res2 = write2.await;
+        res1.0.unwrap();
+        res2.0.unwrap();
+
+        let file = std::fs::read(tempfile.path()).unwrap();
+        assert_eq!(file, [HELLO, HELLO].concat());
+    });
+}
+
+#[test]
+fn read_linked() {
+    tokio_uring::start(async {
+        let mut tempfile = tempfile();
+        let file = File::open(tempfile.path()).await.unwrap();
+
+        tempfile.write_all(&[HELLO, HELLO].concat()).unwrap();
+
+        let buf1 = Vec::with_capacity(HELLO.len());
+        let buf2 = Vec::with_capacity(HELLO.len());
+
+        let read1 = file
+            .read_at(buf1, 0)
+            .set_flags(io_uring::squeue::Flags::IO_LINK)
+            .submit();
+        let read2 = file.read_at(buf2, HELLO.len() as u64).submit();
+
+        let res1 = read1.await;
+        let res2 = read2.await;
+
+        res1.0.unwrap();
+        res2.0.unwrap();
+
+        assert_eq!([HELLO, HELLO].concat(), [res1.1, res2.1].concat());
     });
 }
 

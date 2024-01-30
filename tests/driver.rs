@@ -58,6 +58,7 @@ fn complete_ops_on_drop() {
                 },
                 25 * 1024 * 1024,
             )
+            .submit()
             .await
             .0
             .unwrap();

@@ -169,8 +169,7 @@ impl Socket {
     }
 
     pub(crate) async fn read<T: BoundedBufMut>(&self, buf: T) -> crate::BufResult<usize, T> {
-        let op = Op::read_at(&self.fd, buf, 0).unwrap();
-        op.await
+        UnsubmittedOneshot::read_at(&self.fd, buf, 0).submit().await
     }
 
     pub(crate) async fn read_fixed<T>(&self, buf: T) -> crate::BufResult<usize, T>
