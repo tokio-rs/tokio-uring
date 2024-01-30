@@ -4,6 +4,7 @@ use std::marker::PhantomData;
 use std::pin::Pin;
 use std::task::{Context, Poll, Waker};
 
+use io_uring::squeue::Flags;
 use io_uring::{cqueue, squeue};
 
 mod slab_list;
@@ -35,6 +36,12 @@ impl<D, T: OneshotOutputTransform<StoredData = D>> UnsubmittedOneshot<D, T> {
             post_op,
             sqe,
         }
+    }
+
+    /// Set the SQE's flags.
+    pub fn set_flags(mut self, flags: Flags) -> Self {
+        self.sqe = self.sqe.flags(flags);
+        self
     }
 
     /// Submit an operation to the driver for batched entry to the kernel.
