@@ -1,5 +1,5 @@
 use crate::io::write::UnsubmittedWrite;
-use crate::runtime::driver::op::Op;
+use crate::runtime::driver::op::{Op, Submit};
 use crate::{
     buf::fixed::FixedBuf,
     buf::{BoundedBuf, BoundedBufMut, IoBuf, Slice},

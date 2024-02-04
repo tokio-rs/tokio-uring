@@ -7,8 +7,10 @@ use std::task::{Context, Poll, Waker};
 use io_uring::squeue::Flags;
 use io_uring::{cqueue, squeue};
 
+mod link;
 mod slab_list;
 
+pub use link::{Link, LinkedInFlightOneshot};
 use slab::Slab;
 use slab_list::{SlabListEntry, SlabListIndices};
 
@@ -38,29 +40,43 @@ impl<D, T: OneshotOutputTransform<StoredData = D>> UnsubmittedOneshot<D, T> {
         }
     }
 
+    /// Link two UnsubmittedOneshots.
+    pub fn link<D2, T2: OneshotOutputTransform<StoredData = D2>>(
+        self,
+        other: UnsubmittedOneshot<D2, T2>,
+    ) -> Link<UnsubmittedOneshot<D, T>, UnsubmittedOneshot<D2, T2>> {
+        Link::new(self.set_flags(Flags::IO_LINK), other)
+    }
+
+    /// Hard-link two UnsubmittedOneshots.
+    pub fn hard_link<D2, T2: OneshotOutputTransform<StoredData = D2>>(
+        self,
+        other: UnsubmittedOneshot<D2, T2>,
+    ) -> Link<UnsubmittedOneshot<D, T>, UnsubmittedOneshot<D2, T2>> {
+        Link::new(self.set_flags(Flags::IO_HARDLINK), other)
+    }
+
     /// Set the SQE's flags.
-    pub fn set_flags(mut self, flags: Flags) -> Self {
+    pub(crate) fn set_flags(mut self, flags: Flags) -> Self {
         self.sqe = self.sqe.flags(flags);
         self
     }
+}
+
+impl<D, T: OneshotOutputTransform<StoredData = D>> Submit for UnsubmittedOneshot<D, T> {
+    type Output = InFlightOneshot<D, T>;
 
     /// Submit an operation to the driver for batched entry to the kernel.
-    pub fn submit(self) -> InFlightOneshot<D, T> {
+    fn submit(self) -> Self::Output {
         let handle = CONTEXT
             .with(|x| x.handle())
             .expect("Could not submit op; not in runtime context");
 
-        self.submit_with_driver(&handle)
-    }
-
-    fn submit_with_driver(self, driver: &driver::Handle) -> InFlightOneshot<D, T> {
-        let index = driver.submit_op_2(self.sqe);
-
-        let driver = driver.into();
+        let index = handle.submit_op_2(self.sqe);
 
         let inner = InFlightOneshotInner {
             index,
-            driver,
+            driver: (&handle).into(),
             stable_data: self.stable_data,
             post_op: self.post_op,
         };
@@ -119,6 +135,15 @@ impl<D: 'static, T: OneshotOutputTransform<StoredData = D>> Drop for InFlightOne
             }
         }
     }
+}
+
+/// Submit an operation or operations to the driver.
+pub trait Submit {
+    /// The output of the submission with an in-flight operation or linked in-flight operations.
+    type Output;
+
+    /// Submit an operation or linked operations.
+    fn submit(self) -> Self::Output;
 }
 
 /// Transforms the output of a oneshot operation into a more user-friendly format.

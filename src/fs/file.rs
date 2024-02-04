@@ -3,7 +3,7 @@ use crate::buf::{BoundedBuf, BoundedBufMut, IoBuf, IoBufMut, Slice};
 use crate::fs::OpenOptions;
 use crate::io::SharedFd;
 
-use crate::runtime::driver::op::Op;
+use crate::runtime::driver::op::{Op, Submit};
 use crate::{UnsubmittedOneshot, UnsubmittedRead, UnsubmittedWrite};
 use std::fmt;
 use std::io;
@@ -32,6 +32,7 @@ use std::path::Path;
 ///
 /// ```no_run
 /// use tokio_uring::fs::File;
+/// use tokio_uring::Submit;
 ///
 /// fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///     tokio_uring::start(async {
@@ -158,6 +159,7 @@ impl File {
     ///
     /// ```no_run
     /// use tokio_uring::fs::File;
+    /// use tokio_uring::Submit;
     ///
     /// fn main() -> Result<(), Box<dyn std::error::Error>> {
     ///     tokio_uring::start(async {
@@ -518,6 +520,7 @@ impl File {
     ///
     /// ```no_run
     /// use tokio_uring::fs::File;
+    /// use tokio_uring::Submit;
     ///
     /// fn main() -> Result<(), Box<dyn std::error::Error>> {
     ///     tokio_uring::start(async {
@@ -767,6 +770,7 @@ impl File {
     ///
     /// ```no_run
     /// use tokio_uring::fs::File;
+    /// use tokio_uring::Submit;
     ///
     /// fn main() -> Result<(), Box<dyn std::error::Error>> {
     ///     tokio_uring::start(async {
@@ -804,6 +808,7 @@ impl File {
     ///
     /// ```no_run
     /// use tokio_uring::fs::File;
+    /// use tokio_uring::Submit;
     ///
     /// fn main() -> Result<(), Box<dyn std::error::Error>> {
     ///     tokio_uring::start(async {

@@ -3,7 +3,7 @@ use std::{
     {env, io},
 };
 
-use tokio_uring::fs::File;
+use tokio_uring::{fs::File, Submit};
 
 fn main() {
     // The file to `cat` is passed as a CLI argument

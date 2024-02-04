@@ -7,9 +7,9 @@ use libc;
 
 use tempfile::NamedTempFile;
 
-use tokio_uring::buf::fixed::FixedBufRegistry;
 use tokio_uring::buf::{BoundedBuf, BoundedBufMut};
 use tokio_uring::fs::File;
+use tokio_uring::{buf::fixed::FixedBufRegistry, Submit};
 
 #[path = "../src/future.rs"]
 #[allow(warnings)]
@@ -316,28 +316,6 @@ fn basic_fallocate() {
 }
 
 #[test]
-fn write_linked() {
-    tokio_uring::start(async {
-        let tempfile = tempfile();
-        let file = File::create(tempfile.path()).await.unwrap();
-
-        let write1 = file
-            .write_at(HELLO, 0)
-            .set_flags(io_uring::squeue::Flags::IO_LINK)
-            .submit();
-        let write2 = file.write_at(HELLO, HELLO.len() as u64).submit();
-
-        let res1 = write1.await;
-        let res2 = write2.await;
-        res1.0.unwrap();
-        res2.0.unwrap();
-
-        let file = std::fs::read(tempfile.path()).unwrap();
-        assert_eq!(file, [HELLO, HELLO].concat());
-    });
-}
-
-#[test]
 fn read_linked() {
     tokio_uring::start(async {
         let mut tempfile = tempfile();
@@ -348,19 +326,40 @@ fn read_linked() {
         let buf1 = Vec::with_capacity(HELLO.len());
         let buf2 = Vec::with_capacity(HELLO.len());
 
-        let read1 = file
-            .read_at(buf1, 0)
-            .set_flags(io_uring::squeue::Flags::IO_LINK)
-            .submit();
-        let read2 = file.read_at(buf2, HELLO.len() as u64).submit();
+        let read1 = file.read_at(buf1, 0);
+        let read2 = file.read_at(buf2, HELLO.len() as u64);
 
-        let res1 = read1.await;
-        let res2 = read2.await;
+        let future1 = read1.link(read2).submit();
+
+        let (res1, future2) = future1.await;
+        let res2 = future2.await;
 
         res1.0.unwrap();
         res2.0.unwrap();
 
         assert_eq!([HELLO, HELLO].concat(), [res1.1, res2.1].concat());
+    });
+}
+
+#[test]
+fn write_linked() {
+    tokio_uring::start(async {
+        let tempfile = tempfile();
+        let file = File::create(tempfile.path()).await.unwrap();
+
+        let write1 = file.write_at(HELLO, 0);
+        let write2 = file.write_at(HELLO, HELLO.len() as u64);
+
+        let future1 = write1.link(write2).submit();
+
+        let (res1, future2) = future1.await;
+        let res2 = future2.await;
+
+        res1.0.unwrap();
+        res2.0.unwrap();
+
+        let file = std::fs::read(tempfile.path()).unwrap();
+        assert_eq!(file, [HELLO, HELLO].concat());
     });
 }
 

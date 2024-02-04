@@ -1,6 +1,6 @@
 use tempfile::NamedTempFile;
 
-use tokio_uring::{buf::IoBuf, fs::File};
+use tokio_uring::{buf::IoBuf, fs::File, Submit};
 
 #[path = "../src/future.rs"]
 #[allow(warnings)]
