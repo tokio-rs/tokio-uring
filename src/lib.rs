@@ -284,7 +284,7 @@ impl<T> std::error::Error for Error<T> {
 }
 
 impl<B> Error<B> {
-    /// Applies a function to the contained buffer, returning a new `BufError`.
+    /// Applies a function to the contained buffer, returning a new `Error`.
     pub fn map<F, U>(self, f: F) -> Error<U>
     where
         F: FnOnce(B) -> U,
