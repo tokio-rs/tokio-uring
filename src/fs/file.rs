@@ -40,8 +40,7 @@ use std::path::Path;
 ///         let file = File::create("hello.txt").await?;
 ///
 ///         // Write some data
-///         let (res, buf) = file.write_at(&b"hello world"[..], 0).submit().await;
-///         let n = res?;
+///         let (n, buf) = file.write_at(&b"hello world"[..], 0).submit().await?;
 ///
 ///         println!("wrote {} bytes", n);
 ///
@@ -166,8 +165,7 @@ impl File {
     ///         let buffer = vec![0; 10];
     ///
     ///         // Read up to 10 bytes
-    ///         let (res, buffer) = f.read_at(buffer, 0).await;
-    ///         let n = res?;
+    ///         let (n, buffer) = f.read_at(buffer, 0).await?;
     ///
     ///         println!("The bytes: {:?}", &buffer[..n]);
     ///
@@ -217,8 +215,7 @@ impl File {
     ///         let buffers = vec![Vec::<u8>::with_capacity(10), Vec::<u8>::with_capacity(10)];
     ///
     ///         // Read up to 20 bytes
-    ///         let (res, buffer) = f.readv_at(buffers, 0).await;
-    ///         let n = res?;
+    ///         let (n, _) = f.readv_at(buffers, 0).await?;
     ///
     ///         println!("Read {} bytes", n);
     ///
@@ -272,8 +269,7 @@ impl File {
     ///
     ///         // Writes some prefix of the byte string, not necessarily all of it.
     ///         let bufs = vec!["some".to_owned().into_bytes(), " bytes".to_owned().into_bytes()];
-    ///         let (res, _) = file.writev_at(bufs, 0).await;
-    ///         let n = res?;
+    ///         let (n, _) = file.writev_at(bufs, 0).await?;
     ///
     ///         println!("wrote {} bytes", n);
     ///
@@ -380,8 +376,7 @@ impl File {
     ///         let buffer = Vec::with_capacity(10);
     ///
     ///         // Read up to 10 bytes
-    ///         let (res, buffer) = f.read_exact_at(buffer, 0).await;
-    ///         res?;
+    ///         let (_, buffer) = f.read_exact_at(buffer, 0).await?;
     ///
     ///         println!("The bytes: {:?}", buffer);
     ///
@@ -468,8 +463,7 @@ impl File {
     ///     let buffer = registry.check_out(2).unwrap();
     ///
     ///     // Read up to 10 bytes
-    ///     let (res, buffer) = f.read_fixed_at(buffer, 0).await;
-    ///     let n = res?;
+    ///     let (n, buffer) = f.read_fixed_at(buffer, 0).await?;
     ///
     ///     println!("The bytes: {:?}", &buffer[..n]);
     ///
@@ -521,8 +515,7 @@ impl File {
     ///         let file = File::create("foo.txt").await?;
     ///
     ///         // Writes some prefix of the byte string, not necessarily all of it.
-    ///         let (res, _) = file.write_at(&b"some bytes"[..], 0).submit().await;
-    ///         let n = res?;
+    ///         let (n, _) = file.write_at(&b"some bytes"[..], 0).submit().await?;
     ///
     ///         println!("wrote {} bytes", n);
     ///
@@ -566,8 +559,7 @@ impl File {
     ///         let file = File::create("foo.txt").await?;
     ///
     ///         // Writes some prefix of the byte string, not necessarily all of it.
-    ///         let (res, _) = file.write_all_at(&b"some bytes"[..], 0).await;
-    ///         res?;
+    ///         file.write_all_at(&b"some bytes"[..], 0).await?;
     ///
     ///         println!("wrote all bytes");
     ///
@@ -655,8 +647,7 @@ impl File {
     ///
     ///     // Writes some prefix of the buffer content,
     ///     // not necessarily all of it.
-    ///     let (res, _) = file.write_fixed_at(buffer, 0).await;
-    ///     let n = res?;
+    ///     let (n, _) = file.write_fixed_at(buffer, 0).await?;
     ///
     ///     println!("wrote {} bytes", n);
     ///
@@ -756,8 +747,7 @@ impl File {
     /// fn main() -> Result<(), Box<dyn std::error::Error>> {
     ///     tokio_uring::start(async {
     ///         let f = File::create("foo.txt").await?;
-    ///         let (res, buf) = f.write_at(&b"Hello, world!"[..], 0).submit().await;
-    ///         let n = res?;
+    ///         f.write_at(&b"Hello, world!"[..], 0).submit().await?;
     ///
     ///         f.sync_all().await?;
     ///
@@ -793,8 +783,7 @@ impl File {
     /// fn main() -> Result<(), Box<dyn std::error::Error>> {
     ///     tokio_uring::start(async {
     ///         let f = File::create("foo.txt").await?;
-    ///         let (res, buf) = f.write_at(&b"Hello, world!"[..], 0).submit().await;
-    ///         let n = res?;
+    ///         f.write_at(&b"Hello, world!"[..], 0).submit().await?;
     ///
     ///         f.sync_data().await?;
     ///

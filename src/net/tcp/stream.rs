@@ -28,8 +28,7 @@ use crate::{
 ///         let mut stream = TcpStream::connect("127.0.0.1:8080".parse().unwrap()).await?;
 ///
 ///         // Write some data.
-///         let (result, _) = stream.write(b"hello world!".as_slice()).submit().await;
-///         result.unwrap();
+///         stream.write(b"hello world!".as_slice()).submit().await.unwrap();
 ///
 ///         Ok(())
 ///     })
@@ -137,15 +136,13 @@ impl TcpStream {
     ///             let mut n = 0;
     ///             let mut buf = vec![0u8; 4096];
     ///             loop {
-    ///                 let (result, nbuf) = stream.read(buf).await;
+    ///                 let (read, nbuf) = stream.read(buf).await.unwrap();
     ///                 buf = nbuf;
-    ///                 let read = result.unwrap();
     ///                 if read == 0 {
     ///                     break;
     ///                 }
     ///
-    ///                 let (res, slice) = stream.write_all(buf.slice(..read)).await;
-    ///                 let _ = res.unwrap();
+    ///                 let (_, slice) = stream.write_all(buf.slice(..read)).await.unwrap();
     ///                 buf = slice.into_inner();
     ///                 n += read;
     ///             }

@@ -20,8 +20,7 @@
 //!         // Read some data, the buffer is passed by ownership and
 //!         // submitted to the kernel. When the operation completes,
 //!         // we get the buffer back.
-//!         let (res, buf) = file.read_at(buf, 0).await;
-//!         let n = res?;
+//!         let (n, buf) = file.read_at(buf, 0).await?;
 //!
 //!         // Display the contents
 //!         println!("{:?}", &buf[..n]);
@@ -116,8 +115,7 @@ use std::future::Future;
 ///         // Read some data, the buffer is passed by ownership and
 ///         // submitted to the kernel. When the operation completes,
 ///         // we get the buffer back.
-///         let (res, buf) = file.read_at(buf, 0).await;
-///         let n = res?;
+///         let (n, buf) = file.read_at(buf, 0).await?;
 ///
 ///         // Display the contents
 ///         println!("{:?}", &buf[..n]);
@@ -308,7 +306,7 @@ impl<T, B, U> sealed::MapResultBuf<B, U> for Result<T, B> {
     fn map_buf(self, f: impl FnOnce(B) -> U) -> Self::Output {
         match self {
             Ok((r, b)) => Ok((r, f(b))),
-            Err(e) => Err(e.map(|e| f(e))),
+            Err(e) => Err(e.map(f)),
         }
     }
 }

@@ -43,22 +43,18 @@ use std::{
 ///         let buf = vec![0; 32];
 ///
 ///         // write data
-///         let (result, _) = socket.write(b"hello world".as_slice()).submit().await;
-///         result.unwrap();
+///         socket.write(b"hello world".as_slice()).submit().await.unwrap();
 ///
 ///         // read data
-///         let (result, buf) = other_socket.read(buf).await;
-///         let n_bytes = result.unwrap();
+///         let (n_bytes, buf) = other_socket.read(buf).await.unwrap();
 ///
 ///         assert_eq!(b"hello world", &buf[..n_bytes]);
 ///
 ///         // write data using send on connected socket
-///         let (result, _) = socket.send(b"hello world via send".as_slice()).await;
-///         result.unwrap();
+///         socket.send(b"hello world via send".as_slice()).await.unwrap();
 ///
 ///         // read data
-///         let (result, buf) = other_socket.read(buf).await;
-///         let n_bytes = result.unwrap();
+///         let (n_bytes, buf) = other_socket.read(buf).await.unwrap();
 ///
 ///         assert_eq!(b"hello world via send", &buf[..n_bytes]);
 ///
@@ -83,12 +79,10 @@ use std::{
 ///         let buf = vec![0; 32];
 ///
 ///         // write data
-///         let (result, _) = socket.send_to(b"hello world".as_slice(), second_addr).await;
-///         result.unwrap();
+///         socket.send_to(b"hello world".as_slice(), second_addr).await.unwrap();
 ///
 ///         // read data
-///         let (result, buf) = other_socket.recv_from(buf).await;
-///         let (n_bytes, addr) = result.unwrap();
+///         let ((n_bytes, addr), buf) = other_socket.recv_from(buf).await.unwrap();
 ///
 ///         assert_eq!(addr, first_addr);
 ///         assert_eq!(b"hello world", &buf[..n_bytes]);
@@ -172,14 +166,13 @@ impl UdpSocket {
     ///         let buf = vec![0; 32];
     ///
     ///         // write data
-    ///         let (result, _) = std_socket
+    ///         std_socket
     ///             .send_to(b"hello world".as_slice(), second_addr)
-    ///             .await;
-    ///         result.unwrap();
+    ///             .await
+    ///             .unwrap();
     ///
     ///         // read data
-    ///         let (result, buf) = other_socket.recv_from(buf).await;
-    ///         let (n_bytes, addr) = result.unwrap();
+    ///         let ((n_bytes, addr), buf) = other_socket.recv_from(buf).await.unwrap();
     ///
     ///         assert_eq!(addr, std_addr);
     ///         assert_eq!(b"hello world", &buf[..n_bytes]);

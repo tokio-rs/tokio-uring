@@ -28,8 +28,7 @@ use std::{
 ///         let mut stream = UnixStream::connect("/tmp/tokio-uring-unix-test.sock").await?;
 ///
 ///         // Write some data.
-///         let (result, _) = stream.write(b"hello world!".as_slice()).submit().await;
-///         result.unwrap();
+///         stream.write(b"hello world!".as_slice()).submit().await.unwrap();
 ///
 ///         Ok(())
 ///     })
