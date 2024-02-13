@@ -1,5 +1,5 @@
 use crate::buf::BoundedBufMut;
-use crate::BufResult;
+use crate::Result;
 
 use crate::io::SharedFd;
 use crate::runtime::driver::op::{Completable, CqeResult, Op};
@@ -62,7 +62,7 @@ impl<T> Completable for Readv<T>
 where
     T: BoundedBufMut,
 {
-    type Output = BufResult<usize, Vec<T>>;
+    type Output = Result<usize, Vec<T>>;
 
     fn complete(self, cqe: CqeResult) -> Self::Output {
         // Convert the operation result to `usize`
@@ -87,6 +87,9 @@ where
             assert_eq!(count, 0);
         }
 
-        (res, bufs)
+        match res {
+            Ok(n) => Ok((n, bufs)),
+            Err(e) => Err(crate::Error(e, bufs)),
+        }
     }
 }

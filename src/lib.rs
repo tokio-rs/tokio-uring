@@ -84,7 +84,6 @@ pub use runtime::spawn;
 pub use runtime::Runtime;
 
 use crate::runtime::driver::op::Op;
-use std::error::Error;
 use std::fmt::{Debug, Display};
 use std::future::Future;
 
@@ -264,32 +263,55 @@ impl Builder {
 ///     })
 /// }
 /// ```
-/// A specialized `Error` type for `io-uring` operations with buffers.
-#[derive(Debug)]
-pub struct BufError<B>(pub std::io::Error, pub B);
+pub type Result<T, B> = std::result::Result<(T, B), Error<B>>;
 
-impl<T> Display for BufError<T> {
+/// A specialized `Error` type for `io-uring` operations with buffers.
+pub struct Error<B>(pub std::io::Error, pub B);
+impl<T> Debug for Error<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         Debug::fmt(&self.0, f)
     }
 }
 
-impl<T: Debug> Error for BufError<T> {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
+impl<T> Display for Error<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Display::fmt(&self.0, f)
+    }
+}
+
+impl<T> std::error::Error for Error<T> {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         Some(&self.0)
     }
 }
 
-impl<B> BufError<B> {
+impl<B> Error<B> {
     /// Applies a function to the contained buffer, returning a new `BufError`.
-    pub fn map<F, U>(self, f: F) -> BufError<U>
+    pub fn map<F, U>(self, f: F) -> Error<U>
     where
         F: FnOnce(B) -> U,
     {
-        BufError(self.0, f(self.1))
+        Error(self.0, f(self.1))
     }
 }
 
+mod sealed {
+    /// A Specialized trait for mapping over the buffer in both sides of a Result<T,B>
+    pub trait MapResultBuf<B, U> {
+        type Output;
+        fn map_buf(self, f: impl FnOnce(B) -> U) -> Self::Output;
+    }
+}
+
+impl<T, B, U> sealed::MapResultBuf<B, U> for Result<T, B> {
+    type Output = Result<T, U>;
+    fn map_buf(self, f: impl FnOnce(B) -> U) -> Self::Output {
+        match self {
+            Ok((r, b)) => Ok((r, f(b))),
+            Err(e) => Err(e.map(|e| f(e))),
+        }
+    }
+}
 
 /// The simplest possible operation. Just posts a completion event, nothing else.
 ///

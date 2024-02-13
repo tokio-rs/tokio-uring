@@ -2,7 +2,7 @@ use crate::buf::fixed::FixedBuf;
 use crate::buf::BoundedBufMut;
 use crate::io::SharedFd;
 use crate::runtime::driver::op::{self, Completable, Op};
-use crate::BufResult;
+use crate::Result;
 
 use crate::runtime::CONTEXT;
 use std::io;
@@ -52,13 +52,13 @@ impl<T> Completable for ReadFixed<T>
 where
     T: BoundedBufMut<BufMut = FixedBuf>,
 {
-    type Output = BufResult<usize, T>;
+    type Output = Result<usize, T>;
 
     fn complete(self, cqe: op::CqeResult) -> Self::Output {
-        // Convert the operation result to `usize`
-        let res = cqe.result.map(|v| v as usize);
         // Recover the buffer
         let mut buf = self.buf;
+        // Convert the operation result to `usize`
+        let res = cqe.result.map(|v| v as usize);
 
         // If the operation was successful, advance the initialized cursor.
         if let Ok(n) = res {
@@ -68,6 +68,9 @@ where
             }
         }
 
-        (res, buf)
+        match res {
+            Ok(n) => Ok((n, buf)),
+            Err(e) => Err(crate::Error(e, buf)),
+        }
     }
 }

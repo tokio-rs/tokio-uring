@@ -15,12 +15,11 @@ fn main() {
 
         let buf = vec![0u8; 128];
 
-        let (result, mut buf) = socket.recv_from(buf).await;
-        let (read, socket_addr) = result.unwrap();
+        let ((read, socket_addr), mut buf) = socket.recv_from(buf).await.unwrap();
         buf.resize(read, 0);
         println!("received from {}: {:?}", socket_addr, &buf[..]);
 
-        let (result, _buf) = socket.send_to(buf, socket_addr).await;
-        println!("sent to {}: {}", socket_addr, result.unwrap());
+        let (n, _buf) = socket.send_to(buf, socket_addr).await.unwrap();
+        println!("sent to {}: {}", socket_addr, n);
     });
 }

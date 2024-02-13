@@ -1,4 +1,4 @@
-use crate::{buf::BoundedBuf, io::SharedFd, BufResult, OneshotOutputTransform, UnsubmittedOneshot};
+use crate::{buf::BoundedBuf, io::SharedFd, OneshotOutputTransform, Result, UnsubmittedOneshot};
 use io_uring::cqueue::Entry;
 use std::io;
 use std::marker::PhantomData;
@@ -21,7 +21,7 @@ pub struct WriteTransform<T> {
 }
 
 impl<T> OneshotOutputTransform for WriteTransform<T> {
-    type Output = BufResult<usize, T>;
+    type Output = Result<usize, T>;
     type StoredData = WriteData<T>;
 
     fn transform_oneshot_output(self, data: Self::StoredData, cqe: Entry) -> Self::Output {
@@ -31,7 +31,10 @@ impl<T> OneshotOutputTransform for WriteTransform<T> {
             Err(io::Error::from_raw_os_error(-cqe.result()))
         };
 
-        (res, data.buf)
+        match res {
+            Ok(n) => Ok((n, data.buf)),
+            Err(e) => Err(crate::Error(e, data.buf)),
+        }
     }
 }
 

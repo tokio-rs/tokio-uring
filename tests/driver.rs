@@ -59,7 +59,6 @@ fn complete_ops_on_drop() {
                 25 * 1024 * 1024,
             )
             .await
-            .0
             .unwrap();
         })
         .await;
@@ -86,7 +85,6 @@ fn too_many_submissions() {
                 file.write_at(b"hello world".to_vec(), 0)
                     .submit()
                     .await
-                    .0
                     .unwrap();
             })
             .await;

@@ -2,7 +2,7 @@ use crate::buf::fixed::FixedBuf;
 use crate::buf::BoundedBuf;
 use crate::io::SharedFd;
 use crate::runtime::driver::op::{self, Completable, Op};
-use crate::BufResult;
+use crate::Result;
 
 use crate::runtime::CONTEXT;
 use std::io;
@@ -48,7 +48,7 @@ where
 }
 
 impl<T> Completable for WriteFixed<T> {
-    type Output = BufResult<usize, T>;
+    type Output = Result<usize, T>;
 
     fn complete(self, cqe: op::CqeResult) -> Self::Output {
         // Convert the operation result to `usize`
@@ -56,6 +56,9 @@ impl<T> Completable for WriteFixed<T> {
         // Recover the buffer
         let buf = self.buf;
 
-        (res, buf)
+        match res {
+            Ok(n) => Ok((n, buf)),
+            Err(e) => Err(crate::Error(e, buf)),
+        }
     }
 }
