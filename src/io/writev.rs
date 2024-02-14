@@ -1,5 +1,6 @@
 use crate::runtime::driver::op::{Completable, CqeResult, Op};
 use crate::runtime::CONTEXT;
+use crate::sealed::WithBuffer;
 use crate::{buf::BoundedBuf, io::SharedFd, Result};
 use libc::iovec;
 use std::io;
@@ -61,14 +62,6 @@ where
     type Output = Result<usize, Vec<T>>;
 
     fn complete(self, cqe: CqeResult) -> Self::Output {
-        // Convert the operation result to `usize`
-        let res = cqe.result.map(|v| v as usize);
-        // Recover the buffer
-        let buf = self.bufs;
-
-        match res {
-            Ok(n) => Ok((n, buf)),
-            Err(e) => Err(crate::Error(e, buf)),
-        }
+        cqe.result.map(|v| v as usize).with_buffer(self.bufs)
     }
 }

@@ -2,6 +2,7 @@ use crate::buf::BoundedBuf;
 use crate::io::SharedFd;
 use crate::runtime::driver::op::{Completable, CqeResult, Op};
 use crate::runtime::CONTEXT;
+use crate::sealed::WithBuffer;
 use crate::Result;
 use socket2::SockAddr;
 use std::io::IoSlice;
@@ -73,14 +74,6 @@ impl<T> Completable for SendTo<T> {
     type Output = Result<usize, T>;
 
     fn complete(self, cqe: CqeResult) -> Self::Output {
-        // Convert the operation result to `usize`
-        let res = cqe.result.map(|v| v as usize);
-        // Recover the buffer
-        let buf = self.buf;
-
-        match res {
-            Ok(n) => Ok((n, buf)),
-            Err(e) => Err(crate::Error(e, buf)),
-        }
+        cqe.result.map(|v| v as usize).with_buffer(self.buf)
     }
 }

@@ -4,7 +4,7 @@ use crate::fs::OpenOptions;
 use crate::io::SharedFd;
 
 use crate::runtime::driver::op::Op;
-use crate::sealed::MapResultBuf;
+use crate::sealed::MapResult;
 use crate::{UnsubmittedOneshot, UnsubmittedWrite};
 use std::fmt;
 use std::io;

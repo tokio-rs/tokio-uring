@@ -1,5 +1,6 @@
 use crate::runtime::driver::op::{Completable, CqeResult, Op};
 use crate::runtime::CONTEXT;
+use crate::sealed::WithBuffer;
 use crate::{buf::BoundedBufMut, io::SharedFd, Result};
 use socket2::SockAddr;
 use std::{
@@ -78,9 +79,6 @@ where
             (n, socket_addr)
         });
 
-        match res {
-            Ok(n) => Ok((n, buf)),
-            Err(e) => Err(crate::Error(e, buf)),
-        }
+        res.with_buffer(buf)
     }
 }

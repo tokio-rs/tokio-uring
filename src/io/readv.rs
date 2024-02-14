@@ -1,4 +1,5 @@
 use crate::buf::BoundedBufMut;
+use crate::sealed::WithBuffer;
 use crate::Result;
 
 use crate::io::SharedFd;
@@ -87,9 +88,6 @@ where
             assert_eq!(count, 0);
         }
 
-        match res {
-            Ok(n) => Ok((n, bufs)),
-            Err(e) => Err(crate::Error(e, bufs)),
-        }
+        res.with_buffer(bufs)
     }
 }

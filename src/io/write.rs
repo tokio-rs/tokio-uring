@@ -1,3 +1,4 @@
+use crate::sealed::WithBuffer;
 use crate::{buf::BoundedBuf, io::SharedFd, OneshotOutputTransform, Result, UnsubmittedOneshot};
 use io_uring::cqueue::Entry;
 use std::io;
@@ -31,10 +32,7 @@ impl<T> OneshotOutputTransform for WriteTransform<T> {
             Err(io::Error::from_raw_os_error(-cqe.result()))
         };
 
-        match res {
-            Ok(n) => Ok((n, data.buf)),
-            Err(e) => Err(crate::Error(e, data.buf)),
-        }
+        res.with_buffer(data.buf)
     }
 }
 
