@@ -1,6 +1,6 @@
 use crate::buf::BoundedBufMut;
-use crate::sealed::WithBuffer;
 use crate::Result;
+use crate::WithBuffer;
 
 use crate::io::SharedFd;
 use crate::runtime::driver::op::{Completable, CqeResult, Op};

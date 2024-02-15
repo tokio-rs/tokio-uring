@@ -61,21 +61,26 @@ impl<B> Error<B> {
     }
 }
 
-pub(super) mod sealed {
-    /// A Specialized trait for mapping over the buffer in both sides of a Result<T,B>
-    pub trait MapResult<B, U> {
-        type Output;
-        fn map_buf(self, f: impl FnOnce(B) -> U) -> Self::Output;
-    }
+mod private {
+    pub trait Sealed {}
+}
+impl<T, B> private::Sealed for std::result::Result<T, B> {}
 
-    /// Adapter trait to convert result::Result<T, E> to crate::Result<T, B> where E can be
-    /// converted to std::io::Error.
-    pub trait WithBuffer<T, B>: Sized {
-        fn with_buffer(self, buf: B) -> T;
-    }
+/// A Specialized trait for mapping over the buffer in both sides of a Result<T,B>
+pub trait MapResult<B, U>: private::Sealed {
+    /// The result type after applying the map operation
+    type Output;
+    /// Apply a function over the buffer on both sides of the result
+    fn map_buf(self, f: impl FnOnce(B) -> U) -> Self::Output;
 }
 
-impl<T, B, U> sealed::MapResult<B, U> for Result<T, B> {
+/// Adapter trait to convert result::Result<T, E> to crate::Result<T, B> where E can be
+/// converted to std::io::Error.
+pub trait WithBuffer<T, B>: private::Sealed {
+    /// Insert a buffer into each side of the result
+    fn with_buffer(self, buf: B) -> T;
+}
+impl<T, B, U> MapResult<B, U> for Result<T, B> {
     type Output = Result<T, U>;
     fn map_buf(self, f: impl FnOnce(B) -> U) -> Self::Output {
         match self {
@@ -86,7 +91,7 @@ impl<T, B, U> sealed::MapResult<B, U> for Result<T, B> {
 }
 
 /// Adaptor implementation for Result<T, E> to Result<T, B>.
-impl<T, B, E> sealed::WithBuffer<crate::Result<T, B>, B> for std::result::Result<T, E>
+impl<T, B, E> WithBuffer<crate::Result<T, B>, B> for std::result::Result<T, E>
 where
     E: Into<std::io::Error>,
 {

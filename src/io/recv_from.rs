@@ -1,6 +1,6 @@
 use crate::runtime::driver::op::{Completable, CqeResult, Op};
 use crate::runtime::CONTEXT;
-use crate::sealed::WithBuffer;
+use crate::WithBuffer;
 use crate::{buf::BoundedBufMut, io::SharedFd, Result};
 use socket2::SockAddr;
 use std::{
