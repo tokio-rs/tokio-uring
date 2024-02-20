@@ -16,6 +16,7 @@ use std::{
 /// ```
 /// use tokio_uring::net::TcpListener;
 /// use tokio_uring::net::TcpStream;
+/// use tokio_uring::Submit;
 ///
 /// let listener = TcpListener::bind("127.0.0.1:2345".parse().unwrap()).unwrap();
 ///

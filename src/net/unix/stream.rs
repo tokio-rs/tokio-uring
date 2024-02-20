@@ -20,6 +20,7 @@ use std::{
 ///
 /// ```no_run
 /// use tokio_uring::net::UnixStream;
+/// use tokio_uring::Submit;
 /// use std::net::ToSocketAddrs;
 ///
 /// fn main() -> std::io::Result<()> {

@@ -10,6 +10,7 @@
 //!
 //! ```no_run
 //! use tokio_uring::fs::File;
+//! use tokio_uring::Submit;
 //!
 //! fn main() -> Result<(), Box<dyn std::error::Error>> {
 //!     tokio_uring::start(async {
@@ -20,7 +21,7 @@
 //!         // Read some data, the buffer is passed by ownership and
 //!         // submitted to the kernel. When the operation completes,
 //!         // we get the buffer back.
-//!         let (res, buf) = file.read_at(buf, 0).await;
+//!         let (res, buf) = file.read_at(buf, 0).submit().await;
 //!         let n = res?;
 //!
 //!         // Display the contents
@@ -78,8 +79,12 @@ pub mod buf;
 pub mod fs;
 pub mod net;
 
+pub use io::read::*;
 pub use io::write::*;
-pub use runtime::driver::op::{InFlightOneshot, OneshotOutputTransform, UnsubmittedOneshot};
+pub use runtime::driver::op::{
+    InFlightOneshot, Link, LinkedInFlightOneshot, OneshotOutputTransform, Submit,
+    UnsubmittedOneshot,
+};
 pub use runtime::spawn;
 pub use runtime::Runtime;
 
@@ -105,6 +110,7 @@ use std::future::Future;
 ///
 /// ```no_run
 /// use tokio_uring::fs::File;
+/// use tokio_uring::Submit;
 ///
 /// fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///     tokio_uring::start(async {
@@ -115,7 +121,7 @@ use std::future::Future;
 ///         // Read some data, the buffer is passed by ownership and
 ///         // submitted to the kernel. When the operation completes,
 ///         // we get the buffer back.
-///         let (res, buf) = file.read_at(buf, 0).await;
+///         let (res, buf) = file.read_at(buf, 0).submit().await;
 ///         let n = res?;
 ///
 ///         // Display the contents
@@ -244,6 +250,7 @@ impl Builder {
 ///
 /// ```no_run
 /// use tokio_uring::fs::File;
+/// use tokio_uring::Submit;
 ///
 /// fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///     tokio_uring::start(async {
@@ -254,7 +261,7 @@ impl Builder {
 ///         // Read some data, the buffer is passed by ownership and
 ///         // submitted to the kernel. When the operation completes,
 ///         // we get the buffer back.
-///         let (res, buf) = file.read_at(buf, 0).await;
+///         let (res, buf) = file.read_at(buf, 0).submit().await;
 ///         let n = res?;
 ///
 ///         // Display the contents

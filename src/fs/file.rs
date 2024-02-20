@@ -3,8 +3,8 @@ use crate::buf::{BoundedBuf, BoundedBufMut, IoBuf, IoBufMut, Slice};
 use crate::fs::OpenOptions;
 use crate::io::SharedFd;
 
-use crate::runtime::driver::op::Op;
-use crate::{UnsubmittedOneshot, UnsubmittedWrite};
+use crate::runtime::driver::op::{Op, Submit};
+use crate::{UnsubmittedOneshot, UnsubmittedRead, UnsubmittedWrite};
 use std::fmt;
 use std::io;
 use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
@@ -32,6 +32,7 @@ use std::path::Path;
 ///
 /// ```no_run
 /// use tokio_uring::fs::File;
+/// use tokio_uring::Submit;
 ///
 /// fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///     tokio_uring::start(async {
@@ -158,6 +159,7 @@ impl File {
     ///
     /// ```no_run
     /// use tokio_uring::fs::File;
+    /// use tokio_uring::Submit;
     ///
     /// fn main() -> Result<(), Box<dyn std::error::Error>> {
     ///     tokio_uring::start(async {
@@ -165,7 +167,7 @@ impl File {
     ///         let buffer = vec![0; 10];
     ///
     ///         // Read up to 10 bytes
-    ///         let (res, buffer) = f.read_at(buffer, 0).await;
+    ///         let (res, buffer) = f.read_at(buffer, 0).submit().await;
     ///         let n = res?;
     ///
     ///         println!("The bytes: {:?}", &buffer[..n]);
@@ -176,10 +178,8 @@ impl File {
     ///     })
     /// }
     /// ```
-    pub async fn read_at<T: BoundedBufMut>(&self, buf: T, pos: u64) -> crate::BufResult<usize, T> {
-        // Submit the read operation
-        let op = Op::read_at(&self.fd, buf, pos).unwrap();
-        op.await
+    pub fn read_at<T: BoundedBufMut>(&self, buf: T, pos: u64) -> UnsubmittedRead<T> {
+        UnsubmittedOneshot::read_at(&self.fd, buf, pos)
     }
 
     /// Read some bytes at the specified offset from the file into the specified
@@ -417,7 +417,7 @@ impl File {
         }
 
         while buf.bytes_total() != 0 {
-            let (res, slice) = self.read_at(buf, pos).await;
+            let (res, slice) = self.read_at(buf, pos).submit().await;
             match res {
                 Ok(0) => {
                     return (
@@ -520,6 +520,7 @@ impl File {
     ///
     /// ```no_run
     /// use tokio_uring::fs::File;
+    /// use tokio_uring::Submit;
     ///
     /// fn main() -> Result<(), Box<dyn std::error::Error>> {
     ///     tokio_uring::start(async {
@@ -769,6 +770,7 @@ impl File {
     ///
     /// ```no_run
     /// use tokio_uring::fs::File;
+    /// use tokio_uring::Submit;
     ///
     /// fn main() -> Result<(), Box<dyn std::error::Error>> {
     ///     tokio_uring::start(async {
@@ -806,6 +808,7 @@ impl File {
     ///
     /// ```no_run
     /// use tokio_uring::fs::File;
+    /// use tokio_uring::Submit;
     ///
     /// fn main() -> Result<(), Box<dyn std::error::Error>> {
     ///     tokio_uring::start(async {
