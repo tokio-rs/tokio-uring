@@ -68,9 +68,6 @@ where
             }
         }
 
-        match res {
-            Ok(n) => Ok((n, buf)),
-            Err(e) => Err(crate::Error(e, buf)),
-        }
+        res.with_buffer(buf)
     }
 }
