@@ -3,6 +3,7 @@ use crate::buf::BoundedBufMut;
 use crate::io::SharedFd;
 use crate::runtime::driver::op::{self, Completable, Op};
 use crate::Result;
+use crate::WithBuffer;
 
 use crate::runtime::CONTEXT;
 use std::io;
