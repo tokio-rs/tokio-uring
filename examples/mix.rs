@@ -34,15 +34,14 @@ fn main() {
 
                 loop {
                     // Read a chunk
-                    let (res, b) = file.read_at(buf, pos).await;
-                    let n = res.unwrap();
+                    let (n, b) = file.read_at(buf, pos).await.unwrap();
 
                     if n == 0 {
                         break;
                     }
 
-                    let (res, b) = socket.write(b).submit().await;
-                    pos += res.unwrap() as u64;
+                    let (n, b) = socket.write(b).submit().await.unwrap();
+                    pos += n as u64;
 
                     buf = b;
                 }

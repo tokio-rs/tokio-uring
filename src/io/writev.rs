@@ -1,6 +1,7 @@
 use crate::runtime::driver::op::{Completable, CqeResult, Op};
 use crate::runtime::CONTEXT;
-use crate::{buf::BoundedBuf, io::SharedFd, BufResult};
+use crate::WithBuffer;
+use crate::{buf::BoundedBuf, io::SharedFd, Result};
 use libc::iovec;
 use std::io;
 
@@ -58,14 +59,9 @@ impl<T> Completable for Writev<T>
 where
     T: BoundedBuf,
 {
-    type Output = BufResult<usize, Vec<T>>;
+    type Output = Result<usize, Vec<T>>;
 
     fn complete(self, cqe: CqeResult) -> Self::Output {
-        // Convert the operation result to `usize`
-        let res = cqe.result.map(|v| v as usize);
-        // Recover the buffer
-        let buf = self.bufs;
-
-        (res, buf)
+        cqe.result.map(|v| v as usize).with_buffer(self.bufs)
     }
 }

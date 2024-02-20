@@ -30,9 +30,9 @@ use std::{io, path::Path};
 ///     let tx = UnixStream::connect(&sock_file).await.unwrap();
 ///     let rx = rx_ch.await.expect("The spawned task expected to send a UnixStream");
 ///
-///     tx.write(b"test" as &'static [u8]).submit().await.0.unwrap();
+///     tx.write(b"test" as &'static [u8]).submit().await.unwrap();
 ///
-///     let (_, buf) = rx.read(vec![0; 4]).await;
+///     let (_, buf) = rx.read(vec![0; 4]).await.unwrap();
 ///
 ///     assert_eq!(buf, b"test");
 /// });

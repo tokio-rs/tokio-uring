@@ -28,8 +28,7 @@ use crate::{
 ///         let mut stream = TcpStream::connect("127.0.0.1:8080".parse().unwrap()).await?;
 ///
 ///         // Write some data.
-///         let (result, _) = stream.write(b"hello world!".as_slice()).submit().await;
-///         result.unwrap();
+///         stream.write(b"hello world!".as_slice()).submit().await.unwrap();
 ///
 ///         Ok(())
 ///     })
@@ -74,7 +73,7 @@ impl TcpStream {
     /// Read some data from the stream into the buffer.
     ///
     /// Returns the original buffer and quantity of data read.
-    pub async fn read<T: BoundedBufMut>(&self, buf: T) -> crate::BufResult<usize, T> {
+    pub async fn read<T: BoundedBufMut>(&self, buf: T) -> crate::Result<usize, T> {
         self.inner.read(buf).await
     }
 
@@ -91,7 +90,7 @@ impl TcpStream {
     /// In addition to errors that can be reported by `read`,
     /// this operation fails if the buffer is not registered in the
     /// current `tokio-uring` runtime.
-    pub async fn read_fixed<T>(&self, buf: T) -> crate::BufResult<usize, T>
+    pub async fn read_fixed<T>(&self, buf: T) -> crate::Result<usize, T>
     where
         T: BoundedBufMut<BufMut = FixedBuf>,
     {
@@ -137,15 +136,13 @@ impl TcpStream {
     ///             let mut n = 0;
     ///             let mut buf = vec![0u8; 4096];
     ///             loop {
-    ///                 let (result, nbuf) = stream.read(buf).await;
+    ///                 let (read, nbuf) = stream.read(buf).await.unwrap();
     ///                 buf = nbuf;
-    ///                 let read = result.unwrap();
     ///                 if read == 0 {
     ///                     break;
     ///                 }
     ///
-    ///                 let (res, slice) = stream.write_all(buf.slice(..read)).await;
-    ///                 let _ = res.unwrap();
+    ///                 let (_, slice) = stream.write_all(buf.slice(..read)).await.unwrap();
     ///                 buf = slice.into_inner();
     ///                 n += read;
     ///             }
@@ -155,7 +152,7 @@ impl TcpStream {
     /// ```
     ///
     /// [`write`]: Self::write
-    pub async fn write_all<T: BoundedBuf>(&self, buf: T) -> crate::BufResult<(), T> {
+    pub async fn write_all<T: BoundedBuf>(&self, buf: T) -> crate::Result<(), T> {
         self.inner.write_all(buf).await
     }
 
@@ -172,7 +169,7 @@ impl TcpStream {
     /// In addition to errors that can be reported by `write`,
     /// this operation fails if the buffer is not registered in the
     /// current `tokio-uring` runtime.
-    pub async fn write_fixed<T>(&self, buf: T) -> crate::BufResult<usize, T>
+    pub async fn write_fixed<T>(&self, buf: T) -> crate::Result<usize, T>
     where
         T: BoundedBuf<Buf = FixedBuf>,
     {
@@ -192,7 +189,7 @@ impl TcpStream {
     /// This function will return the first error that [`write_fixed`] returns.
     ///
     /// [`write_fixed`]: Self::write_fixed
-    pub async fn write_fixed_all<T>(&self, buf: T) -> crate::BufResult<(), T>
+    pub async fn write_fixed_all<T>(&self, buf: T) -> crate::Result<(), T>
     where
         T: BoundedBuf<Buf = FixedBuf>,
     {
@@ -222,7 +219,7 @@ impl TcpStream {
     /// written to this writer.
     ///
     /// [`Ok(n)`]: Ok
-    pub async fn writev<T: BoundedBuf>(&self, buf: Vec<T>) -> crate::BufResult<usize, Vec<T>> {
+    pub async fn writev<T: BoundedBuf>(&self, buf: Vec<T>) -> crate::Result<usize, Vec<T>> {
         self.inner.writev(buf).await
     }
 

@@ -1,6 +1,7 @@
 use crate::runtime::driver::op::{Completable, CqeResult, MultiCQEFuture, Op, Updateable};
 use crate::runtime::CONTEXT;
-use crate::{buf::BoundedBuf, io::SharedFd, BufResult};
+use crate::WithBuffer;
+use crate::{buf::BoundedBuf, io::SharedFd, Result};
 use std::io;
 
 pub(crate) struct SendZc<T> {
@@ -39,14 +40,12 @@ impl<T: BoundedBuf> Op<SendZc<T>, MultiCQEFuture> {
 }
 
 impl<T> Completable for SendZc<T> {
-    type Output = BufResult<usize, T>;
+    type Output = Result<usize, T>;
 
     fn complete(self, cqe: CqeResult) -> Self::Output {
-        // Convert the operation result to `usize`
-        let res = cqe.result.map(|v| self.bytes + v as usize);
-        // Recover the buffer
-        let buf = self.buf;
-        (res, buf)
+        cqe.result
+            .map(|v| self.bytes + v as usize)
+            .with_buffer(self.buf)
     }
 }
 

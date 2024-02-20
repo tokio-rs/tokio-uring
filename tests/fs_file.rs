@@ -19,9 +19,7 @@ const HELLO: &[u8] = b"hello world...";
 
 async fn read_hello(file: &File) {
     let buf = Vec::with_capacity(1024);
-    let (res, buf) = file.read_at(buf, 0).await;
-    let n = res.unwrap();
-
+    let (n, buf) = file.read_at(buf, 0).await.unwrap();
     assert_eq!(n, HELLO.len());
     assert_eq!(&buf[..n], HELLO);
 }
@@ -47,8 +45,7 @@ fn basic_read_exact() {
         tempfile.write_all(&data).unwrap();
 
         let file = File::open(tempfile.path()).await.unwrap();
-        let (res, buf) = file.read_exact_at(buf, 0).await;
-        res.unwrap();
+        let (_, buf) = file.read_exact_at(buf, 0).await.unwrap();
         assert_eq!(buf, data);
     });
 }
@@ -60,7 +57,7 @@ fn basic_write() {
 
         let file = File::create(tempfile.path()).await.unwrap();
 
-        file.write_at(HELLO, 0).submit().await.0.unwrap();
+        file.write_at(HELLO, 0).submit().await.unwrap();
 
         let file = std::fs::read(tempfile.path()).unwrap();
         assert_eq!(file, HELLO);
@@ -75,8 +72,7 @@ fn vectored_read() {
 
         let file = File::open(tempfile.path()).await.unwrap();
         let bufs = vec![Vec::<u8>::with_capacity(5), Vec::<u8>::with_capacity(9)];
-        let (res, bufs) = file.readv_at(bufs, 0).await;
-        let n = res.unwrap();
+        let (n, bufs) = file.readv_at(bufs, 0).await.unwrap();
 
         assert_eq!(n, HELLO.len());
         assert_eq!(bufs[1][0], b' ');
@@ -93,7 +89,7 @@ fn vectored_write() {
         let buf2 = " world...".to_owned().into_bytes();
         let bufs = vec![buf1, buf2];
 
-        file.writev_at(bufs, 0).await.0.unwrap();
+        file.writev_at(bufs, 0).await.unwrap();
 
         let file = std::fs::read(tempfile.path()).unwrap();
         assert_eq!(file, HELLO);
@@ -108,8 +104,7 @@ fn basic_write_all() {
         let tempfile = tempfile();
 
         let file = File::create(tempfile.path()).await.unwrap();
-        let (ret, data) = file.write_all_at(data, 0).await;
-        ret.unwrap();
+        let (_, data) = file.write_all_at(data, 0).await.unwrap();
 
         let file = std::fs::read(tempfile.path()).unwrap();
         assert_eq!(file, data);
@@ -155,7 +150,7 @@ fn drop_open() {
         // Do something else
         let file = File::create(tempfile.path()).await.unwrap();
 
-        file.write_at(HELLO, 0).submit().await.0.unwrap();
+        file.write_at(HELLO, 0).submit().await.unwrap();
 
         let file = std::fs::read(tempfile.path()).unwrap();
         assert_eq!(file, HELLO);
@@ -183,7 +178,7 @@ fn sync_doesnt_kill_anything() {
         let file = File::create(tempfile.path()).await.unwrap();
         file.sync_all().await.unwrap();
         file.sync_data().await.unwrap();
-        file.write_at(&b"foo"[..], 0).submit().await.0.unwrap();
+        file.write_at(&b"foo"[..], 0).submit().await.unwrap();
         file.sync_all().await.unwrap();
         file.sync_data().await.unwrap();
     });
@@ -236,16 +231,14 @@ fn read_fixed() {
 
         let fixed_buf = buffers.check_out(0).unwrap();
         assert_eq!(fixed_buf.bytes_total(), 6);
-        let (res, buf) = file.read_fixed_at(fixed_buf.slice(..), 0).await;
-        let n = res.unwrap();
+        let (n, buf) = file.read_fixed_at(fixed_buf.slice(..), 0).await.unwrap();
 
         assert_eq!(n, 6);
         assert_eq!(&buf[..], &HELLO[..6]);
 
         let fixed_buf = buffers.check_out(1).unwrap();
         assert_eq!(fixed_buf.bytes_total(), 1024);
-        let (res, buf) = file.read_fixed_at(fixed_buf.slice(..), 6).await;
-        let n = res.unwrap();
+        let (n, buf) = file.read_fixed_at(fixed_buf.slice(..), 6).await.unwrap();
 
         assert_eq!(n, HELLO.len() - 6);
         assert_eq!(&buf[..], &HELLO[6..]);
@@ -266,16 +259,14 @@ fn write_fixed() {
         let mut buf = fixed_buf;
         buf.put_slice(&HELLO[..6]);
 
-        let (res, _) = file.write_fixed_at(buf, 0).await;
-        let n = res.unwrap();
+        let (n, _) = file.write_fixed_at(buf, 0).await.unwrap();
         assert_eq!(n, 6);
 
         let fixed_buf = buffers.check_out(1).unwrap();
         let mut buf = fixed_buf;
         buf.put_slice(&HELLO[6..]);
 
-        let (res, _) = file.write_fixed_at(buf, 6).await;
-        let n = res.unwrap();
+        let (n, _) = file.write_fixed_at(buf, 6).await.unwrap();
         assert_eq!(n, HELLO.len() - 6);
 
         let file = std::fs::read(tempfile.path()).unwrap();

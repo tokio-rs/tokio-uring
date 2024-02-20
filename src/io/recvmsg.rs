@@ -1,6 +1,7 @@
 use crate::runtime::driver::op::{Completable, CqeResult, Op};
 use crate::runtime::CONTEXT;
-use crate::{buf::BoundedBufMut, io::SharedFd, BufResult};
+use crate::WithBuffer;
+use crate::{buf::BoundedBufMut, io::SharedFd, Result};
 use socket2::SockAddr;
 use std::{
     io::IoSliceMut,
@@ -61,7 +62,7 @@ impl<T> Completable for RecvMsg<T>
 where
     T: BoundedBufMut,
 {
-    type Output = BufResult<(usize, SocketAddr), Vec<T>>;
+    type Output = Result<(usize, SocketAddr), Vec<T>>;
 
     fn complete(self, cqe: CqeResult) -> Self::Output {
         // Convert the operation result to `usize`
@@ -92,6 +93,6 @@ where
             (n, socket_addr)
         });
 
-        (res, bufs)
+        res.with_buffer(bufs)
     }
 }

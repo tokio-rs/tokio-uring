@@ -20,11 +20,10 @@ fn main() {
             tokio_uring::spawn(async move {
                 let buf = vec![1u8; 128];
 
-                let (result, buf) = stream.write(buf).submit().await;
-                println!("written to {}: {}", &socket_addr, result.unwrap());
+                let (n, buf) = stream.write(buf).submit().await.unwrap();
+                println!("written to {}: {}", &socket_addr, n);
 
-                let (result, buf) = stream.read(buf).await;
-                let read = result.unwrap();
+                let (read, buf) = stream.read(buf).await.unwrap();
                 println!("read from {}: {:?}", &socket_addr, &buf[..read]);
             });
         }

@@ -17,7 +17,7 @@ pub(crate) async fn writev_at_all<T: BoundedBuf>(
     fd: &SharedFd,
     mut bufs: Vec<T>,
     offset: Option<u64>,
-) -> crate::BufResult<usize, Vec<T>> {
+) -> crate::Result<usize, Vec<T>> {
     // TODO decide if the function should return immediately if all the buffer lengths
     // were to sum to zero. That would save an allocation and one call into writev.
 
@@ -59,7 +59,7 @@ pub(crate) async fn writev_at_all<T: BoundedBuf>(
 
             // On error, there is no indication how many bytes were written. This is standard.
             // The device doesn't tell us that either.
-            Err(e) => return (Err(e), bufs),
+            Err(e) => return Err(crate::Error(e, bufs)),
         };
 
         // TODO if n is zero, while there was more data to be written, should this be interpreted
@@ -101,7 +101,7 @@ pub(crate) async fn writev_at_all<T: BoundedBuf>(
             break;
         }
     }
-    (Ok(total), bufs)
+    Ok((total, bufs))
 }
 
 struct WritevAll<T> {

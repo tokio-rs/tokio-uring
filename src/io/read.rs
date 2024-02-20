@@ -1,6 +1,7 @@
 use crate::buf::BoundedBufMut;
 use crate::io::SharedFd;
-use crate::BufResult;
+use crate::Result;
+use crate::WithBuffer;
 
 use crate::runtime::driver::op::{Completable, CqeResult, Op};
 use crate::runtime::CONTEXT;
@@ -43,7 +44,7 @@ impl<T> Completable for Read<T>
 where
     T: BoundedBufMut,
 {
-    type Output = BufResult<usize, T>;
+    type Output = Result<usize, T>;
 
     fn complete(self, cqe: CqeResult) -> Self::Output {
         // Convert the operation result to `usize`
@@ -59,6 +60,6 @@ where
             }
         }
 
-        (res, buf)
+        res.with_buffer(buf)
     }
 }
