@@ -19,7 +19,7 @@ pub(crate) struct Driver {
     ops: Ops,
 
     /// IoUring bindings
-    uring: IoUring,
+    pub(crate) uring: IoUring,
 
     /// Reference to the currently registered buffers.
     /// Ensures that the buffers are not dropped until
@@ -39,6 +39,8 @@ struct Ops {
 impl Driver {
     pub(crate) fn new(b: &crate::Builder) -> io::Result<Driver> {
         let uring = b.urb.build(b.entries)?;
+
+        if uring.params().is_setup_iopoll() && !uring.params().is_setup_sqpoll() {}
 
         Ok(Driver {
             ops: Ops::new(),
