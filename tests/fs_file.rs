@@ -315,6 +315,33 @@ fn basic_fallocate() {
     });
 }
 
+#[test]
+fn iopoll_without_sqpoll() {
+    use std::os::unix::fs::OpenOptionsExt;
+    let mut builder = tokio_uring::builder();
+    builder.uring_builder(&tokio_uring::uring_builder().setup_iopoll());
+    let runtime = tokio_uring::Runtime::new(&builder).unwrap();
+    let tmp = tempfile();
+    runtime.block_on(async {
+        let file = std::fs::OpenOptions::new()
+            .write(true)
+            .custom_flags(libc::O_DIRECT)
+            .open(tmp.path())
+            .unwrap();
+        let file = tokio_uring::fs::File::from_std(file);
+
+        let layout = std::alloc::Layout::from_size_align(512, 512).unwrap();
+        let buf = unsafe {
+            let raw = std::alloc::alloc(layout);
+            std::ptr::copy("asdf".as_ptr(), raw, 4);
+            std::slice::from_raw_parts(raw, 512)
+        };
+
+        let res = file.write_at(buf, 0).submit().await.0.unwrap();
+        assert_eq!(res, 512);
+    });
+}
+
 fn tempfile() -> NamedTempFile {
     NamedTempFile::new().unwrap()
 }
