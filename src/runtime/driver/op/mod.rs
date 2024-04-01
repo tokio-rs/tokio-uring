@@ -57,7 +57,7 @@ impl<D, T: OneshotOutputTransform<StoredData = D>> UnsubmittedOneshot<D, T> {
     }
 
     /// Set the SQE's flags.
-    pub(crate) fn set_flags(mut self, flags: Flags) -> Self {
+    pub fn set_flags(mut self, flags: Flags) -> Self {
         self.sqe = self.sqe.flags(flags);
         self
     }
