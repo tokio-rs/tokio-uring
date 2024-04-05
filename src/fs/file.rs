@@ -4,7 +4,9 @@ use crate::fs::OpenOptions;
 use crate::io::SharedFd;
 
 use crate::runtime::driver::op::{Op, Submit};
-use crate::{UnsubmittedOneshot, UnsubmittedRead, UnsubmittedWrite};
+use crate::{
+    UnsubmittedOneshot, UnsubmittedRead, UnsubmittedReadv, UnsubmittedWrite, UnsubmittedWritev,
+};
 use std::fmt;
 use std::io;
 use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
@@ -216,7 +218,7 @@ impl File {
     ///         let buffers = vec![Vec::<u8>::with_capacity(10), Vec::<u8>::with_capacity(10)];
     ///
     ///         // Read up to 20 bytes
-    ///         let (res, buffer) = f.readv_at(buffers, 0).await;
+    ///         let (res, buffer) = f.readv_at(buffers, 0).submit().await;
     ///         let n = res?;
     ///
     ///         println!("Read {} bytes", n);
@@ -227,14 +229,8 @@ impl File {
     ///     })
     /// }
     /// ```
-    pub async fn readv_at<T: BoundedBufMut>(
-        &self,
-        bufs: Vec<T>,
-        pos: u64,
-    ) -> crate::BufResult<usize, Vec<T>> {
-        // Submit the read operation
-        let op = Op::readv_at(&self.fd, bufs, pos).unwrap();
-        op.await
+    pub fn readv_at<T: BoundedBufMut>(&self, bufs: Vec<T>, pos: u64) -> UnsubmittedReadv<T> {
+        UnsubmittedOneshot::readv_at(&self.fd, bufs, pos)
     }
 
     /// Write data from buffers into this file at the specified offset,
@@ -271,7 +267,7 @@ impl File {
     ///
     ///         // Writes some prefix of the byte string, not necessarily all of it.
     ///         let bufs = vec!["some".to_owned().into_bytes(), " bytes".to_owned().into_bytes()];
-    ///         let (res, _) = file.writev_at(bufs, 0).await;
+    ///         let (res, _) = file.writev_at(bufs, 0).submit().await;
     ///         let n = res?;
     ///
     ///         println!("wrote {} bytes", n);
@@ -284,13 +280,8 @@ impl File {
     /// ```
     ///
     /// [`Ok(n)`]: Ok
-    pub async fn writev_at<T: BoundedBuf>(
-        &self,
-        buf: Vec<T>,
-        pos: u64,
-    ) -> crate::BufResult<usize, Vec<T>> {
-        let op = Op::writev_at(&self.fd, buf, pos).unwrap();
-        op.await
+    pub fn writev_at<T: BoundedBuf>(&self, bufs: Vec<T>, pos: u64) -> UnsubmittedWritev<T> {
+        UnsubmittedOneshot::writev_at(&self.fd, bufs, pos)
     }
 
     /// Like `writev_at` but will call the `io_uring` `writev` operation multiple times if

@@ -75,7 +75,7 @@ fn vectored_read() {
 
         let file = File::open(tempfile.path()).await.unwrap();
         let bufs = vec![Vec::<u8>::with_capacity(5), Vec::<u8>::with_capacity(9)];
-        let (res, bufs) = file.readv_at(bufs, 0).await;
+        let (res, bufs) = file.readv_at(bufs, 0).submit().await;
         let n = res.unwrap();
 
         assert_eq!(n, HELLO.len());
@@ -93,7 +93,7 @@ fn vectored_write() {
         let buf2 = " world...".to_owned().into_bytes();
         let bufs = vec![buf1, buf2];
 
-        file.writev_at(bufs, 0).await.0.unwrap();
+        file.writev_at(bufs, 0).submit().await.0.unwrap();
 
         let file = std::fs::read(tempfile.path()).unwrap();
         assert_eq!(file, HELLO);

@@ -80,7 +80,9 @@ pub mod fs;
 pub mod net;
 
 pub use io::read::*;
+pub use io::readv::*;
 pub use io::write::*;
+pub use io::writev::*;
 pub use runtime::driver::op::{
     InFlightOneshot, Link, LinkedInFlightOneshot, OneshotOutputTransform, Submit,
     UnsubmittedOneshot,

@@ -129,9 +129,10 @@ impl Socket {
         (Ok(()), buf.into_inner())
     }
 
-    pub async fn writev<T: BoundedBuf>(&self, buf: Vec<T>) -> crate::BufResult<usize, Vec<T>> {
-        let op = Op::writev_at(&self.fd, buf, 0).unwrap();
-        op.await
+    pub async fn writev<T: BoundedBuf>(&self, bufs: Vec<T>) -> crate::BufResult<usize, Vec<T>> {
+        UnsubmittedOneshot::writev_at(&self.fd, bufs, 0)
+            .submit()
+            .await
     }
 
     pub(crate) async fn send_to<T: BoundedBuf>(
