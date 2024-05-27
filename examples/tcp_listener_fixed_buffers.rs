@@ -89,7 +89,7 @@ async fn echo_handler<T: IoBufMut>(
 
             let (res, nslice) = stream.write_fixed_all(fbuf1.slice(..read)).await;
 
-            let _ = res.unwrap();
+            res.unwrap();
             println!("peer {} all {} bytes ping-ponged", peer, read);
             n += read;
 
