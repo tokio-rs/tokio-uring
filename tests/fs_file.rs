@@ -3,7 +3,6 @@ use std::{
     os::unix::io::{AsRawFd, FromRawFd, RawFd},
 };
 
-
 use tempfile::NamedTempFile;
 
 use tokio_uring::buf::fixed::FixedBufRegistry;
