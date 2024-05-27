@@ -156,6 +156,7 @@ pub(crate) trait Updateable: Completable {
     fn update(&mut self, cqe: CqeResult);
 }
 
+#[allow(dead_code)]
 pub(crate) enum Lifecycle {
     /// The operation has been submitted to uring and is currently in-flight
     Submitted,
