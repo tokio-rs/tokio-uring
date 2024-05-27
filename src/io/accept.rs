@@ -47,7 +47,7 @@ impl Completable for Accept {
         let socket = Socket { fd };
         let (_, addr) = unsafe {
             socket2::SockAddr::init(move |addr_storage, len| {
-                *addr_storage = self.socketaddr.0.to_owned();
+                self.socketaddr.0.clone_into(&mut *addr_storage);
                 *len = self.socketaddr.1;
                 Ok(())
             })?
