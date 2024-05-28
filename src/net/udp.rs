@@ -26,6 +26,7 @@ use std::{
 ///
 /// ```
 /// use tokio_uring::net::UdpSocket;
+/// use tokio_uring::Submit;
 /// use std::net::SocketAddr;
 /// fn main() -> std::io::Result<()> {
 ///     tokio_uring::start(async {

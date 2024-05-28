@@ -20,6 +20,7 @@ use crate::{
 ///
 /// ```no_run
 /// use tokio_uring::net::TcpStream;
+/// use tokio_uring::Submit;
 /// use std::net::ToSocketAddrs;
 ///
 /// fn main() -> std::io::Result<()> {
