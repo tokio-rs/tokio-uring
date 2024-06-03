@@ -303,7 +303,7 @@ impl File {
     /// if multiple writev calls are necessary; only the iovec information would be adjusted
     /// between calls. A Unix pipe would fall into this category.
     ///
-    /// When `Some(n)` is suppied, the offset passed to the writev call will be incremented by the
+    /// When `Some(n)` is supplied, the offset passed to the writev call will be incremented by the
     /// progress of prior writev calls. A file system's regular file would fall into this category.
     ///
     /// If the caller passes `Some(n)` for a file that is not seekable, the `io_uring` `writev`
@@ -312,7 +312,7 @@ impl File {
     /// If the caller passes `None`, when the file *is* seekable, when multiple `writev` calls are
     /// required to complete the writing of all the bytes, the bytes at position 0 of the file will
     /// have been overwritten one or more times with incorrect data. This is true just as if the
-    /// caller had invoked seperate write calls to a file, all with position 0, when in fact the
+    /// caller had invoked separate write calls to a file, all with position 0, when in fact the
     /// file was seekable.
     ///
     /// Performance considerations:
