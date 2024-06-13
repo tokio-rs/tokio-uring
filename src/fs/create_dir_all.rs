@@ -1,4 +1,3 @@
-use futures_util::future::LocalBoxFuture;
 use std::io;
 use std::path::Path;
 
@@ -117,30 +116,28 @@ impl DirBuilder {
     }
 
     // This recursive function is very closely modeled after the std library version.
-    //
-    // A recursive async function requires a Boxed Future. TODO There may be an implementation that
-    // is less costly in terms of heap allocations. Maybe a non-recursive version is possible given
-    // we even know the path separator for Linux. Or maybe expand the first level to avoid
-    // recursion when only the first level of the directory needs to be built. For now, this serves
-    // its purpose.
+    async fn recurse_create_dir_all(&self, path: &Path) -> io::Result<()> {
+        if path == Path::new("") {
+            return Ok(());
+        }
 
-    fn recurse_create_dir_all<'a>(&'a self, path: &'a Path) -> LocalBoxFuture<io::Result<()>> {
-        Box::pin(async move {
-            if path == Path::new("") {
-                return Ok(());
-            }
+        let mut inexist_path = path;
+        let mut need_create = vec![];
 
-            match self.inner.mkdir(path).await {
-                Ok(()) => return Ok(()),
-                Err(ref e) if e.kind() == io::ErrorKind::NotFound => {}
-                Err(_) if is_dir(path).await => return Ok(()),
-                Err(e) => return Err(e),
-            }
-            match path.parent() {
-                Some(p) => self.recurse_create_dir_all(p).await?,
+        while match self.inner.mkdir(inexist_path).await {
+            Ok(()) => false,
+            Err(ref e) if e.kind() == io::ErrorKind::NotFound => true,
+            Err(_) if is_dir(inexist_path).await => false,
+            Err(e) => return Err(e),
+        } {
+            match inexist_path.parent() {
+                Some(p) => {
+                    need_create.push(inexist_path);
+                    inexist_path = p;
+                }
                 None => {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::Other,
+                    return Err(io::Error::new(
+                        io::ErrorKind::Other,
                         "failed to create whole tree",
                     ));
                     /* TODO build own allocation free error some day like the std library does.
@@ -151,12 +148,13 @@ impl DirBuilder {
                     */
                 }
             }
-            match self.inner.mkdir(path).await {
-                Ok(()) => Ok(()),
-                Err(_) if is_dir(path).await => Ok(()),
-                Err(e) => Err(e),
-            }
-        })
+        }
+
+        for p in need_create.into_iter().rev() {
+            self.inner.mkdir(p).await?;
+        }
+
+        Ok(())
     }
 }
 
