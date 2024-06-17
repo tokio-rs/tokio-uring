@@ -60,6 +60,10 @@ impl<D, T: OneshotOutputTransform<StoredData = D>> UnsubmittedOneshot<D, T> {
 
         InFlightOneshot { inner: Some(inner) }
     }
+
+    pub unsafe fn set_flags(&mut self, flags: OpFlags) {
+        self.sqe.flags(flags.into());
+    }
 }
 
 /// An in-progress oneshot operation which can be polled for completion.
@@ -314,5 +318,46 @@ impl Lifecycle {
                 false
             }
         }
+    }
+}
+
+/// A set of flags to pass to `io_uring` along with the operation
+///
+/// For each flag, there are `with_FLAG`, `no_FLAG` and `is_FLAG` methods
+/// for setting, clearing and checking the flag respectively.
+///
+/// The flags are:
+///
+/// * `async` - corresponds to `IOSQE_ASYNC` flag of `io_uring_enter`.
+///   See `io_uring_enter(2)` man page for details.
+#[derive(Clone, Copy, Default)]
+pub struct OpFlags(u8);
+
+impl OpFlags {
+    const ASYNC: u8 = 1;
+
+    /// Sets async flag on the object and returns it
+    pub fn with_async(self) -> Self {
+        Self(self.0 | Self::ASYNC)
+    }
+
+    /// Clears async flag on the object and returns it
+    pub fn no_async(self) -> Self {
+        Self(self.0 & !Self::ASYNC)
+    }
+
+    /// Checks if the object has async flag set
+    pub fn is_async(&self) -> bool {
+        self.0 & Self::ASYNC != 0
+    }
+}
+
+impl From<OpFlags> for io_uring::squeue::Flags {
+    fn from(value: OpFlags) -> Self {
+        let mut flags = Self::empty();
+        if value.is_async() {
+            flags |= Self::ASYNC;
+        }
+        flags
     }
 }

@@ -10,47 +10,6 @@ use std::io;
 use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 use std::path::Path;
 
-/// A set of flags to pass to `io_uring` along with the operation
-///
-/// For each flag, there are `with_FLAG`, `no_FLAG` and `is_FLAG` methods
-/// for setting, clearing and checking the flag respectively.
-///
-/// The flags are:
-///
-/// * `async` - corresponds to `IOSQE_ASYNC` flag of `io_uring_enter`.
-///   See `io_uring_enter(2)` man page for details.
-#[derive(Clone, Copy, Default)]
-pub struct OpFlags(u8);
-
-impl OpFlags {
-    const ASYNC: u8 = 1;
-
-    /// Sets async flag on the object and returns it
-    pub fn with_async(self) -> Self {
-        Self(self.0 | Self::ASYNC)
-    }
-
-    /// Clears async flag on the object and returns it
-    pub fn no_async(self) -> Self {
-        Self(self.0 & !Self::ASYNC)
-    }
-
-    /// Checks if the object has async flag set
-    pub fn is_async(&self) -> bool {
-        self.0 & Self::ASYNC != 0
-    }
-}
-
-impl From<OpFlags> for io_uring::squeue::Flags {
-    fn from(value: OpFlags) -> Self {
-        let mut flags = Self::empty();
-        if value.is_async() {
-            flags |= Self::ASYNC;
-        }
-        flags
-    }
-}
-
 /// A reference to an open file on the filesystem.
 ///
 /// An instance of a `File` can be read and/or written depending on what options
@@ -582,63 +541,6 @@ impl File {
     /// [`Ok(n)`]: Ok
     pub fn write_at<T: BoundedBuf>(&self, buf: T, pos: u64) -> UnsubmittedWrite<T> {
         UnsubmittedOneshot::write_at(&self.fd, buf, pos)
-    }
-
-    /// Write a buffer into this file at the specified offset with custom
-    /// operation flags, returning how many bytes were written.
-    ///
-    /// This function will attempt to write the entire contents of `buf`, but
-    /// the entire write may not succeed, or the write may also generate an
-    /// error. The bytes will be written starting at the specified offset.
-    /// Specified `flags` will be set on the operation entry before submitting
-    /// it to the uring.
-    ///
-    /// # Return
-    /// The method returns the operation result and the same buffer value passed
-    /// in as an argument. A return value of `0` typically means that the
-    /// underlying file is no longer able to accept bytes and will likely not be
-    /// able to in the future as well, or that the buffer provided is empty.
-    ///
-    /// # Errors
-    ///
-    /// Each call to `write` may generate an I/O error indicating that the
-    /// operation could not be completed. If an error is returned then no bytes
-    /// in the buffer were written to this writer.
-    ///
-    /// It is **not** considered an error if the entire buffer could not be
-    /// written to this writer.
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use tokio_uring::fs::{File, OpFlags};
-    ///
-    /// fn main() -> Result<(), Box<dyn std::error::Error>> {
-    ///     tokio_uring::start(async {
-    ///         let file = File::create("foo.txt").await?;
-    ///
-    ///         // Writes some prefix of the byte string, not necessarily all of it.
-    ///         let (res, _) = file.write_at_with_flags(
-    ///             &b"some bytes"[..], 0, OpFlags::default().with_async()).await;
-    ///         let n = res?;
-    ///
-    ///         println!("wrote {} bytes", n);
-    ///
-    ///         // Close the file
-    ///         file.close().await?;
-    ///         Ok(())
-    ///     })
-    /// }
-    /// ```
-    ///
-    /// [`Ok(n)`]: Ok
-    pub async fn write_at_with_flags<T: IoBuf>(
-        &self,
-        buf: T,
-        pos: u64,
-        flags: OpFlags,
-    ) -> UnsubmittedWrite<T> {
-        UnsubmittedOneshot::write_at_with_flags(&self.fd, buf, pos, flags.into())
     }
 
     /// Attempts to write an entire buffer into this file at the specified offset.
