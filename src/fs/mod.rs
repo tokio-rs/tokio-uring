@@ -12,7 +12,6 @@ mod file;
 pub use file::remove_file;
 pub use file::rename;
 pub use file::File;
-pub use file::OpFlags;
 
 mod open_options;
 pub use open_options::OpenOptions;
