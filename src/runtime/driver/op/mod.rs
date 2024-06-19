@@ -4,6 +4,7 @@ use std::marker::PhantomData;
 use std::pin::Pin;
 use std::task::{Context, Poll, Waker};
 
+use io_uring::squeue::Flags;
 use io_uring::{cqueue, squeue};
 
 mod slab_list;
@@ -59,6 +60,16 @@ impl<D, T: OneshotOutputTransform<StoredData = D>> UnsubmittedOneshot<D, T> {
         };
 
         InFlightOneshot { inner: Some(inner) }
+    }
+
+    /// Set flags on unsubmitted entry
+    ///
+    /// # Safety
+    ///
+    /// Flags can change logic of operation. Use it only if you now what flags do
+    pub unsafe fn set_flags(mut self, flags: Flags) -> Self {
+        self.sqe = self.sqe.flags(flags);
+        self
     }
 }
 
