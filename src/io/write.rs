@@ -1,7 +1,10 @@
-use crate::{buf::BoundedBuf, io::SharedFd, BufResult, OneshotOutputTransform, UnsubmittedOneshot};
+use crate::{
+    buf::BoundedBuf,
+    io::{shared_fd::CommonFd, SharedFd},
+    BufResult, OneshotOutputTransform, UnsubmittedOneshot,
+};
 use io_uring::cqueue::Entry;
-use std::io;
-use std::marker::PhantomData;
+use std::{io, marker::PhantomData};
 
 /// An unsubmitted write operation.
 pub type UnsubmittedWrite<T> = UnsubmittedOneshot<WriteData<T>, WriteTransform<T>>;
@@ -51,9 +54,20 @@ impl<T: BoundedBuf> UnsubmittedWrite<T> {
             WriteTransform {
                 _phantom: PhantomData,
             },
-            opcode::Write::new(types::Fd(fd.raw_fd()), ptr, len as _)
-                .offset(offset as _)
-                .build(),
+            match fd.common_fd() {
+                CommonFd::Raw(raw) => {
+                    let fd = types::Fd(raw);
+                    opcode::Write::new(fd, ptr, len as _)
+                        .offset(offset as _)
+                        .build()
+                }
+                CommonFd::Fixed(fixed) => {
+                    let fd = types::Fixed(fixed);
+                    opcode::Write::new(fd, ptr, len as _)
+                        .offset(offset as _)
+                        .build()
+                }
+            },
         )
     }
 }
