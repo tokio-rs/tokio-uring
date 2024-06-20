@@ -7,7 +7,6 @@ use tokio::task::JoinSet;
 
 #[derive(Clone)]
 struct Options {
-    iterations: usize,
     concurrency: usize,
     sq_size: usize,
     cq_size: usize,
@@ -16,7 +15,6 @@ struct Options {
 impl Default for Options {
     fn default() -> Self {
         Self {
-            iterations: 100000,
             concurrency: 1,
             sq_size: 128,
             cq_size: 256,
@@ -38,7 +36,7 @@ fn run_no_ops(opts: &Options, count: u64) -> Duration {
             .start(async move {
                 let mut js = JoinSet::new();
 
-                for _ in 0..opts.iterations {
+                for _ in 0..opts.concurrency {
                     js.spawn_local(tokio_uring::no_op());
                 }
 
@@ -63,7 +61,8 @@ fn bench(c: &mut Criterion) {
         // We perform long running benchmarks: this is the best mode
         group.sampling_mode(SamplingMode::Flat);
 
-        group.throughput(Throughput::Elements(opts.iterations as u64));
+        group.throughput(Throughput::Elements(*concurrency as u64));
+
         group.bench_with_input(
             BenchmarkId::from_parameter(concurrency),
             &opts,
