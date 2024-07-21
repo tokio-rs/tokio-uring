@@ -10,7 +10,7 @@ pub(crate) mod driver;
 pub(crate) use context::RuntimeContext;
 
 thread_local! {
-    pub(crate) static CONTEXT: RuntimeContext = RuntimeContext::new();
+    pub static CONTEXT: RuntimeContext = RuntimeContext::new();
 }
 
 /// The Runtime Executor
@@ -29,7 +29,7 @@ pub struct Runtime {
     local: ManuallyDrop<LocalSet>,
 
     /// Strong reference to the driver.
-    driver: driver::Handle,
+    pub driver: driver::Handle,
 }
 
 /// Spawns a new asynchronous task, returning a [`JoinHandle`] for it.
