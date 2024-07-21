@@ -27,7 +27,7 @@ pub(crate) type Completion = SlabListEntry<CqeResult>;
 pub struct UnsubmittedOneshot<D: 'static, T: OneshotOutputTransform<StoredData = D>> {
     stable_data: D,
     post_op: T,
-    sqe: squeue::Entry,
+    pub sqe: squeue::Entry,
 }
 
 impl<D, T: OneshotOutputTransform<StoredData = D>> UnsubmittedOneshot<D, T> {
@@ -60,6 +60,22 @@ impl<D, T: OneshotOutputTransform<StoredData = D>> UnsubmittedOneshot<D, T> {
     pub fn set_flags(mut self, flags: Flags) -> Self {
         self.sqe = self.sqe.flags(flags);
         self
+    }
+
+    // Create inflight from submitted index.
+    pub fn inflight(self, index: usize) -> InFlightOneshot<D, T> {
+        let handle = CONTEXT
+            .with(|x| x.handle())
+            .expect("Could not submit op; not in runtime context");
+
+        let inner = InFlightOneshotInner {
+            index,
+            driver: (&handle).into(),
+            stable_data: self.stable_data,
+            post_op: self.post_op,
+        };
+
+        InFlightOneshot { inner: Some(inner) }
     }
 }
 

@@ -73,7 +73,7 @@ macro_rules! syscall {
 #[macro_use]
 mod future;
 mod io;
-mod runtime;
+pub mod runtime;
 
 pub mod buf;
 pub mod fs;
