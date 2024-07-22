@@ -20,7 +20,7 @@ runtime internally manages the main Tokio runtime and a `io-uring` driver.
 In your Cargo.toml:
 ```toml
 [dependencies]
-tokio-uring = { version = "0.4.0" }
+tokio-uring = { version = "0.5.0" }
 ```
 In your main.rs:
 ```rust

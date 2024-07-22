@@ -57,6 +57,7 @@
 //! call `close()`.
 
 #![warn(missing_docs)]
+#![allow(clippy::thread_local_initializer_can_be_made_const)]
 
 macro_rules! syscall {
     ($fn: ident ( $($arg: expr),* $(,)* ) ) => {{
