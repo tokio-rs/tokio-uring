@@ -456,7 +456,7 @@ impl File {
         mut pos: u64,
         mut result: Vec<u8>,
     ) -> crate::BufResult<(), Vec<u8>> {
-        let mut buffer = vec![0u8; 1024];
+        let mut buffer = vec![0u8; 4096];
 
         loop {
             let (res, buf) = self.read_at(buffer, pos).await;
