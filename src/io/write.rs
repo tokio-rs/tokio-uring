@@ -1,3 +1,4 @@
+use crate::buf::fixed::FixedBuf;
 use crate::{buf::BoundedBuf, io::SharedFd, BufResult, OneshotOutputTransform, UnsubmittedOneshot};
 use io_uring::cqueue::Entry;
 use std::io;
@@ -52,6 +53,30 @@ impl<T: BoundedBuf> UnsubmittedWrite<T> {
                 _phantom: PhantomData,
             },
             opcode::Write::new(types::Fd(fd.raw_fd()), ptr, len as _)
+                .offset(offset as _)
+                .build(),
+        )
+    }
+}
+
+impl<T: BoundedBuf<Buf = FixedBuf>> UnsubmittedWrite<T> {
+    pub(crate) fn write_fixed_at(fd: &SharedFd, buf: T, offset: u64) -> Self {
+        use io_uring::{opcode, types};
+
+        // Get raw buffer info
+        let ptr = buf.stable_ptr();
+        let len = buf.bytes_init();
+        let buf_index = buf.get_buf().buf_index();
+
+        Self::new(
+            WriteData {
+                _fd: fd.clone(),
+                buf,
+            },
+            WriteTransform {
+                _phantom: PhantomData,
+            },
+            opcode::WriteFixed::new(types::Fd(fd.raw_fd()), ptr, len as _, buf_index)
                 .offset(offset as _)
                 .build(),
         )

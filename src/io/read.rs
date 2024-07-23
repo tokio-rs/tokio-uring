@@ -1,5 +1,6 @@
 use io_uring::cqueue::Entry;
 
+use crate::buf::fixed::FixedBuf;
 use crate::buf::BoundedBufMut;
 use crate::io::SharedFd;
 use crate::{BufResult, OneshotOutputTransform, UnsubmittedOneshot};
@@ -62,6 +63,29 @@ impl<T: BoundedBufMut> UnsubmittedRead<T> {
                 _phantom: PhantomData,
             },
             opcode::Read::new(types::Fd(fd.raw_fd()), ptr, len as _)
+                .offset(offset as _)
+                .build(),
+        )
+    }
+}
+
+impl<T: BoundedBufMut<BufMut = FixedBuf>> UnsubmittedRead<T> {
+    pub(crate) fn read_fixed_at(fd: &SharedFd, mut buf: T, offset: u64) -> Self {
+        use io_uring::{opcode, types};
+
+        // Get raw buffer info
+        let ptr = buf.stable_mut_ptr();
+        let len = buf.bytes_total();
+        let buf_index = buf.get_buf().buf_index();
+        Self::new(
+            ReadData {
+                _fd: fd.clone(),
+                buf,
+            },
+            ReadTransform {
+                _phantom: PhantomData,
+            },
+            opcode::ReadFixed::new(types::Fd(fd.raw_fd()), ptr, len as _, buf_index)
                 .offset(offset as _)
                 .build(),
         )
