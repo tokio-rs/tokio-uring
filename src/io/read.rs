@@ -91,3 +91,30 @@ impl<T: BoundedBufMut<BufMut = FixedBuf>> UnsubmittedRead<T> {
         )
     }
 }
+
+impl<T: BoundedBufMut> UnsubmittedRead<T> {
+    pub(crate) fn read_fixed_at_with_index(
+        fd: &SharedFd,
+        mut buf: T,
+        buf_index: u16,
+        offset: u64,
+    ) -> Self {
+        use io_uring::{opcode, types};
+
+        // Get raw buffer info
+        let ptr = buf.stable_mut_ptr();
+        let len = buf.bytes_total();
+        Self::new(
+            ReadData {
+                _fd: fd.clone(),
+                buf,
+            },
+            ReadTransform {
+                _phantom: PhantomData,
+            },
+            opcode::ReadFixed::new(types::Fd(fd.raw_fd()), ptr, len as _, buf_index)
+                .offset(offset as _)
+                .build(),
+        )
+    }
+}

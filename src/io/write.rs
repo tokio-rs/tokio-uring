@@ -82,3 +82,31 @@ impl<T: BoundedBuf<Buf = FixedBuf>> UnsubmittedWrite<T> {
         )
     }
 }
+
+impl<T: BoundedBuf> UnsubmittedWrite<T> {
+    pub(crate) fn write_fixed_at_with_index(
+        fd: &SharedFd,
+        buf: T,
+        buf_index: u16,
+        offset: u64,
+    ) -> Self {
+        use io_uring::{opcode, types};
+
+        // Get raw buffer info
+        let ptr = buf.stable_ptr();
+        let len = buf.bytes_init();
+
+        Self::new(
+            WriteData {
+                _fd: fd.clone(),
+                buf,
+            },
+            WriteTransform {
+                _phantom: PhantomData,
+            },
+            opcode::WriteFixed::new(types::Fd(fd.raw_fd()), ptr, len as _, buf_index)
+                .offset(offset as _)
+                .build(),
+        )
+    }
+}

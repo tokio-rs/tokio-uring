@@ -491,6 +491,18 @@ impl File {
         UnsubmittedOneshot::read_fixed_at(&self.fd, buf, pos)
     }
 
+    pub fn unsubmitted_read_fixed_at_with_index<T>(
+        &self,
+        buf: T,
+        buf_index: u16,
+        pos: u64,
+    ) -> UnsubmittedRead<T>
+    where
+        T: BoundedBufMut,
+    {
+        UnsubmittedOneshot::read_fixed_at_with_index(&self.fd, buf, buf_index, pos)
+    }
+
     /// Write a buffer into this file at the specified offset, returning how
     /// many bytes were written.
     ///
@@ -689,6 +701,18 @@ impl File {
         T: BoundedBuf<Buf = FixedBuf>,
     {
         UnsubmittedOneshot::write_fixed_at(&self.fd, buf, pos)
+    }
+
+    pub fn unsubmitted_write_fixed_at_with_index<T>(
+        &self,
+        buf: T,
+        buf_index: u16,
+        pos: u64,
+    ) -> UnsubmittedWrite<T>
+    where
+        T: BoundedBuf,
+    {
+        UnsubmittedOneshot::write_fixed_at_with_index(&self.fd, buf, buf_index, pos)
     }
 
     /// Attempts to write an entire buffer into this file at the specified offset.
