@@ -484,6 +484,13 @@ impl File {
         op.await
     }
 
+    pub fn unsubmitted_read_fixed_at<T>(&self, buf: T, pos: u64) -> UnsubmittedRead<T>
+    where
+        T: BoundedBufMut<BufMut = FixedBuf>,
+    {
+        UnsubmittedOneshot::read_fixed_at(&self.fd, buf, pos)
+    }
+
     /// Write a buffer into this file at the specified offset, returning how
     /// many bytes were written.
     ///
@@ -675,6 +682,13 @@ impl File {
     {
         let op = Op::write_fixed_at(&self.fd, buf, pos).unwrap();
         op.await
+    }
+
+    pub fn unsubmitted_write_fixed_at<T>(&self, buf: T, pos: u64) -> UnsubmittedWrite<T>
+    where
+        T: BoundedBuf<Buf = FixedBuf>,
+    {
+        UnsubmittedOneshot::write_fixed_at(&self.fd, buf, pos)
     }
 
     /// Attempts to write an entire buffer into this file at the specified offset.
