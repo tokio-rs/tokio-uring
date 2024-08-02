@@ -4,6 +4,10 @@
 //! crate defines [`IoBuf`] and [`IoBufMut`] traits which are implemented by buffer
 //! types that respect the `io-uring` contract.
 
+pub(crate) mod bufgroup;
+
+pub mod bufring;
+
 pub mod fixed;
 
 mod io_buf;
@@ -26,6 +30,6 @@ pub(crate) fn deref(buf: &impl IoBuf) -> &[u8] {
 
 pub(crate) fn deref_mut(buf: &mut impl IoBufMut) -> &mut [u8] {
     // Safety: the `IoBufMut` trait is marked as unsafe and is expected to be
-    // implemented correct.
+    // implemented correctly.
     unsafe { std::slice::from_raw_parts_mut(buf.stable_mut_ptr(), buf.bytes_init()) }
 }
