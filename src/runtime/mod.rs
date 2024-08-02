@@ -81,7 +81,7 @@ impl Runtime {
 
         let tokio_rt = ManuallyDrop::new(rt);
         let local = ManuallyDrop::new(LocalSet::new());
-        let driver = driver::Handle::new(b)?;
+        let driver = driver::Handle::new(b, &tokio_rt, &local)?;
 
         start_uring_wakes_task(&tokio_rt, &local, driver.clone());
 

@@ -34,10 +34,32 @@ pub(crate) struct WeakHandle {
     inner: Weak<RefCell<Driver>>,
 }
 
+struct ThreadParker;
+impl std::future::Future for ThreadParker {
+    type Output = ();
+    fn poll(
+        self: std::pin::Pin<&mut Self>,
+        ctx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<<Self as std::future::Future>::Output> {
+        ctx.waker().clone().wake();
+        std::task::Poll::Pending
+    }
+}
+
 impl Handle {
-    pub(crate) fn new(b: &crate::Builder) -> io::Result<Self> {
+    pub(crate) fn new(
+        b: &crate::Builder,
+        tokio_rt: &tokio::runtime::Runtime,
+        local: &tokio::task::LocalSet,
+    ) -> io::Result<Self> {
+        let driver = Driver::new(b)?;
+        let params = driver.uring.params();
+        if params.is_setup_iopoll() && !params.is_setup_sqpoll() {
+            let _guard = tokio_rt.enter();
+            local.spawn_local(ThreadParker {});
+        }
         Ok(Self {
-            inner: Rc::new(RefCell::new(Driver::new(b)?)),
+            inner: Rc::new(RefCell::new(driver)),
         })
     }
 
