@@ -3,7 +3,7 @@ use crate::runtime::driver::{Handle, WeakHandle};
 use std::cell::RefCell;
 
 /// Owns the driver and resides in thread-local storage.
-pub(crate) struct RuntimeContext {
+pub struct RuntimeContext {
     driver: RefCell<Option<driver::Handle>>,
 }
 
@@ -41,7 +41,7 @@ impl RuntimeContext {
             .unwrap_or(false)
     }
 
-    pub(crate) fn handle(&self) -> Option<Handle> {
+    pub fn handle(&self) -> Option<Handle> {
         self.driver.borrow().clone()
     }
 

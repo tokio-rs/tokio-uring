@@ -25,7 +25,7 @@ use crate::runtime::driver::op::{Completable, MultiCQEFuture, Op, Updateable};
 use crate::runtime::driver::Driver;
 
 #[derive(Clone)]
-pub(crate) struct Handle {
+pub struct Handle {
     pub(super) inner: Rc<RefCell<Driver>>,
 }
 
@@ -63,8 +63,20 @@ impl Handle {
         self.inner.borrow_mut().unregister_buffers(buffers)
     }
 
+    pub fn register_files(&self, fds: &[RawFd]) -> io::Result<()> {
+        self.inner.borrow_mut().register_files(fds)
+    }
+
+    pub fn unregister_files(&self) -> io::Result<()> {
+        self.inner.borrow_mut().unregister_files()
+    }
+
     pub(crate) fn submit_op_2(&self, sqe: squeue::Entry) -> usize {
         self.inner.borrow_mut().submit_op_2(sqe)
+    }
+
+    pub fn submit_ops(&self, sqes: impl Iterator<Item = squeue::Entry>) -> Vec<usize> {
+        self.inner.borrow_mut().submit_ops(sqes)
     }
 
     pub(crate) fn submit_op<T, S, F>(&self, data: T, f: F) -> io::Result<Op<T, S>>

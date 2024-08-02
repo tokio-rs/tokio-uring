@@ -124,6 +124,18 @@ impl Driver {
         ))
     }
 
+    pub(crate) fn register_files(&mut self, fds: &[RawFd]) -> io::Result<()> {
+        unsafe { self.uring.submitter().register_files(fds) }?;
+
+        Ok(())
+    }
+
+    pub(crate) fn unregister_files(&mut self) -> io::Result<()> {
+        unsafe { self.uring.submitter().unregister_files() }?;
+
+        Ok(())
+    }
+
     pub(crate) fn submit_op_2(&mut self, sqe: squeue::Entry) -> usize {
         let index = self.ops.insert();
 
@@ -137,6 +149,26 @@ impl Driver {
         }
 
         index
+    }
+
+    pub(crate) fn submit_ops(&mut self, sqes: impl Iterator<Item = squeue::Entry>) -> Vec<usize> {
+        let mut indices = Vec::new();
+        let mut entries: Vec<squeue::Entry> = Vec::new();
+        for sqe in sqes {
+            let index = self.ops.insert();
+            indices.push(index);
+
+            // Configure the SQE
+            let sqe = sqe.user_data(index as _);
+            entries.push(sqe);
+        }
+
+        while unsafe { self.uring.submission().push_multiple(&entries).is_err() } {
+            // If the submission queue is full, flush it to the kernel
+            self.submit().expect("Internal error, failed to submit ops");
+        }
+
+        indices
     }
 
     pub(crate) fn submit_op<T, S, F>(

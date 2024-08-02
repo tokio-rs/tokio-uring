@@ -1,6 +1,6 @@
 use std::env;
 
-use tokio_uring::net::UnixStream;
+use tokio_uring::{net::UnixStream, Submit};
 
 fn main() {
     let args: Vec<_> = env::args().collect();

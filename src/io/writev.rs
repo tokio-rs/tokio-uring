@@ -1,10 +1,15 @@
-use crate::runtime::driver::op::{Completable, CqeResult, Op};
-use crate::runtime::CONTEXT;
 use crate::{buf::BoundedBuf, io::SharedFd, BufResult};
+use crate::{OneshotOutputTransform, UnsubmittedOneshot};
+use io_uring::cqueue::Entry;
 use libc::iovec;
 use std::io;
+use std::marker::PhantomData;
 
-pub(crate) struct Writev<T> {
+/// An unsubmitted writev operation.
+pub type UnsubmittedWritev<T> = UnsubmittedOneshot<WritevData<T>, WritevTransform<T>>;
+
+#[allow(missing_docs)]
+pub struct WritevData<T> {
     /// Holds a strong ref to the FD, preventing the file from being closed
     /// while the operation is in-flight.
     #[allow(dead_code)]
@@ -13,59 +18,62 @@ pub(crate) struct Writev<T> {
     pub(crate) bufs: Vec<T>,
 
     /// Parameter for `io_uring::op::readv`, referring `bufs`.
+    #[allow(dead_code)]
     iovs: Vec<iovec>,
 }
 
-impl<T: BoundedBuf> Op<Writev<T>> {
-    pub(crate) fn writev_at(
-        fd: &SharedFd,
-        mut bufs: Vec<T>,
-        offset: u64,
-    ) -> io::Result<Op<Writev<T>>> {
+#[allow(missing_docs)]
+pub struct WritevTransform<T> {
+    _phantom: PhantomData<T>,
+}
+
+impl<T> OneshotOutputTransform for WritevTransform<T>
+where
+    T: BoundedBuf,
+{
+    type Output = BufResult<usize, Vec<T>>;
+    type StoredData = WritevData<T>;
+
+    fn transform_oneshot_output(self, data: Self::StoredData, cqe: Entry) -> Self::Output {
+        let res = if cqe.result() >= 0 {
+            Ok(cqe.result() as usize)
+        } else {
+            Err(io::Error::from_raw_os_error(-cqe.result()))
+        };
+
+        (res, data.bufs)
+    }
+}
+
+impl<T: BoundedBuf> UnsubmittedWritev<T> {
+    pub(crate) fn writev_at(fd: &SharedFd, mut bufs: Vec<T>, offset: u64) -> Self {
         use io_uring::{opcode, types};
 
-        // Build `iovec` objects referring the provided `bufs` for `io_uring::opcode::Readv`.
         let iovs: Vec<iovec> = bufs
             .iter_mut()
             .map(|b| iovec {
+                // Safety guaranteed by `BoundedBufMut`.
                 iov_base: b.stable_ptr() as *mut libc::c_void,
                 iov_len: b.bytes_init(),
             })
             .collect();
 
-        CONTEXT.with(|x| {
-            x.handle().expect("Not in a runtime context").submit_op(
-                Writev {
-                    fd: fd.clone(),
-                    bufs,
-                    iovs,
-                },
-                |write| {
-                    opcode::Writev::new(
-                        types::Fd(fd.raw_fd()),
-                        write.iovs.as_ptr(),
-                        write.iovs.len() as u32,
-                    )
-                    .offset(offset as _)
-                    .build()
-                },
-            )
-        })
-    }
-}
+        // Get raw buffer info
+        let ptr = iovs.as_ptr();
+        let len = iovs.len();
 
-impl<T> Completable for Writev<T>
-where
-    T: BoundedBuf,
-{
-    type Output = BufResult<usize, Vec<T>>;
-
-    fn complete(self, cqe: CqeResult) -> Self::Output {
-        // Convert the operation result to `usize`
-        let res = cqe.result.map(|v| v as usize);
-        // Recover the buffer
-        let buf = self.bufs;
-
-        (res, buf)
+        Self::new(
+            WritevData {
+                fd: fd.clone(),
+                bufs,
+                iovs,
+            },
+            WritevTransform {
+                _phantom: PhantomData,
+            },
+            opcode::Writev::new(types::Fd(fd.raw_fd()), ptr, len as _)
+                .offset(offset as _)
+                .build(),
+        )
     }
 }

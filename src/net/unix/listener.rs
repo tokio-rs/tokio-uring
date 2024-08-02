@@ -12,6 +12,7 @@ use std::{io, path::Path};
 /// ```
 /// use tokio_uring::net::UnixListener;
 /// use tokio_uring::net::UnixStream;
+/// use tokio_uring::Submit;
 ///
 /// let sock_file = "/tmp/tokio-uring-unix-test.sock";
 /// let listener = UnixListener::bind(&sock_file).unwrap();

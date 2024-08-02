@@ -1,6 +1,6 @@
 use tempfile::NamedTempFile;
 
-use tokio_uring::{buf::IoBuf, fs::File};
+use tokio_uring::{buf::IoBuf, fs::File, Submit};
 
 #[path = "../src/future.rs"]
 #[allow(warnings)]
@@ -58,6 +58,7 @@ fn complete_ops_on_drop() {
                 },
                 25 * 1024 * 1024,
             )
+            .submit()
             .await
             .0
             .unwrap();
