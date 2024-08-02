@@ -7,18 +7,23 @@ use std::{
     {boxed::Box, io, net::SocketAddr},
 };
 
-pub(crate) struct RecvMsg<T> {
+pub(crate) struct RecvMsg<T, U = Vec<u8>> {
     #[allow(dead_code)]
     fd: SharedFd,
     pub(crate) buf: Vec<T>,
     #[allow(dead_code)]
     io_slices: Vec<IoSliceMut<'static>>,
     pub(crate) socket_addr: Box<SockAddr>,
+    pub(crate) msg_control: Option<U>,
     pub(crate) msghdr: Box<libc::msghdr>,
 }
 
-impl<T: BoundedBufMut> Op<RecvMsg<T>> {
-    pub(crate) fn recvmsg(fd: &SharedFd, mut bufs: Vec<T>) -> io::Result<Op<RecvMsg<T>>> {
+impl<T: BoundedBufMut, U: BoundedBufMut> Op<RecvMsg<T, U>> {
+    pub(crate) fn recvmsg(
+        fd: &SharedFd,
+        mut bufs: Vec<T>,
+        mut msg_control: Option<U>,
+    ) -> io::Result<Op<RecvMsg<T, U>>> {
         use io_uring::{opcode, types};
 
         let mut io_slices = Vec::with_capacity(bufs.len());
@@ -35,6 +40,10 @@ impl<T: BoundedBufMut> Op<RecvMsg<T>> {
         msghdr.msg_iovlen = io_slices.len() as _;
         msghdr.msg_name = socket_addr.as_ptr() as *mut libc::c_void;
         msghdr.msg_namelen = socket_addr.len();
+        if let Some(msg_control) = &mut msg_control {
+            msghdr.msg_control = msg_control.stable_mut_ptr().cast();
+            msghdr.msg_controllen = msg_control.bytes_total();
+        }
 
         CONTEXT.with(|x| {
             x.handle().expect("Not in a runtime context").submit_op(
@@ -43,6 +52,7 @@ impl<T: BoundedBufMut> Op<RecvMsg<T>> {
                     buf: bufs,
                     io_slices,
                     socket_addr,
+                    msg_control,
                     msghdr,
                 },
                 |recv_from| {
@@ -57,11 +67,12 @@ impl<T: BoundedBufMut> Op<RecvMsg<T>> {
     }
 }
 
-impl<T> Completable for RecvMsg<T>
+impl<T, U> Completable for RecvMsg<T, U>
 where
     T: BoundedBufMut,
+    U: BoundedBufMut,
 {
-    type Output = BufResult<(usize, SocketAddr), Vec<T>>;
+    type Output = BufResult<(usize, SocketAddr, Option<U>), Vec<T>>;
 
     fn complete(self, cqe: CqeResult) -> Self::Output {
         // Convert the operation result to `usize`
@@ -70,6 +81,8 @@ where
         let mut bufs = self.buf;
 
         let socket_addr = (*self.socket_addr).as_socket();
+
+        let msg_control = self.msg_control;
 
         let res = res.map(|n| {
             let socket_addr: SocketAddr = socket_addr.unwrap();
@@ -89,7 +102,7 @@ where
                     break;
                 }
             }
-            (n, socket_addr)
+            (n, socket_addr, msg_control)
         });
 
         (res, bufs)
