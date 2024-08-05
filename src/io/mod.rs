@@ -15,11 +15,11 @@ pub(crate) use noop::NoOp;
 
 mod open;
 
-mod read;
+pub(crate) mod read;
 
 mod read_fixed;
 
-mod readv;
+pub(crate) mod readv;
 
 mod recv_from;
 
@@ -54,7 +54,7 @@ pub(crate) mod write;
 
 mod write_fixed;
 
-mod writev;
+pub(crate) mod writev;
 
 mod writev_all;
 pub(crate) use writev_all::writev_at_all;

@@ -3,7 +3,7 @@ use std::{
     {env, io},
 };
 
-use tokio_uring::fs::File;
+use tokio_uring::{fs::File, Submit};
 
 fn main() {
     // The file to `cat` is passed as a CLI argument
@@ -29,7 +29,7 @@ fn main() {
 
         loop {
             // Read a chunk
-            let (res, b) = file.read_at(buf, pos).await;
+            let (res, b) = file.read_at(buf, pos).submit().await;
             let n = res.unwrap();
 
             if n == 0 {

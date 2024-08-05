@@ -1,5 +1,5 @@
 use crate::io::write::UnsubmittedWrite;
-use crate::runtime::driver::op::Op;
+use crate::runtime::driver::op::{Op, Submit};
 use crate::{
     buf::fixed::FixedBuf,
     buf::{BoundedBuf, BoundedBufMut, IoBuf, Slice},
@@ -129,9 +129,10 @@ impl Socket {
         (Ok(()), buf.into_inner())
     }
 
-    pub async fn writev<T: BoundedBuf>(&self, buf: Vec<T>) -> crate::BufResult<usize, Vec<T>> {
-        let op = Op::writev_at(&self.fd, buf, 0).unwrap();
-        op.await
+    pub async fn writev<T: BoundedBuf>(&self, bufs: Vec<T>) -> crate::BufResult<usize, Vec<T>> {
+        UnsubmittedOneshot::writev_at(&self.fd, bufs, 0)
+            .submit()
+            .await
     }
 
     pub(crate) async fn send_to<T: BoundedBuf>(
@@ -169,8 +170,7 @@ impl Socket {
     }
 
     pub(crate) async fn read<T: BoundedBufMut>(&self, buf: T) -> crate::BufResult<usize, T> {
-        let op = Op::read_at(&self.fd, buf, 0).unwrap();
-        op.await
+        UnsubmittedOneshot::read_at(&self.fd, buf, 0).submit().await
     }
 
     pub(crate) async fn read_fixed<T>(&self, buf: T) -> crate::BufResult<usize, T>
