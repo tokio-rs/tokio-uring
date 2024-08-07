@@ -444,6 +444,35 @@ impl File {
         (Ok(()), buf.into_inner())
     }
 
+    /// Fills a vector with the contents of the file
+    /// from the given position to the end
+    ///
+    /// If this function encounters any form of I/O or other error, an error
+    /// variant will be returned.
+    /// On error the buffer will contain the partial data that was
+    /// read up until this point.
+    pub async fn read_at_to_end(
+        &self,
+        mut pos: u64,
+        mut result: Vec<u8>,
+    ) -> crate::BufResult<(), Vec<u8>> {
+        let mut buffer = vec![0u8; 4096];
+
+        loop {
+            let (res, buf) = self.read_at(buffer, pos).await;
+
+            match res {
+                Ok(0) => return (Ok(()), result),
+                Ok(n) => {
+                    buffer = buf;
+                    result.extend_from_slice(&buffer[..n]);
+                    pos += n as u64;
+                }
+                Err(err) => return (Err(err), result),
+            }
+        }
+    }
+
     /// Like [`read_at`], but using a pre-mapped buffer
     /// registered with [`FixedBufRegistry`].
     ///
