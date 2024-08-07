@@ -1,24 +1,33 @@
+use crate::io::shared_fd::CommonFd;
 use crate::runtime::driver::op;
 use crate::runtime::driver::op::{Completable, Op};
 use crate::runtime::CONTEXT;
 use std::io;
-use std::os::unix::io::RawFd;
 
-pub(crate) struct Close {
-    fd: RawFd,
-}
+pub(crate) struct Close {}
 
 impl Op<Close> {
-    pub(crate) fn close(fd: RawFd) -> io::Result<Op<Close>> {
+    pub(crate) fn close(fd: CommonFd) -> io::Result<Op<Close>> {
         use io_uring::{opcode, types};
 
-        CONTEXT.with(|x| {
-            x.handle()
-                .expect("Not in a runtime context")
-                .submit_op(Close { fd }, |close| {
-                    opcode::Close::new(types::Fd(close.fd)).build()
+        match fd {
+            CommonFd::Raw(raw) => {
+                let fd = types::Fd(raw);
+                CONTEXT.with(|x| {
+                    x.handle()
+                        .expect("Not in a runtime context")
+                        .submit_op(Close {}, |_close| opcode::Close::new(fd).build())
                 })
-        })
+            }
+            CommonFd::Fixed(fixed) => {
+                let fd = types::Fixed(fixed);
+                CONTEXT.with(|x| {
+                    x.handle()
+                        .expect("Not in a runtime context")
+                        .submit_op(Close {}, |_close| opcode::Close::new(fd).build())
+                })
+            }
+        }
     }
 }
 
