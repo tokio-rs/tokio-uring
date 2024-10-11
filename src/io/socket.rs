@@ -168,31 +168,31 @@ impl Socket {
         op.await
     }
 
-    pub(crate) async fn read<T: BoundedBufMut>(&self, buf: T) -> crate::BufResult<usize, T> {
+    pub(crate) async fn read<B: BoundedBufMut>(&self, buf: B) -> crate::BufResult<usize, B> {
         let op = Op::read_at(&self.fd, buf, 0).unwrap();
         op.await
     }
 
-    pub(crate) async fn read_fixed<T>(&self, buf: T) -> crate::BufResult<usize, T>
+    pub(crate) async fn read_fixed<B>(&self, buf: B) -> crate::BufResult<usize, B>
     where
-        T: BoundedBufMut<BufMut = FixedBuf>,
+        B: BoundedBufMut<BufMut = FixedBuf>,
     {
         let op = Op::read_fixed_at(&self.fd, buf, 0).unwrap();
         op.await
     }
 
-    pub(crate) async fn recv_from<T: BoundedBufMut>(
+    pub(crate) async fn recv_from<B: BoundedBufMut>(
         &self,
-        buf: T,
-    ) -> crate::BufResult<(usize, SocketAddr), T> {
+        buf: B,
+    ) -> crate::BufResult<(usize, SocketAddr), B> {
         let op = Op::recv_from(&self.fd, buf).unwrap();
         op.await
     }
 
-    pub(crate) async fn recvmsg<T: BoundedBufMut>(
+    pub(crate) async fn recvmsg<B: BoundedBufMut>(
         &self,
-        buf: Vec<T>,
-    ) -> crate::BufResult<(usize, SocketAddr), Vec<T>> {
+        buf: Vec<B>,
+    ) -> crate::BufResult<(usize, SocketAddr), Vec<B>> {
         let op = Op::recvmsg(&self.fd, buf).unwrap();
         op.await
     }
