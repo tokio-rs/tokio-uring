@@ -16,8 +16,8 @@ pub(crate) struct Read<T> {
     pub(crate) buf: T,
 }
 
-impl<T: BoundedBufMut> Op<Read<T>> {
-    pub(crate) fn read_at(fd: &SharedFd, buf: T, offset: u64) -> io::Result<Op<Read<T>>> {
+impl<B: BoundedBufMut> Op<Read<B>> {
+    pub(crate) fn read_at(fd: &SharedFd, buf: B, offset: u64) -> io::Result<Op<Read<B>>> {
         use io_uring::{opcode, types};
 
         CONTEXT.with(|x| {
@@ -39,11 +39,11 @@ impl<T: BoundedBufMut> Op<Read<T>> {
     }
 }
 
-impl<T> Completable for Read<T>
+impl<B> Completable for Read<B>
 where
-    T: BoundedBufMut,
+    B: BoundedBufMut,
 {
-    type Output = BufResult<usize, T>;
+    type Output = BufResult<usize, B>;
 
     fn complete(self, cqe: CqeResult) -> Self::Output {
         // Convert the operation result to `usize`

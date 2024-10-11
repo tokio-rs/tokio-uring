@@ -296,27 +296,27 @@ impl UdpSocket {
     /// Receives a single datagram message on the socket.
     ///
     /// On success, returns the number of bytes read and the origin.
-    pub async fn recv_from<T: BoundedBufMut>(
+    pub async fn recv_from<B: BoundedBufMut>(
         &self,
-        buf: T,
-    ) -> crate::BufResult<(usize, SocketAddr), T> {
+        buf: B,
+    ) -> crate::BufResult<(usize, SocketAddr), B> {
         self.inner.recv_from(buf).await
     }
 
     /// Receives a single datagram message on the socket, into multiple buffers
     ///
     /// On success, returns the number of bytes read and the origin.
-    pub async fn recvmsg<T: BoundedBufMut>(
+    pub async fn recvmsg<B: BoundedBufMut>(
         &self,
-        buf: Vec<T>,
-    ) -> crate::BufResult<(usize, SocketAddr), Vec<T>> {
+        buf: Vec<B>,
+    ) -> crate::BufResult<(usize, SocketAddr), Vec<B>> {
         self.inner.recvmsg(buf).await
     }
 
     /// Reads a packet of data from the socket into the buffer.
     ///
     /// Returns the original buffer and quantity of data read.
-    pub async fn read<T: BoundedBufMut>(&self, buf: T) -> crate::BufResult<usize, T> {
+    pub async fn read<B: BoundedBufMut>(&self, buf: B) -> crate::BufResult<usize, B> {
         self.inner.read(buf).await
     }
 
@@ -333,9 +333,9 @@ impl UdpSocket {
     /// In addition to errors that can be reported by `read`,
     /// this operation fails if the buffer is not registered in the
     /// current `tokio-uring` runtime.
-    pub async fn read_fixed<T>(&self, buf: T) -> crate::BufResult<usize, T>
+    pub async fn read_fixed<B>(&self, buf: B) -> crate::BufResult<usize, B>
     where
-        T: BoundedBufMut<BufMut = FixedBuf>,
+        B: BoundedBufMut<BufMut = FixedBuf>,
     {
         self.inner.read_fixed(buf).await
     }

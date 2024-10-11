@@ -176,7 +176,7 @@ impl File {
     ///     })
     /// }
     /// ```
-    pub async fn read_at<T: BoundedBufMut>(&self, buf: T, pos: u64) -> crate::BufResult<usize, T> {
+    pub async fn read_at<B: BoundedBufMut>(&self, buf: B, pos: u64) -> crate::BufResult<usize, B> {
         // Submit the read operation
         let op = Op::read_at(&self.fd, buf, pos).unwrap();
         op.await
@@ -227,11 +227,11 @@ impl File {
     ///     })
     /// }
     /// ```
-    pub async fn readv_at<T: BoundedBufMut>(
+    pub async fn readv_at<B: BoundedBufMut>(
         &self,
-        bufs: Vec<T>,
+        bufs: Vec<B>,
         pos: u64,
-    ) -> crate::BufResult<usize, Vec<T>> {
+    ) -> crate::BufResult<usize, Vec<B>> {
         // Submit the read operation
         let op = Op::readv_at(&self.fd, bufs, pos).unwrap();
         op.await
@@ -392,13 +392,13 @@ impl File {
     /// ```
     ///
     /// [`ErrorKind::UnexpectedEof`]: std::io::ErrorKind::UnexpectedEof
-    pub async fn read_exact_at<T>(&self, buf: T, pos: u64) -> crate::BufResult<(), T>
+    pub async fn read_exact_at<B>(&self, buf: B, pos: u64) -> crate::BufResult<(), B>
     where
-        T: BoundedBufMut,
+        B: BoundedBufMut,
     {
         let orig_bounds = buf.bounds();
         let (res, buf) = self.read_exact_slice_at(buf.slice_full(), pos).await;
-        (res, T::from_buf_bounds(buf, orig_bounds))
+        (res, B::from_buf_bounds(buf, orig_bounds))
     }
 
     async fn read_exact_slice_at<T: IoBufMut>(
@@ -484,9 +484,9 @@ impl File {
     /// })
     ///# }
     /// ```
-    pub async fn read_fixed_at<T>(&self, buf: T, pos: u64) -> crate::BufResult<usize, T>
+    pub async fn read_fixed_at<B>(&self, buf: B, pos: u64) -> crate::BufResult<usize, B>
     where
-        T: BoundedBufMut<BufMut = FixedBuf>,
+        B: BoundedBufMut<BufMut = FixedBuf>,
     {
         // Submit the read operation
         let op = Op::read_fixed_at(&self.fd, buf, pos).unwrap();

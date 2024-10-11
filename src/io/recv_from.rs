@@ -16,8 +16,8 @@ pub(crate) struct RecvFrom<T> {
     pub(crate) msghdr: Box<libc::msghdr>,
 }
 
-impl<T: BoundedBufMut> Op<RecvFrom<T>> {
-    pub(crate) fn recv_from(fd: &SharedFd, mut buf: T) -> io::Result<Op<RecvFrom<T>>> {
+impl<B: BoundedBufMut> Op<RecvFrom<B>> {
+    pub(crate) fn recv_from(fd: &SharedFd, mut buf: B) -> io::Result<Op<RecvFrom<B>>> {
         use io_uring::{opcode, types};
 
         let mut io_slices = vec![IoSliceMut::new(unsafe {
@@ -53,11 +53,11 @@ impl<T: BoundedBufMut> Op<RecvFrom<T>> {
     }
 }
 
-impl<T> Completable for RecvFrom<T>
+impl<B> Completable for RecvFrom<B>
 where
-    T: BoundedBufMut,
+    B: BoundedBufMut,
 {
-    type Output = BufResult<(usize, SocketAddr), T>;
+    type Output = BufResult<(usize, SocketAddr), B>;
 
     fn complete(self, cqe: CqeResult) -> Self::Output {
         // Convert the operation result to `usize`

@@ -75,7 +75,7 @@ impl UnixStream {
 
     /// Read some data from the stream into the buffer, returning the original buffer and
     /// quantity of data read.
-    pub async fn read<T: BoundedBufMut>(&self, buf: T) -> crate::BufResult<usize, T> {
+    pub async fn read<B: BoundedBufMut>(&self, buf: B) -> crate::BufResult<usize, B> {
         self.inner.read(buf).await
     }
 
@@ -90,9 +90,9 @@ impl UnixStream {
     /// In addition to errors that can be reported by `read`,
     /// this operation fails if the buffer is not registered in the
     /// current `tokio-uring` runtime.
-    pub async fn read_fixed<T>(&self, buf: T) -> crate::BufResult<usize, T>
+    pub async fn read_fixed<B>(&self, buf: B) -> crate::BufResult<usize, B>
     where
-        T: BoundedBufMut<BufMut = FixedBuf>,
+        B: BoundedBufMut<BufMut = FixedBuf>,
     {
         self.inner.read_fixed(buf).await
     }

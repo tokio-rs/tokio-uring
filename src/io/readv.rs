@@ -19,12 +19,12 @@ pub(crate) struct Readv<T> {
     iovs: Vec<iovec>,
 }
 
-impl<T: BoundedBufMut> Op<Readv<T>> {
+impl<B: BoundedBufMut> Op<Readv<B>> {
     pub(crate) fn readv_at(
         fd: &SharedFd,
-        mut bufs: Vec<T>,
+        mut bufs: Vec<B>,
         offset: u64,
-    ) -> io::Result<Op<Readv<T>>> {
+    ) -> io::Result<Op<Readv<B>>> {
         use io_uring::{opcode, types};
 
         // Build `iovec` objects referring the provided `bufs` for `io_uring::opcode::Readv`.
@@ -58,11 +58,11 @@ impl<T: BoundedBufMut> Op<Readv<T>> {
     }
 }
 
-impl<T> Completable for Readv<T>
+impl<B> Completable for Readv<B>
 where
-    T: BoundedBufMut,
+    B: BoundedBufMut,
 {
-    type Output = BufResult<usize, Vec<T>>;
+    type Output = BufResult<usize, Vec<B>>;
 
     fn complete(self, cqe: CqeResult) -> Self::Output {
         // Convert the operation result to `usize`

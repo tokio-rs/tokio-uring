@@ -17,15 +17,15 @@ pub(crate) struct ReadFixed<T> {
     buf: T,
 }
 
-impl<T> Op<ReadFixed<T>>
+impl<B> Op<ReadFixed<B>>
 where
-    T: BoundedBufMut<BufMut = FixedBuf>,
+    B: BoundedBufMut<BufMut = FixedBuf>,
 {
     pub(crate) fn read_fixed_at(
         fd: &SharedFd,
-        buf: T,
+        buf: B,
         offset: u64,
-    ) -> io::Result<Op<ReadFixed<T>>> {
+    ) -> io::Result<Op<ReadFixed<B>>> {
         use io_uring::{opcode, types};
 
         CONTEXT.with(|x| {
@@ -48,11 +48,11 @@ where
     }
 }
 
-impl<T> Completable for ReadFixed<T>
+impl<B> Completable for ReadFixed<B>
 where
-    T: BoundedBufMut<BufMut = FixedBuf>,
+    B: BoundedBufMut<BufMut = FixedBuf>,
 {
-    type Output = BufResult<usize, T>;
+    type Output = BufResult<usize, B>;
 
     fn complete(self, cqe: op::CqeResult) -> Self::Output {
         // Convert the operation result to `usize`
