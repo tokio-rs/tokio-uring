@@ -5,9 +5,9 @@ use std::{
 
 use tempfile::NamedTempFile;
 
-use tokio_uring::buf::fixed::FixedBufRegistry;
 use tokio_uring::buf::{BoundedBuf, BoundedBufMut};
 use tokio_uring::fs::File;
+use tokio_uring::{buf::fixed::FixedBufRegistry, fs::OpenOptions};
 
 #[path = "../src/future.rs"]
 #[allow(warnings)]
@@ -311,6 +311,30 @@ fn basic_fallocate() {
         let size = statx.stx_size;
         assert_eq!(size, 1024);
     });
+}
+
+#[test]
+fn basic_ftruncate() {
+    tokio_uring::start(async {
+        let tempfile = tempfile();
+        std::fs::write(&tempfile, b"hello world").unwrap();
+
+        // Truncate to be shorter.
+        let file = OpenOptions::new()
+            .write(true)
+            .open(&tempfile)
+            .await
+            .unwrap();
+        file.ftruncate(5).await.unwrap();
+
+        let res = std::fs::read_to_string(&tempfile).unwrap();
+        assert_eq!(res, "hello");
+
+        // Truncate to be longer; filled with zero.
+        file.ftruncate(10).await.unwrap();
+        let res = std::fs::read_to_string(&tempfile).unwrap();
+        assert_eq!(res, "hello\0\0\0\0\0");
+    })
 }
 
 fn tempfile() -> NamedTempFile {
