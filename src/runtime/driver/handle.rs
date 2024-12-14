@@ -12,7 +12,7 @@
 //! The weak handle should be used by anything which is stored in the driver or does not need to
 //! keep the driver alive for it's duration.
 
-use io_uring::{cqueue, squeue};
+use rustix_uring::{cqueue, squeue};
 use std::cell::RefCell;
 use std::io;
 use std::ops::Deref;
@@ -45,7 +45,7 @@ impl Handle {
         self.inner.borrow_mut().dispatch_completions()
     }
 
-    pub(crate) fn flush(&self) -> io::Result<usize> {
+    pub(crate) fn flush(&self) -> rustix_uring::Result<usize> {
         self.inner.borrow_mut().uring.submit()
     }
 

@@ -6,6 +6,7 @@ use crate::{
     io::SharedFd,
     UnsubmittedOneshot,
 };
+use rustix::fd::BorrowedFd;
 use std::{
     io,
     net::SocketAddr,
@@ -254,7 +255,7 @@ impl Socket {
     }
 
     pub(crate) fn listen(&self, backlog: libc::c_int) -> io::Result<()> {
-        syscall!(listen(self.as_raw_fd(), backlog))?;
+        rustix::net::listen(unsafe { BorrowedFd::borrow_raw(self.as_raw_fd()) }, backlog)?;
         Ok(())
     }
 

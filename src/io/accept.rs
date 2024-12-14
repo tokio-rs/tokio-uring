@@ -1,3 +1,5 @@
+use rustix::net::SocketFlags;
+
 use crate::io::{SharedFd, Socket};
 use crate::runtime::driver::op;
 use crate::runtime::driver::op::{Completable, Op};
@@ -12,7 +14,7 @@ pub(crate) struct Accept {
 
 impl Op<Accept> {
     pub(crate) fn accept(fd: &SharedFd) -> io::Result<Op<Accept>> {
-        use io_uring::{opcode, types};
+        use rustix_uring::{opcode, types};
 
         let socketaddr = Box::new((
             unsafe { std::mem::zeroed() },
@@ -30,7 +32,7 @@ impl Op<Accept> {
                         &mut accept.socketaddr.0 as *mut _ as *mut _,
                         &mut accept.socketaddr.1,
                     )
-                    .flags(libc::O_CLOEXEC)
+                    .flags(SocketFlags::CLOEXEC)
                     .build()
                 },
             )

@@ -1,4 +1,4 @@
-use libc::iovec;
+use rustix::io_uring::iovec;
 
 // Abstracts management of fixed buffers in a buffer registry.
 pub(crate) trait FixedBuffers {

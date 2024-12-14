@@ -1,3 +1,4 @@
+use rustix::fs::StatxFlags;
 use std::io;
 use std::path::Path;
 use tokio_uring::fs;
@@ -200,7 +201,7 @@ async fn statx_builder2<P: AsRef<Path>>(dir_path: P, rel_path: P) -> io::Result<
 
 async fn matches_mode<P: AsRef<Path>>(path: P, want_mode: u16) -> io::Result<()> {
     let statx = tokio_uring::fs::StatxBuilder::new()
-        .mask(libc::STATX_MODE)
+        .mask(StatxFlags::MODE)
         .pathname(path)?
         .statx()
         .await?;

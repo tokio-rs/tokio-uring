@@ -1,7 +1,7 @@
 use crate::buf::fixed::FixedBuffers;
 use crate::runtime::driver::op::{Completable, Lifecycle, MultiCQEFuture, Op, Updateable};
-use io_uring::opcode::AsyncCancel;
-use io_uring::{cqueue, squeue, IoUring};
+use rustix_uring::opcode::AsyncCancel;
+use rustix_uring::{cqueue, squeue, IoUring};
 use slab::Slab;
 use std::cell::RefCell;
 use std::os::unix::io::{AsRawFd, RawFd};
@@ -47,7 +47,7 @@ impl Driver {
         })
     }
 
-    fn wait(&self) -> io::Result<usize> {
+    fn wait(&self) -> rustix_uring::Result<usize> {
         self.uring.submit_and_wait(1)
     }
 
@@ -57,17 +57,17 @@ impl Driver {
         self.ops.lifecycle.len()
     }
 
-    pub(crate) fn submit(&mut self) -> io::Result<()> {
+    pub(crate) fn submit(&mut self) -> rustix_uring::Result<()> {
         loop {
             match self.uring.submit() {
                 Ok(_) => {
                     self.uring.submission().sync();
                     return Ok(());
                 }
-                Err(ref e) if e.raw_os_error() == Some(libc::EBUSY) => {
+                Err(ref e) if e.raw_os_error() == libc::EBUSY => {
                     self.dispatch_completions();
                 }
-                Err(e) if e.raw_os_error() != Some(libc::EINTR) => {
+                Err(e) if e.raw_os_error() != libc::EINTR => {
                     return Err(e);
                 }
                 _ => continue,
@@ -393,7 +393,7 @@ impl Drop for Driver {
 
                 Lifecycle::CompletionList(indices) => {
                     let mut list = indices.clone().into_list(&mut self.ops.completions);
-                    if !io_uring::cqueue::more(list.peek_end().unwrap().flags) {
+                    if !rustix_uring::cqueue::more(list.peek_end().unwrap().flags) {
                         // This op is complete. Replace with a null Completed entry
                         // safety: zeroed memory is entirely valid with this underlying
                         // representation
@@ -516,7 +516,7 @@ mod test {
     #[derive(Debug)]
     pub(crate) struct Completion {
         result: io::Result<u32>,
-        flags: u32,
+        flags: cqueue::Flags,
         data: Rc<()>,
     }
 
@@ -562,7 +562,7 @@ mod test {
         } = assert_ready!(op.poll());
         assert_eq!(2, Rc::strong_count(&data));
         assert_eq!(0, result.unwrap());
-        assert_eq!(0, flags);
+        assert_eq!(0, flags.bits());
 
         drop(d);
         assert_eq!(1, Rc::strong_count(&data));
@@ -586,7 +586,7 @@ mod test {
             assert!(op.is_woken());
             let Completion { result, flags, .. } = assert_ready!(op.poll());
             assert_eq!(0, result.unwrap());
-            assert_eq!(0, flags);
+            assert_eq!(0, flags.bits());
         }
 
         release();
@@ -608,7 +608,7 @@ mod test {
             assert!(op.is_woken());
             let Completion { result, flags, .. } = assert_ready!(op.poll());
             assert_eq!(0, result.unwrap());
-            assert_eq!(0, flags);
+            assert_eq!(0, flags.bits());
         }
 
         release();
@@ -624,7 +624,7 @@ mod test {
 
         let Completion { result, flags, .. } = assert_ready!(op.poll());
         assert_eq!(0, result.unwrap());
-        assert_eq!(0, flags);
+        assert_eq!(0, flags.bits());
 
         drop(op);
         assert_eq!(0, num_operations());

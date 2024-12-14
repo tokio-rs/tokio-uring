@@ -2,6 +2,7 @@ use crate::buf::BoundedBuf;
 use crate::io::SharedFd;
 use crate::runtime::driver::op::{Completable, CqeResult, Op};
 use crate::runtime::CONTEXT;
+use rustix::io_uring::msghdr;
 use socket2::SockAddr;
 use std::io;
 use std::io::IoSlice;
@@ -13,7 +14,7 @@ pub(crate) struct SendMsg<T, U> {
     _io_slices: Vec<IoSlice<'static>>,
     _socket_addr: Option<Box<SockAddr>>,
     msg_control: Option<U>,
-    msghdr: Box<libc::msghdr>,
+    msghdr: Box<msghdr>,
 }
 
 impl<T: BoundedBuf, U: BoundedBuf> Op<SendMsg<T, U>> {
@@ -23,9 +24,9 @@ impl<T: BoundedBuf, U: BoundedBuf> Op<SendMsg<T, U>> {
         socket_addr: Option<SocketAddr>,
         msg_control: Option<U>,
     ) -> io::Result<Self> {
-        use io_uring::{opcode, types};
+        use rustix_uring::{opcode, types};
 
-        let mut msghdr: Box<libc::msghdr> = Box::new(unsafe { std::mem::zeroed() });
+        let mut msghdr: Box<msghdr> = Box::new(unsafe { std::mem::zeroed() });
 
         let mut io_slices: Vec<IoSlice<'static>> = Vec::with_capacity(io_bufs.len());
 
@@ -42,7 +43,7 @@ impl<T: BoundedBuf, U: BoundedBuf> Op<SendMsg<T, U>> {
             Some(_socket_addr) => {
                 let socket_addr = Box::new(SockAddr::from(_socket_addr));
                 msghdr.msg_name = socket_addr.as_ptr() as *mut libc::c_void;
-                msghdr.msg_namelen = socket_addr.len();
+                msghdr.msg_namelen = socket_addr.len() as _;
                 Some(socket_addr)
             }
             None => {

@@ -1,3 +1,5 @@
+use rustix_uring::types::RenameFlags;
+
 use crate::runtime::driver::op::{Completable, CqeResult, Op};
 use crate::runtime::CONTEXT;
 use std::ffi::CString;
@@ -16,8 +18,12 @@ pub(crate) struct RenameAt {
 impl Op<RenameAt> {
     /// Submit a request to rename a specified path to a new name with
     /// the provided flags.
-    pub(crate) fn rename_at(from: &Path, to: &Path, flags: u32) -> io::Result<Op<RenameAt>> {
-        use io_uring::{opcode, types};
+    pub(crate) fn rename_at(
+        from: &Path,
+        to: &Path,
+        flags: RenameFlags,
+    ) -> io::Result<Op<RenameAt>> {
+        use rustix_uring::{opcode, types};
 
         let from = super::util::cstr(from)?;
         let to = super::util::cstr(to)?;

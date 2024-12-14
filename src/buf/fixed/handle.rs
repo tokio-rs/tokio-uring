@@ -1,7 +1,7 @@
 use super::FixedBuffers;
 use crate::buf::{IoBuf, IoBufMut};
 
-use libc::iovec;
+use rustix::io_uring::iovec;
 use std::cell::RefCell;
 use std::fmt::{self, Debug};
 use std::ops::{Deref, DerefMut};

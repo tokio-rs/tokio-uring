@@ -1,3 +1,5 @@
+use rustix_uring::types;
+
 use crate::buf::fixed::FixedBuf;
 use crate::buf::{BoundedBuf, BoundedBufMut, IoBuf, IoBufMut, Slice};
 use crate::fs::OpenOptions;
@@ -960,5 +962,5 @@ pub async fn remove_file<P: AsRef<Path>>(path: P) -> io::Result<()> {
 /// }
 /// ```
 pub async fn rename(from: impl AsRef<Path>, to: impl AsRef<Path>) -> io::Result<()> {
-    Op::rename_at(from.as_ref(), to.as_ref(), 0)?.await
+    Op::rename_at(from.as_ref(), to.as_ref(), types::RenameFlags::empty())?.await
 }

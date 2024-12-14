@@ -59,17 +59,6 @@
 #![warn(missing_docs)]
 #![allow(clippy::thread_local_initializer_can_be_made_const)]
 
-macro_rules! syscall {
-    ($fn: ident ( $($arg: expr),* $(,)* ) ) => {{
-        let res = unsafe { libc::$fn($($arg, )*) };
-        if res == -1 {
-            Err(std::io::Error::last_os_error())
-        } else {
-            Ok(res)
-        }
-    }};
-}
-
 #[macro_use]
 mod future;
 mod io;
@@ -155,8 +144,8 @@ pub fn start<F: Future>(future: F) -> F::Output {
 /// This function is provided to avoid requiring the user of this crate from
 /// having to use the io_uring crate as well. Refer to Builder::start example
 /// for its intended usage.
-pub fn uring_builder() -> io_uring::Builder {
-    io_uring::IoUring::builder()
+pub fn uring_builder() -> rustix_uring::Builder {
+    rustix_uring::IoUring::builder()
 }
 
 /// Builder API that can create and start the `io_uring` runtime with non-default parameters,
@@ -164,7 +153,7 @@ pub fn uring_builder() -> io_uring::Builder {
 // #[derive(Clone, Default)]
 pub struct Builder {
     entries: u32,
-    urb: io_uring::Builder,
+    urb: rustix_uring::Builder,
 }
 
 /// Constructs a [`Builder`] with default settings.
@@ -176,7 +165,7 @@ pub struct Builder {
 pub fn builder() -> Builder {
     Builder {
         entries: 256,
-        urb: io_uring::IoUring::builder(),
+        urb: rustix_uring::IoUring::builder(),
     }
 }
 
@@ -196,7 +185,7 @@ impl Builder {
     /// inner `io_uring` API.
     ///
     /// Refer to the [`io_uring::Builder`] documentation for all the supported methods.
-    pub fn uring_builder(&mut self, b: &io_uring::Builder) -> &mut Self {
+    pub fn uring_builder(&mut self, b: &rustix_uring::Builder) -> &mut Self {
         self.urb = b.clone();
         self
     }
