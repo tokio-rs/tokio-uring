@@ -65,11 +65,12 @@ where
         // Recover the buffer
         let mut buf = self.buf;
 
-        let socket_addr = (*self.socket_addr).as_socket();
+        let socket_addr = match (*self.socket_addr).as_socket() {
+            Some(sa) => sa,
+            None => return (Err(io::Error::from(io::ErrorKind::AddrNotAvailable)), buf),
+        };
 
         let res = res.map(|n| {
-            let socket_addr: SocketAddr = socket_addr.unwrap();
-
             // Safety: the kernel wrote `n` bytes to the buffer.
             unsafe {
                 buf.set_init(n);
