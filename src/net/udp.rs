@@ -1,8 +1,7 @@
 use crate::{
-    buf::fixed::FixedBuf,
-    buf::{BoundedBuf, BoundedBufMut},
+    buf::{fixed::FixedBuf, BoundedBuf, BoundedBufMut},
     io::{SharedFd, Socket},
-    UnsubmittedWrite,
+    UnsubmittedRead, UnsubmittedWrite,
 };
 use socket2::SockAddr;
 use std::{
@@ -318,6 +317,15 @@ impl UdpSocket {
     /// Returns the original buffer and quantity of data read.
     pub async fn read<T: BoundedBufMut>(&self, buf: T) -> crate::BufResult<usize, T> {
         self.inner.read(buf).submit().await
+    }
+
+    /// Read some data from the stream
+    ///
+    /// Like [`read`], but returns unsubmitted.
+    ///
+    /// Returns an UnsubmittedRead could be submitted.
+    pub fn unsubmitted_read<T: BoundedBufMut>(&self, buf: T) -> UnsubmittedRead<T> {
+        self.inner.read(buf)
     }
 
     /// Receives a single datagram message into a registered buffer.

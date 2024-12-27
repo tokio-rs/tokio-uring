@@ -7,7 +7,7 @@ use std::{
 use crate::{
     buf::{fixed::FixedBuf, BoundedBuf, BoundedBufMut},
     io::{SharedFd, Socket},
-    UnsubmittedWrite,
+    UnsubmittedRead, UnsubmittedWrite,
 };
 
 /// A TCP stream between a local and a remote socket.
@@ -75,6 +75,15 @@ impl TcpStream {
     /// Returns the original buffer and quantity of data read.
     pub async fn read<T: BoundedBufMut>(&self, buf: T) -> crate::BufResult<usize, T> {
         self.inner.read(buf).submit().await
+    }
+
+    /// Read some data from the stream
+    ///
+    /// Like [`read`], but returns unsubmitted.
+    ///
+    /// Returns an UnsubmittedRead could be submitted.
+    pub fn unsubmitted_read<T: BoundedBufMut>(&self, buf: T) -> UnsubmittedRead<T> {
+        self.inner.read(buf)
     }
 
     /// Read some data from the stream into a registered buffer.

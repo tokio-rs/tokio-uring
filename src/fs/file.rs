@@ -4,7 +4,7 @@ use crate::fs::OpenOptions;
 use crate::io::SharedFd;
 
 use crate::runtime::driver::op::Op;
-use crate::{UnsubmittedOneshot, UnsubmittedWrite};
+use crate::{UnsubmittedOneshot, UnsubmittedRead, UnsubmittedWrite};
 use std::fmt;
 use std::io;
 use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
@@ -180,6 +180,20 @@ impl File {
         UnsubmittedOneshot::read_at(&self.fd, buf, pos)
             .submit()
             .await
+    }
+
+    /// Read some bytes at the specified offset from the file into the specified
+    /// buffer, returning how many bytes were read.
+    ///
+    /// Like [`read`], but returns unsubmitted.
+    ///
+    /// Returns an UnsubmittedRead could be submitted.
+    pub async fn unsubmitted_read_at<T: BoundedBufMut>(
+        &self,
+        buf: T,
+        pos: u64,
+    ) -> UnsubmittedRead<T> {
+        UnsubmittedOneshot::read_at(&self.fd, buf, pos)
     }
 
     /// Read some bytes at the specified offset from the file into the specified
