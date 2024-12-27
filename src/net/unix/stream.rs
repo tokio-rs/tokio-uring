@@ -76,7 +76,7 @@ impl UnixStream {
     /// Read some data from the stream into the buffer, returning the original buffer and
     /// quantity of data read.
     pub async fn read<T: BoundedBufMut>(&self, buf: T) -> crate::BufResult<usize, T> {
-        self.inner.read(buf).await
+        self.inner.read(buf).submit().await
     }
 
     /// Like [`read`], but using a pre-mapped buffer

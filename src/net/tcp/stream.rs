@@ -5,8 +5,7 @@ use std::{
 };
 
 use crate::{
-    buf::fixed::FixedBuf,
-    buf::{BoundedBuf, BoundedBufMut},
+    buf::{fixed::FixedBuf, BoundedBuf, BoundedBufMut},
     io::{SharedFd, Socket},
     UnsubmittedWrite,
 };
@@ -75,7 +74,7 @@ impl TcpStream {
     ///
     /// Returns the original buffer and quantity of data read.
     pub async fn read<T: BoundedBufMut>(&self, buf: T) -> crate::BufResult<usize, T> {
-        self.inner.read(buf).await
+        self.inner.read(buf).submit().await
     }
 
     /// Read some data from the stream into a registered buffer.

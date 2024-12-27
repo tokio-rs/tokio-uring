@@ -177,9 +177,9 @@ impl File {
     /// }
     /// ```
     pub async fn read_at<T: BoundedBufMut>(&self, buf: T, pos: u64) -> crate::BufResult<usize, T> {
-        // Submit the read operation
-        let op = Op::read_at(&self.fd, buf, pos).unwrap();
-        op.await
+        UnsubmittedOneshot::read_at(&self.fd, buf, pos)
+            .submit()
+            .await
     }
 
     /// Read some bytes at the specified offset from the file into the specified
