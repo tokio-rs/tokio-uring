@@ -15,7 +15,7 @@ pub(crate) use noop::NoOp;
 
 mod open;
 
-mod read;
+pub(crate) mod read;
 
 mod read_fixed;
 
