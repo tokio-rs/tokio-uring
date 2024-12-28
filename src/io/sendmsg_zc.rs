@@ -62,11 +62,11 @@ impl<T: BoundedBuf, U: BoundedBuf> Op<SendMsgZc<T, U>, MultiCQEFuture> {
         match msg_control {
             Some(ref _msg_control) => {
                 msghdr.msg_control = _msg_control.stable_ptr() as *mut _;
-                msghdr.msg_controllen = _msg_control.bytes_init();
+                msghdr.msg_controllen = _msg_control.bytes_init() as _;
             }
             None => {
                 msghdr.msg_control = std::ptr::null_mut();
-                msghdr.msg_controllen = 0_usize;
+                msghdr.msg_controllen = 0;
             }
         }
 
