@@ -5,9 +5,10 @@ use std::{
 
 use tempfile::NamedTempFile;
 
-use tokio_uring::buf::{BoundedBuf, BoundedBufMut};
-use tokio_uring::fs::File;
-use tokio_uring::{buf::fixed::FixedBufRegistry, fs::OpenOptions};
+use tokio_uring::{
+    buf::{fixed::FixedBufRegistry, BoundedBuf, BoundedBufMut},
+    fs::{File, OpenOptions},
+};
 
 #[path = "../src/future.rs"]
 #[allow(warnings)]
