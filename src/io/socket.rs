@@ -288,8 +288,6 @@ impl AsRawFd for Socket {
 
 impl AsFd for Socket {
     fn as_fd(&self) -> BorrowedFd<'_> {
-        unsafe {
-            BorrowedFd::borrow_raw(self.fd.raw_fd())
-        }
+        unsafe { BorrowedFd::borrow_raw(self.fd.raw_fd()) }
     }
 }

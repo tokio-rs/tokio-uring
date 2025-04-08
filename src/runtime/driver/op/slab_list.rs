@@ -111,7 +111,7 @@ impl<'a, T> SlabList<'a, T> {
     }
 }
 
-impl<'a, T> Drop for SlabList<'a, T> {
+impl<T> Drop for SlabList<'_, T> {
     fn drop(&mut self) {
         while !self.is_empty() {
             let removed = self.slab.remove(self.index.start);
@@ -120,7 +120,7 @@ impl<'a, T> Drop for SlabList<'a, T> {
     }
 }
 
-impl<'a, T> Iterator for SlabList<'a, T> {
+impl<T> Iterator for SlabList<'_, T> {
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {

@@ -34,7 +34,7 @@ async fn accept_loop(listen_addr: SocketAddr) {
     );
 
     // Other iterators may be passed to FixedBufRegistry::new also.
-    let registry = FixedBufRegistry::new(iter::repeat(vec![0; 4096]).take(POOL_SIZE));
+    let registry = FixedBufRegistry::new(iter::repeat_n(vec![0; 4096], POOL_SIZE));
 
     // Register the buffers with the kernel, asserting the syscall passed.
 
