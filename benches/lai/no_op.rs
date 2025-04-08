@@ -4,6 +4,7 @@ use tokio::task::JoinSet;
 #[derive(Clone)]
 struct Options {
     iterations: usize,
+    #[allow(dead_code)]
     concurrency: usize,
     sq_size: usize,
     cq_size: usize,

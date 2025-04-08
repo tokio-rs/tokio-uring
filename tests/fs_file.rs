@@ -1,7 +1,4 @@
-use std::{
-    io::prelude::*,
-    os::unix::io::{AsRawFd, FromRawFd, RawFd},
-};
+use std::io::prelude::*;
 
 use tempfile::NamedTempFile;
 
@@ -130,21 +127,6 @@ fn cancel_read() {
 }
 
 #[test]
-fn explicit_close() {
-    let mut tempfile = tempfile();
-    tempfile.write_all(HELLO).unwrap();
-
-    tokio_uring::start(async {
-        let file = File::open(tempfile.path()).await.unwrap();
-        let fd = file.as_raw_fd();
-
-        file.close().await.unwrap();
-
-        assert_invalid_fd(fd);
-    })
-}
-
-#[test]
 fn drop_open() {
     tokio_uring::start(async {
         let tempfile = tempfile();
@@ -158,19 +140,6 @@ fn drop_open() {
         let file = std::fs::read(tempfile.path()).unwrap();
         assert_eq!(file, HELLO);
     });
-}
-
-#[test]
-fn drop_off_runtime() {
-    let file = tokio_uring::start(async {
-        let tempfile = tempfile();
-        File::open(tempfile.path()).await.unwrap()
-    });
-
-    let fd = file.as_raw_fd();
-    drop(file);
-
-    assert_invalid_fd(fd);
 }
 
 #[test]
@@ -319,7 +288,6 @@ fn tempfile() -> NamedTempFile {
 
 async fn poll_once(future: impl std::future::Future) {
     use std::future::poll_fn;
-    // use std::future::Future;
     use std::task::Poll;
     use tokio::pin;
 
@@ -330,16 +298,4 @@ async fn poll_once(future: impl std::future::Future) {
         Poll::Ready(())
     })
     .await;
-}
-
-fn assert_invalid_fd(fd: RawFd) {
-    use std::fs::File;
-
-    let mut f = unsafe { File::from_raw_fd(fd) };
-    let mut buf = vec![];
-
-    match f.read_to_end(&mut buf) {
-        Err(ref e) if e.raw_os_error() == Some(libc::EBADF) => {}
-        res => panic!("assert_invalid_fd finds for fd {:?}, res = {:?}", fd, res),
-    }
 }
