@@ -20,8 +20,8 @@ keywords = ["async", "fs", "io-uring"]
 tokio = { version = "1.2", features = ["net", "rt", "sync"] }
 slab = "0.4.2"
 libc = "0.2.80"
-io-uring = "0.6.0"
-socket2 = { version = "0.4.4", features = ["all"] }
+io-uring = "0.7"
+socket2 = { version = "0.5", features = ["all"] }
 bytes = { version = "1.0", optional = true }
 futures-util = { version = "0.3.26", default-features = false, features = ["std"] }
 
@@ -29,10 +29,10 @@ futures-util = { version = "0.3.26", default-features = false, features = ["std"
 tempfile = "3.2.0"
 tokio-test = "0.4.2"
 iai = "0.1.1"
-criterion = "0.4.0"
+criterion = "0.5"
 # we use joinset in our tests
 tokio = "1.21.2"
-nix = "0.26.1"
+nix = "0.30"
 
 [package.metadata.docs.rs]
 all-features = true

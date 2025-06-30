@@ -183,7 +183,7 @@ fn pool_next_as_concurrency_limit() {
         mem::drop(file);
         let mut content = String::new();
         tempfile.read_to_string(&mut content).unwrap();
-        println!("{}", content);
+        println!("{content}");
     })
 }
 

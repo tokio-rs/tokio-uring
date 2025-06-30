@@ -4,6 +4,7 @@ use tokio::task::JoinSet;
 #[derive(Clone)]
 struct Options {
     iterations: usize,
+    #[allow(dead_code)]
     concurrency: usize,
     sq_size: usize,
     cq_size: usize,
@@ -60,20 +61,26 @@ fn no_op_x1() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn no_op_x32() -> Result<(), Box<dyn std::error::Error>> {
-    let mut opts = Options::default();
-    opts.concurrency = 32;
+    let opts = Options {
+        concurrency: 32,
+        ..Options::default()
+    };
     run_no_ops(black_box(opts))
 }
 
 fn no_op_x64() -> Result<(), Box<dyn std::error::Error>> {
-    let mut opts = Options::default();
-    opts.concurrency = 64;
+    let opts = Options {
+        concurrency: 64,
+        ..Options::default()
+    };
     run_no_ops(black_box(opts))
 }
 
 fn no_op_x256() -> Result<(), Box<dyn std::error::Error>> {
-    let mut opts = Options::default();
-    opts.concurrency = 256;
+    let opts = Options {
+        concurrency: 256,
+        ..Options::default()
+    };
     run_no_ops(black_box(opts))
 }
 

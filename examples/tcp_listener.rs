@@ -24,7 +24,7 @@ fn main() {
 
                 use tokio_uring::buf::BoundedBuf; // for slice()
 
-                println!("{} connected", socket_addr);
+                println!("{socket_addr} connected");
                 let mut n = 0;
 
                 let mut buf = vec![0u8; 4096];
@@ -33,14 +33,14 @@ fn main() {
                     buf = nbuf;
                     let read = result.unwrap();
                     if read == 0 {
-                        println!("{} closed, {} total ping-ponged", socket_addr, n);
+                        println!("{socket_addr} closed, {n} total ping-ponged");
                         break;
                     }
 
                     let (res, slice) = stream.write_all(buf.slice(..read)).await;
                     res.unwrap();
                     buf = slice.into_inner();
-                    println!("{} all {} bytes ping-ponged", socket_addr, read);
+                    println!("{socket_addr} all {read} bytes ping-ponged");
                     n += read;
                 }
             });

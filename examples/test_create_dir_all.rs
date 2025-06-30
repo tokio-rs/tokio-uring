@@ -163,10 +163,9 @@ async fn main1() -> io::Result<()> {
     if unexpected == 0 {
         Ok(())
     } else {
-        Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            format!("{unexpected} unexpected result(s)"),
-        ))
+        Err(std::io::Error::other(format!(
+            "{unexpected} unexpected result(s)"
+        )))
     }
 }
 
@@ -208,10 +207,9 @@ async fn matches_mode<P: AsRef<Path>>(path: P, want_mode: u16) -> io::Result<()>
     if want_mode == got_mode {
         Ok(())
     } else {
-        Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            format!("want mode {want_mode:#o}, got mode {got_mode:#o}"),
-        ))
+        Err(std::io::Error::other(format!(
+            "want mode {want_mode:#o}, got mode {got_mode:#o}"
+        )))
     }
 }
 
@@ -231,10 +229,7 @@ async fn is_regfile<P: AsRef<Path>>(path: P) -> io::Result<()> {
     if is_regfile {
         Ok(())
     } else {
-        Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "not regular file",
-        ))
+        Err(std::io::Error::other("not regular file"))
     }
 }
 
@@ -244,17 +239,14 @@ async fn is_dir<P: AsRef<Path>>(path: P) -> io::Result<()> {
     if is_dir {
         Ok(())
     } else {
-        Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "not directory",
-        ))
+        Err(std::io::Error::other("not directory"))
     }
 }
 
 fn main() {
     tokio_uring::start(async {
         if let Err(e) = main1().await {
-            println!("error: {}", e);
+            println!("error: {e}");
         }
     });
 }

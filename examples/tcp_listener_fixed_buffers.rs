@@ -34,7 +34,7 @@ async fn accept_loop(listen_addr: SocketAddr) {
     );
 
     // Other iterators may be passed to FixedBufRegistry::new also.
-    let registry = FixedBufRegistry::new(iter::repeat(vec![0; 4096]).take(POOL_SIZE));
+    let registry = FixedBufRegistry::new(iter::repeat_n(vec![0; 4096], POOL_SIZE));
 
     // Register the buffers with the kernel, asserting the syscall passed.
 
@@ -55,7 +55,7 @@ async fn echo_handler<T: IoBufMut>(
     peer: SocketAddr,
     registry: FixedBufRegistry<T>,
 ) {
-    println!("peer {} connected", peer);
+    println!("peer {peer} connected");
 
     // Get one of the two fixed buffers.
     // If neither is unavailable, print reason and return immediately, dropping this connection;
@@ -68,7 +68,7 @@ async fn echo_handler<T: IoBufMut>(
     };
     if fbuf.is_none() {
         let _ = stream.shutdown(std::net::Shutdown::Write);
-        println!("peer {} closed, no fixed buffers available", peer);
+        println!("peer {peer} closed, no fixed buffers available");
         return;
     };
 
@@ -90,7 +90,7 @@ async fn echo_handler<T: IoBufMut>(
             let (res, nslice) = stream.write_fixed_all(fbuf1.slice(..read)).await;
 
             res.unwrap();
-            println!("peer {} all {} bytes ping-ponged", peer, read);
+            println!("peer {peer} all {read} bytes ping-ponged");
             n += read;
 
             // Important. One of the points of this example.
@@ -98,5 +98,5 @@ async fn echo_handler<T: IoBufMut>(
         };
     }
     let _ = stream.shutdown(std::net::Shutdown::Write);
-    println!("peer {} closed, {} total ping-ponged", peer, n);
+    println!("peer {peer} closed, {n} total ping-ponged");
 }

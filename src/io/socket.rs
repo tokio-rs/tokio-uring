@@ -9,7 +9,7 @@ use crate::{
 use std::{
     io,
     net::SocketAddr,
-    os::unix::io::{AsRawFd, IntoRawFd, RawFd},
+    os::unix::io::{AsFd, AsRawFd, BorrowedFd, IntoRawFd, RawFd},
     path::Path,
 };
 
@@ -283,5 +283,11 @@ impl Socket {
 impl AsRawFd for Socket {
     fn as_raw_fd(&self) -> RawFd {
         self.fd.raw_fd()
+    }
+}
+
+impl AsFd for Socket {
+    fn as_fd(&self) -> BorrowedFd<'_> {
+        unsafe { BorrowedFd::borrow_raw(self.fd.raw_fd()) }
     }
 }
