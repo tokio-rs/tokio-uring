@@ -246,7 +246,7 @@ async fn is_dir<P: AsRef<Path>>(path: P) -> io::Result<()> {
 fn main() {
     tokio_uring::start(async {
         if let Err(e) = main1().await {
-            println!("error: {}", e);
+            println!("error: {e}");
         }
     });
 }

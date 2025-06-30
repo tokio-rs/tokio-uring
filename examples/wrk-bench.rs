@@ -24,7 +24,7 @@ fn main() -> io::Result<()> {
                         let (result, _) = stream.write(RESPONSE).submit().await;
 
                         if let Err(err) = result {
-                            eprintln!("Client connection failed: {}", err);
+                            eprintln!("Client connection failed: {err}");
                         }
                     });
                 }
