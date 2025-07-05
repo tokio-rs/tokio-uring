@@ -26,7 +26,7 @@ impl Op<Connect> {
                 |connect| {
                     opcode::Connect::new(
                         types::Fd(connect.fd.raw_fd()),
-                        connect.socket_addr.as_ptr(),
+                        connect.socket_addr.as_ptr().cast(),
                         connect.socket_addr.len(),
                     )
                     .build()

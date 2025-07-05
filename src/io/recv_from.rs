@@ -24,7 +24,7 @@ impl<T: BoundedBufMut> Op<RecvFrom<T>> {
             std::slice::from_raw_parts_mut(buf.stable_mut_ptr(), buf.bytes_total())
         })];
 
-        let socket_addr = Box::new(unsafe { SockAddr::init(|_, _| Ok(()))?.1 });
+        let socket_addr = Box::new(unsafe { SockAddr::try_init(|_, _| Ok(()))?.1 });
 
         let mut msghdr: Box<libc::msghdr> = Box::new(unsafe { std::mem::zeroed() });
         msghdr.msg_iov = io_slices.as_mut_ptr().cast();

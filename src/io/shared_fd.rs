@@ -3,7 +3,7 @@ use std::future::poll_fn;
 use std::{
     cell::RefCell,
     io,
-    os::unix::io::{FromRawFd, RawFd},
+    os::unix::io::{BorrowedFd, FromRawFd, RawFd},
     rc::Rc,
     task::Waker,
 };
@@ -56,6 +56,12 @@ impl SharedFd {
     /// Returns the RawFd
     pub(crate) fn raw_fd(&self) -> RawFd {
         self.inner.fd
+    }
+
+    pub(crate) fn fd(&self) -> BorrowedFd {
+        // SAFETY: we're ensuring the fd stays open as long as SharedFd is
+        // alive.
+        unsafe { BorrowedFd::borrow_raw(self.inner.fd) }
     }
 
     /// An FD cannot be closed until all in-flight operation have completed.

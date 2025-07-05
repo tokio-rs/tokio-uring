@@ -9,7 +9,7 @@ use crate::{
 use std::{
     io,
     net::SocketAddr,
-    os::unix::io::{AsRawFd, IntoRawFd, RawFd},
+    os::unix::io::{AsFd, AsRawFd, BorrowedFd, IntoRawFd, RawFd},
     path::Path,
 };
 
@@ -276,12 +276,18 @@ impl Socket {
     /// small packets.
     pub fn set_nodelay(&self, nodelay: bool) -> io::Result<()> {
         let socket_ref = socket2::SockRef::from(self);
-        socket_ref.set_nodelay(nodelay)
+        socket_ref.set_tcp_nodelay(nodelay)
     }
 }
 
 impl AsRawFd for Socket {
     fn as_raw_fd(&self) -> RawFd {
         self.fd.raw_fd()
+    }
+}
+
+impl AsFd for Socket {
+    fn as_fd(&self) -> BorrowedFd {
+        self.fd.fd()
     }
 }
