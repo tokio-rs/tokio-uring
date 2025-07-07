@@ -426,7 +426,7 @@ impl File {
                             "failed to fill whole buffer",
                         )),
                         slice.into_inner(),
-                    )
+                    );
                 }
                 Ok(n) => {
                     pos += n as u64;
@@ -618,7 +618,7 @@ impl File {
                             "failed to write whole buffer",
                         )),
                         slice.into_inner(),
-                    )
+                    );
                 }
                 Ok(n) => {
                     pos += n as u64;
@@ -738,7 +738,7 @@ impl File {
                             "failed to write whole buffer",
                         )),
                         slice.into_inner(),
-                    )
+                    );
                 }
                 Ok(n) => {
                     pos += n as u64;

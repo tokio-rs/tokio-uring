@@ -118,8 +118,7 @@ impl Driver {
                 return Ok(());
             }
         }
-        Err(io::Error::new(
-            io::ErrorKind::Other,
+        Err(io::Error::other(
             "fixed buffers are not currently registered",
         ))
     }
