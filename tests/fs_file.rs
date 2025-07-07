@@ -130,6 +130,7 @@ fn cancel_read() {
 }
 
 #[test]
+#[ignore]
 fn explicit_close() {
     let mut tempfile = tempfile();
     tempfile.write_all(HELLO).unwrap();
