@@ -18,7 +18,7 @@ pub(crate) struct Statx {
 
     // TODO consider returning this type when the operation is complete so the caller has the boxed value.
     // The builder could even recycle an old boxed value and pass it in here.
-    statx: Box<libc::statx>,
+    statx: Box<linux_raw_sys::general::statx>,
 }
 
 impl Op<Statx> {
@@ -53,7 +53,8 @@ impl Op<Statx> {
                     opcode::Statx::new(
                         types::Fd(raw),
                         statx.path.as_ptr(),
-                        &mut *statx.statx as *mut libc::statx as *mut types::statx,
+                        &mut *statx.statx as *mut linux_raw_sys::general::statx
+                            as *mut types::statx,
                     )
                     .flags(flags)
                     .mask(mask)
@@ -65,7 +66,7 @@ impl Op<Statx> {
 }
 
 impl Completable for Statx {
-    type Output = io::Result<libc::statx>;
+    type Output = io::Result<linux_raw_sys::general::statx>;
 
     fn complete(self, cqe: CqeResult) -> Self::Output {
         cqe.result?;

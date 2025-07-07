@@ -28,9 +28,9 @@ impl File {
     ///     f.close().await.unwrap();
     /// })
     /// ```
-    pub async fn statx(&self) -> io::Result<libc::statx> {
+    pub async fn statx(&self) -> io::Result<linux_raw_sys::general::statx> {
         let flags = libc::AT_EMPTY_PATH;
-        let mask = libc::STATX_ALL;
+        let mask = linux_raw_sys::general::STATX_ALL;
         Op::statx(Some(self.fd.clone()), None, flags, mask)?.await
     }
 
@@ -73,7 +73,7 @@ impl File {
             file: Some(self.fd.clone()),
             path: None,
             flags: libc::AT_EMPTY_PATH,
-            mask: libc::STATX_ALL,
+            mask: linux_raw_sys::general::STATX_ALL,
         }
     }
 }
@@ -102,7 +102,7 @@ impl File {
 ///     let statx = tokio_uring::fs::statx("foo.txt").await.unwrap();
 /// })
 /// ```
-pub async fn statx<P: AsRef<Path>>(path: P) -> io::Result<libc::statx> {
+pub async fn statx<P: AsRef<Path>>(path: P) -> io::Result<linux_raw_sys::general::statx> {
     StatxBuilder::new().pathname(path).unwrap().statx().await
 }
 
@@ -162,7 +162,7 @@ impl StatxBuilder {
             file: None,
             path: None,
             flags: libc::AT_EMPTY_PATH,
-            mask: libc::STATX_ALL,
+            mask: linux_raw_sys::general::STATX_ALL,
         }
     }
 
@@ -288,7 +288,7 @@ impl StatxBuilder {
     ///     dir.close().await.unwrap();
     /// })
     /// ```
-    pub async fn statx(&mut self) -> io::Result<libc::statx> {
+    pub async fn statx(&mut self) -> io::Result<linux_raw_sys::general::statx> {
         // TODO should the statx() terminator be renamed to something like submit()?
         let fd = self.file.take();
         let path = self.path.take();
@@ -303,7 +303,11 @@ impl StatxBuilder {
 #[allow(dead_code)]
 pub async fn is_dir_regfile<P: AsRef<Path>>(path: P) -> (bool, bool) {
     let mut builder = crate::fs::StatxBuilder::new();
-    if builder.mask(libc::STATX_TYPE).pathname(path).is_err() {
+    if builder
+        .mask(linux_raw_sys::general::STATX_TYPE)
+        .pathname(path)
+        .is_err()
+    {
         return (false, false);
     }
 

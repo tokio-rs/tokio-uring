@@ -190,7 +190,11 @@ mod fs_imp {
 // Uses one asynchronous uring call to determine this.
 async fn is_dir<P: AsRef<Path>>(path: P) -> bool {
     let mut builder = crate::fs::StatxBuilder::new();
-    if builder.mask(libc::STATX_TYPE).pathname(path).is_err() {
+    if builder
+        .mask(linux_raw_sys::general::STATX_TYPE)
+        .pathname(path)
+        .is_err()
+    {
         return false;
     }
 
