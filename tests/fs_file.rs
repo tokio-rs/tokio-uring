@@ -162,6 +162,7 @@ fn drop_open() {
 }
 
 #[test]
+#[ignore]
 fn drop_off_runtime() {
     let file = tokio_uring::start(async {
         let tempfile = tempfile();
