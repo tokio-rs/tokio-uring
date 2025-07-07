@@ -64,7 +64,7 @@ impl Socket {
                             "failed to write whole buffer",
                         )),
                         slice.into_inner(),
-                    )
+                    );
                 }
                 (Ok(n), slice) => {
                     buf = slice.slice(n..);
@@ -112,7 +112,7 @@ impl Socket {
                             "failed to write whole buffer",
                         )),
                         slice.into_inner(),
-                    )
+                    );
                 }
                 (Ok(n), slice) => {
                     buf = slice.slice(n..);
