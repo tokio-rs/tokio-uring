@@ -9,7 +9,7 @@ pub struct NoOp {}
 
 impl Op<NoOp> {
     pub fn no_op() -> io::Result<Op<NoOp>> {
-        use io_uring::opcode;
+        use rustix_uring::opcode;
 
         CONTEXT.with(|x| {
             x.handle()

@@ -1,3 +1,5 @@
+use rustix_uring::types::AtFlags;
+
 use crate::runtime::driver::op::{Completable, CqeResult, Op};
 use crate::runtime::CONTEXT;
 use std::ffi::CString;
@@ -12,17 +14,17 @@ pub(crate) struct Unlink {
 impl Op<Unlink> {
     /// Submit a request to unlink a directory with provided flags.
     pub(crate) fn unlink_dir(path: &Path) -> io::Result<Op<Unlink>> {
-        Self::unlink(path, libc::AT_REMOVEDIR)
+        Self::unlink(path, AtFlags::REMOVEDIR)
     }
 
     /// Submit a request to unlink a file with provided flags.
     pub(crate) fn unlink_file(path: &Path) -> io::Result<Op<Unlink>> {
-        Self::unlink(path, 0)
+        Self::unlink(path, AtFlags::empty())
     }
 
     /// Submit a request to unlink a specified path with provided flags.
-    pub(crate) fn unlink(path: &Path, flags: i32) -> io::Result<Op<Unlink>> {
-        use io_uring::{opcode, types};
+    pub(crate) fn unlink(path: &Path, flags: AtFlags) -> io::Result<Op<Unlink>> {
+        use rustix_uring::{opcode, types};
 
         let path = super::util::cstr(path)?;
 

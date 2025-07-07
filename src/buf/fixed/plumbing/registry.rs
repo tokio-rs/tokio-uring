@@ -1,7 +1,8 @@
 use crate::buf::fixed::{handle::CheckedOutBuf, FixedBuffers};
 use crate::buf::IoBufMut;
 
-use libc::{iovec, UIO_MAXIOV};
+use libc::UIO_MAXIOV;
+use rustix::io_uring::iovec;
 use std::cmp;
 use std::mem;
 use std::ptr;

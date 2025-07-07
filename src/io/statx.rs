@@ -1,7 +1,8 @@
 use std::ffi::CString;
 use std::{ffi::CStr, io};
 
-use io_uring::{opcode, types};
+use rustix::fs::StatxFlags;
+use rustix_uring::{opcode, types};
 
 use crate::runtime::{
     driver::op::{Completable, CqeResult, Op},
@@ -18,7 +19,7 @@ pub(crate) struct Statx {
 
     // TODO consider returning this type when the operation is complete so the caller has the boxed value.
     // The builder could even recycle an old boxed value and pass it in here.
-    statx: Box<libc::statx>,
+    statx: Box<types::Statx>,
 }
 
 impl Op<Statx> {
@@ -28,8 +29,8 @@ impl Op<Statx> {
     pub(crate) fn statx(
         fd: Option<SharedFd>,
         path: Option<CString>,
-        flags: i32,
-        mask: u32,
+        flags: types::AtFlags,
+        mask: StatxFlags,
     ) -> io::Result<Op<Statx>> {
         let raw = fd.as_ref().map_or(libc::AT_FDCWD, |fd| fd.raw_fd());
         let mut flags = flags;
@@ -37,7 +38,7 @@ impl Op<Statx> {
             Some(path) => path,
             None => {
                 // If there is no path, add appropriate bit to flags.
-                flags |= libc::AT_EMPTY_PATH;
+                flags |= types::AtFlags::EMPTY_PATH;
                 CStr::from_bytes_with_nul(b"\0").unwrap().into() // TODO Is there a constant CString we
                                                                  // could use here.
             }
@@ -53,7 +54,7 @@ impl Op<Statx> {
                     opcode::Statx::new(
                         types::Fd(raw),
                         statx.path.as_ptr(),
-                        &mut *statx.statx as *mut libc::statx as *mut types::statx,
+                        &mut *statx.statx as *mut types::Statx,
                     )
                     .flags(flags)
                     .mask(mask)
@@ -65,7 +66,7 @@ impl Op<Statx> {
 }
 
 impl Completable for Statx {
-    type Output = io::Result<libc::statx>;
+    type Output = io::Result<types::Statx>;
 
     fn complete(self, cqe: CqeResult) -> Self::Output {
         cqe.result?;

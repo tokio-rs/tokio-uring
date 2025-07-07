@@ -15,7 +15,7 @@ pub(crate) struct Connect {
 impl Op<Connect> {
     /// Submit a request to connect.
     pub(crate) fn connect(fd: &SharedFd, socket_addr: SockAddr) -> io::Result<Op<Connect>> {
-        use io_uring::{opcode, types};
+        use rustix_uring::{opcode, types};
 
         CONTEXT.with(|x| {
             x.handle().expect("Not in a runtime context").submit_op(
@@ -26,7 +26,7 @@ impl Op<Connect> {
                 |connect| {
                     opcode::Connect::new(
                         types::Fd(connect.fd.raw_fd()),
-                        connect.socket_addr.as_ptr(),
+                        connect.socket_addr.as_ptr() as *const _,
                         connect.socket_addr.len(),
                     )
                     .build()

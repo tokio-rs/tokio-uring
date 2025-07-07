@@ -4,7 +4,7 @@ use std::marker::PhantomData;
 use std::pin::Pin;
 use std::task::{Context, Poll, Waker};
 
-use io_uring::{cqueue, squeue};
+use rustix_uring::{cqueue, squeue};
 
 mod slab_list;
 
@@ -179,7 +179,7 @@ pub(crate) enum Lifecycle {
 /// A single CQE entry
 pub(crate) struct CqeResult {
     pub(crate) result: io::Result<u32>,
-    pub(crate) flags: u32,
+    pub(crate) flags: cqueue::Flags,
 }
 
 impl From<cqueue::Entry> for CqeResult {
@@ -270,7 +270,7 @@ impl Lifecycle {
 
         match mem::replace(self, Lifecycle::Submitted) {
             x @ Lifecycle::Submitted | x @ Lifecycle::Waiting(..) => {
-                if io_uring::cqueue::more(cqe.flags()) {
+                if rustix_uring::cqueue::more(cqe.flags()) {
                     let mut list = SlabListIndices::new().into_list(completions);
                     list.push(cqe.into());
                     *self = Lifecycle::CompletionList(list.into_indices());
@@ -286,7 +286,7 @@ impl Lifecycle {
             }
 
             lifecycle @ Lifecycle::Ignored(..) => {
-                if io_uring::cqueue::more(cqe.flags()) {
+                if rustix_uring::cqueue::more(cqe.flags()) {
                     // Not yet complete. The Op has been dropped, so we can drop the CQE
                     // but we must keep the lifecycle alive until no more CQE's expected
                     *self = lifecycle;

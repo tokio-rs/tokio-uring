@@ -1,4 +1,5 @@
 use futures_util::future::LocalBoxFuture;
+use rustix::fs::StatxFlags;
 use std::io;
 use std::path::Path;
 
@@ -162,17 +163,17 @@ impl DirBuilder {
 
 mod fs_imp {
     use crate::runtime::driver::op::Op;
-    use libc::mode_t;
+    use rustix::fs::Mode;
     use std::path::Path;
 
     #[derive(Debug)]
     pub struct DirBuilder {
-        mode: mode_t,
+        mode: Mode,
     }
 
     impl DirBuilder {
         pub fn new() -> DirBuilder {
-            DirBuilder { mode: 0o777 }
+            DirBuilder { mode: 0o777.into() }
         }
 
         pub async fn mkdir(&self, p: &Path) -> std::io::Result<()> {
@@ -180,7 +181,7 @@ mod fs_imp {
         }
 
         pub fn set_mode(&mut self, mode: u32) {
-            self.mode = mode as mode_t;
+            self.mode = mode.into();
         }
     }
 }
@@ -190,7 +191,7 @@ mod fs_imp {
 // Uses one asynchronous uring call to determine this.
 async fn is_dir<P: AsRef<Path>>(path: P) -> bool {
     let mut builder = crate::fs::StatxBuilder::new();
-    if builder.mask(libc::STATX_TYPE).pathname(path).is_err() {
+    if builder.mask(StatxFlags::TYPE).pathname(path).is_err() {
         return false;
     }
 

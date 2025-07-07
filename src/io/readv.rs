@@ -4,7 +4,7 @@ use crate::BufResult;
 use crate::io::SharedFd;
 use crate::runtime::driver::op::{Completable, CqeResult, Op};
 use crate::runtime::CONTEXT;
-use libc::iovec;
+use rustix_uring::types::iovec;
 use std::io;
 
 pub(crate) struct Readv<T> {
@@ -25,7 +25,7 @@ impl<T: BoundedBufMut> Op<Readv<T>> {
         mut bufs: Vec<T>,
         offset: u64,
     ) -> io::Result<Op<Readv<T>>> {
-        use io_uring::{opcode, types};
+        use rustix_uring::{opcode, types};
 
         // Build `iovec` objects referring the provided `bufs` for `io_uring::opcode::Readv`.
         let iovs: Vec<iovec> = bufs

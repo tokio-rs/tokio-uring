@@ -1,6 +1,7 @@
 use crate::runtime::driver::op::{Completable, CqeResult, Op};
 use crate::runtime::CONTEXT;
 use crate::{buf::BoundedBufMut, io::SharedFd, BufResult};
+use rustix::io_uring::msghdr;
 use socket2::SockAddr;
 use std::{
     io::IoSliceMut,
@@ -13,12 +14,12 @@ pub(crate) struct RecvFrom<T> {
     pub(crate) buf: T,
     io_slices: Vec<IoSliceMut<'static>>,
     pub(crate) socket_addr: Box<SockAddr>,
-    pub(crate) msghdr: Box<libc::msghdr>,
+    pub(crate) msghdr: Box<msghdr>,
 }
 
 impl<T: BoundedBufMut> Op<RecvFrom<T>> {
     pub(crate) fn recv_from(fd: &SharedFd, mut buf: T) -> io::Result<Op<RecvFrom<T>>> {
-        use io_uring::{opcode, types};
+        use rustix_uring::{opcode, types};
 
         let mut io_slices = vec![IoSliceMut::new(unsafe {
             std::slice::from_raw_parts_mut(buf.stable_mut_ptr(), buf.bytes_total())
@@ -26,11 +27,11 @@ impl<T: BoundedBufMut> Op<RecvFrom<T>> {
 
         let socket_addr = Box::new(unsafe { SockAddr::init(|_, _| Ok(()))?.1 });
 
-        let mut msghdr: Box<libc::msghdr> = Box::new(unsafe { std::mem::zeroed() });
+        let mut msghdr: Box<msghdr> = Box::new(unsafe { std::mem::zeroed() });
         msghdr.msg_iov = io_slices.as_mut_ptr().cast();
         msghdr.msg_iovlen = io_slices.len() as _;
         msghdr.msg_name = socket_addr.as_ptr() as *mut libc::c_void;
-        msghdr.msg_namelen = socket_addr.len();
+        msghdr.msg_namelen = socket_addr.len() as _;
 
         CONTEXT.with(|x| {
             x.handle().expect("Not in a runtime context").submit_op(

@@ -26,7 +26,7 @@ where
         buf: T,
         offset: u64,
     ) -> io::Result<Op<ReadFixed<T>>> {
-        use io_uring::{opcode, types};
+        use rustix_uring::{opcode, types};
 
         CONTEXT.with(|x| {
             x.handle().expect("Not in a runtime context").submit_op(

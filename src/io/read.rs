@@ -18,7 +18,7 @@ pub(crate) struct Read<T> {
 
 impl<T: BoundedBufMut> Op<Read<T>> {
     pub(crate) fn read_at(fd: &SharedFd, buf: T, offset: u64) -> io::Result<Op<Read<T>>> {
-        use io_uring::{opcode, types};
+        use rustix_uring::{opcode, types};
 
         CONTEXT.with(|x| {
             x.handle().expect("Not in a runtime context").submit_op(

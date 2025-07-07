@@ -17,7 +17,7 @@ impl Op<Symlink> {
         from: P,
         to: Q,
     ) -> io::Result<Op<Symlink>> {
-        use io_uring::{opcode, types};
+        use rustix_uring::{opcode, types};
 
         let _from = cstr(from.as_ref())?;
         let _to = cstr(to.as_ref())?;

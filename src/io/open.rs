@@ -1,3 +1,5 @@
+use rustix_uring::types::OFlags;
+
 use crate::fs::{File, OpenOptions};
 use crate::io::SharedFd;
 
@@ -11,18 +13,18 @@ use std::path::Path;
 #[allow(dead_code)]
 pub(crate) struct Open {
     pub(crate) path: CString,
-    pub(crate) flags: libc::c_int,
+    pub(crate) flags: OFlags,
 }
 
 impl Op<Open> {
     /// Submit a request to open a file.
     pub(crate) fn open(path: &Path, options: &OpenOptions) -> io::Result<Op<Open>> {
-        use io_uring::{opcode, types};
+        use rustix_uring::{opcode, types};
         let path = super::util::cstr(path)?;
-        let flags = libc::O_CLOEXEC
+        let flags = OFlags::CLOEXEC
             | options.access_mode()?
             | options.creation_mode()?
-            | (options.custom_flags & !libc::O_ACCMODE);
+            | (options.custom_flags & !OFlags::ACCMODE);
 
         CONTEXT.with(|x| {
             x.handle()

@@ -17,7 +17,7 @@ pub(crate) struct SendZc<T> {
 
 impl<T: BoundedBuf> Op<SendZc<T>, MultiCQEFuture> {
     pub(crate) fn send_zc(fd: &SharedFd, buf: T) -> io::Result<Self> {
-        use io_uring::{opcode, types};
+        use rustix_uring::{opcode, types};
 
         CONTEXT.with(|x| {
             x.handle().expect("Not in a runtime context").submit_op(

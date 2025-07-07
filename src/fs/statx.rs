@@ -1,3 +1,6 @@
+use rustix::fs::StatxFlags;
+use rustix_uring::types;
+
 use super::File;
 use crate::io::{cstr, SharedFd};
 use crate::runtime::driver::op::Op;
@@ -28,9 +31,9 @@ impl File {
     ///     f.close().await.unwrap();
     /// })
     /// ```
-    pub async fn statx(&self) -> io::Result<libc::statx> {
-        let flags = libc::AT_EMPTY_PATH;
-        let mask = libc::STATX_ALL;
+    pub async fn statx(&self) -> io::Result<types::Statx> {
+        let flags = types::AtFlags::EMPTY_PATH;
+        let mask = StatxFlags::ALL;
         Op::statx(Some(self.fd.clone()), None, flags, mask)?.await
     }
 
@@ -72,8 +75,8 @@ impl File {
         StatxBuilder {
             file: Some(self.fd.clone()),
             path: None,
-            flags: libc::AT_EMPTY_PATH,
-            mask: libc::STATX_ALL,
+            flags: types::AtFlags::EMPTY_PATH,
+            mask: StatxFlags::ALL,
         }
     }
 }
@@ -102,7 +105,7 @@ impl File {
 ///     let statx = tokio_uring::fs::statx("foo.txt").await.unwrap();
 /// })
 /// ```
-pub async fn statx<P: AsRef<Path>>(path: P) -> io::Result<libc::statx> {
+pub async fn statx<P: AsRef<Path>>(path: P) -> io::Result<rustix::fs::Statx> {
     StatxBuilder::new().pathname(path).unwrap().statx().await
 }
 
@@ -115,8 +118,8 @@ pub async fn statx<P: AsRef<Path>>(path: P) -> io::Result<libc::statx> {
 pub struct StatxBuilder {
     file: Option<SharedFd>,
     path: Option<CString>,
-    flags: i32,
-    mask: u32,
+    flags: types::AtFlags,
+    mask: StatxFlags,
 }
 
 impl Default for StatxBuilder {
@@ -161,8 +164,8 @@ impl StatxBuilder {
         StatxBuilder {
             file: None,
             path: None,
-            flags: libc::AT_EMPTY_PATH,
-            mask: libc::STATX_ALL,
+            flags: types::AtFlags::EMPTY_PATH,
+            mask: StatxFlags::ALL,
         }
     }
 
@@ -241,7 +244,7 @@ impl StatxBuilder {
     /// })
     /// ```
     #[must_use]
-    pub fn flags(&mut self, flags: i32) -> &mut Self {
+    pub fn flags(&mut self, flags: types::AtFlags) -> &mut Self {
         self.flags = flags;
         self
     }
@@ -254,13 +257,13 @@ impl StatxBuilder {
     /// tokio_uring::start(async {
     ///     // Fetch file metadata
     ///     let statx = tokio_uring::fs::StatxBuilder::new()
-    ///         .mask(libc::STATX_BASIC_STATS)
+    ///         .mask(rustix::fs::StatxFlags::ALL)
     ///         .pathname("foo.txt").unwrap()
     ///         .statx().await.unwrap();
     /// })
     /// ```
     #[must_use]
-    pub fn mask(&mut self, mask: u32) -> &mut Self {
+    pub fn mask(&mut self, mask: StatxFlags) -> &mut Self {
         self.mask = mask;
         self
     }
@@ -288,7 +291,7 @@ impl StatxBuilder {
     ///     dir.close().await.unwrap();
     /// })
     /// ```
-    pub async fn statx(&mut self) -> io::Result<libc::statx> {
+    pub async fn statx(&mut self) -> io::Result<types::Statx> {
         // TODO should the statx() terminator be renamed to something like submit()?
         let fd = self.file.take();
         let path = self.path.take();
@@ -303,7 +306,7 @@ impl StatxBuilder {
 #[allow(dead_code)]
 pub async fn is_dir_regfile<P: AsRef<Path>>(path: P) -> (bool, bool) {
     let mut builder = crate::fs::StatxBuilder::new();
-    if builder.mask(libc::STATX_TYPE).pathname(path).is_err() {
+    if builder.mask(StatxFlags::TYPE).pathname(path).is_err() {
         return (false, false);
     }
 

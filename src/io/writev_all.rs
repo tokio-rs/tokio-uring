@@ -1,7 +1,7 @@
 use crate::runtime::driver::op::{Completable, CqeResult, Op};
 use crate::runtime::CONTEXT;
 use crate::{buf::BoundedBuf, io::SharedFd};
-use libc::iovec;
+use rustix::io_uring::iovec;
 use std::io;
 
 // This provides a common write-all implementation for writev and is fairly efficient by allocating
@@ -126,7 +126,7 @@ impl<T: BoundedBuf> Op<WritevAll<T>> {
         iovs_len: u32,
         offset: u64,
     ) -> io::Result<Op<WritevAll<T>>> {
-        use io_uring::{opcode, types};
+        use rustix_uring::{opcode, types};
 
         CONTEXT.with(|x| {
             x.handle().expect("Not in a runtime context").submit_op(

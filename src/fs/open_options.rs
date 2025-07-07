@@ -1,3 +1,6 @@
+use rustix::fs::Mode;
+use rustix_uring::types;
+
 use crate::fs::File;
 
 use crate::runtime::driver::op::Op;
@@ -62,8 +65,8 @@ pub struct OpenOptions {
     truncate: bool,
     create: bool,
     create_new: bool,
-    pub(crate) mode: libc::mode_t,
-    pub(crate) custom_flags: libc::c_int,
+    pub(crate) mode: Mode,
+    pub(crate) custom_flags: types::OFlags,
 }
 
 impl OpenOptions {
@@ -95,8 +98,8 @@ impl OpenOptions {
             truncate: false,
             create: false,
             create_new: false,
-            mode: 0o666,
-            custom_flags: 0,
+            mode: 0o666.into(),
+            custom_flags: types::OFlags::empty(),
         }
     }
 
@@ -336,18 +339,18 @@ impl OpenOptions {
         Op::open(path.as_ref(), self)?.await
     }
 
-    pub(crate) fn access_mode(&self) -> io::Result<libc::c_int> {
+    pub(crate) fn access_mode(&self) -> io::Result<types::OFlags> {
         match (self.read, self.write, self.append) {
-            (true, false, false) => Ok(libc::O_RDONLY),
-            (false, true, false) => Ok(libc::O_WRONLY),
-            (true, true, false) => Ok(libc::O_RDWR),
-            (false, _, true) => Ok(libc::O_WRONLY | libc::O_APPEND),
-            (true, _, true) => Ok(libc::O_RDWR | libc::O_APPEND),
+            (true, false, false) => Ok(types::OFlags::RDONLY),
+            (false, true, false) => Ok(types::OFlags::WRONLY),
+            (true, true, false) => Ok(types::OFlags::RDWR),
+            (false, _, true) => Ok(types::OFlags::WRONLY | types::OFlags::APPEND),
+            (true, _, true) => Ok(types::OFlags::RDWR | types::OFlags::APPEND),
             (false, false, false) => Err(io::Error::from_raw_os_error(libc::EINVAL)),
         }
     }
 
-    pub(crate) fn creation_mode(&self) -> io::Result<libc::c_int> {
+    pub(crate) fn creation_mode(&self) -> io::Result<types::OFlags> {
         match (self.write, self.append) {
             (true, false) => {}
             (false, false) => {
@@ -363,11 +366,11 @@ impl OpenOptions {
         }
 
         Ok(match (self.create, self.truncate, self.create_new) {
-            (false, false, false) => 0,
-            (true, false, false) => libc::O_CREAT,
-            (false, true, false) => libc::O_TRUNC,
-            (true, true, false) => libc::O_CREAT | libc::O_TRUNC,
-            (_, _, true) => libc::O_CREAT | libc::O_EXCL,
+            (false, false, false) => types::OFlags::empty(),
+            (true, false, false) => types::OFlags::CREATE,
+            (false, true, false) => types::OFlags::TRUNC,
+            (true, true, false) => types::OFlags::CREATE | types::OFlags::TRUNC,
+            (_, _, true) => types::OFlags::CREATE | types::OFlags::EXCL,
         })
     }
 }
@@ -380,12 +383,12 @@ impl Default for OpenOptions {
 
 impl OpenOptionsExt for OpenOptions {
     fn mode(&mut self, mode: u32) -> &mut OpenOptions {
-        self.mode = mode;
+        self.mode = mode.into();
         self
     }
 
     fn custom_flags(&mut self, flags: i32) -> &mut OpenOptions {
-        self.custom_flags = flags;
+        self.custom_flags = types::OFlags::from_bits_truncate(flags as u32);
         self
     }
 }
