@@ -44,7 +44,7 @@ impl Socket {
     }
 
     pub(crate) fn write<T: BoundedBuf>(&self, buf: T) -> UnsubmittedWrite<T> {
-        UnsubmittedOneshot::write_at(&self.fd, buf, 0)
+        UnsubmittedOneshot::write_at(&self.fd, buf, 0, 0)
     }
 
     pub async fn write_all<T: BoundedBuf>(&self, buf: T) -> crate::BufResult<(), T> {
@@ -85,7 +85,7 @@ impl Socket {
     where
         T: BoundedBuf<Buf = FixedBuf>,
     {
-        let op = Op::write_fixed_at(&self.fd, buf, 0).unwrap();
+        let op = Op::write_fixed_at(&self.fd, buf, 0, 0).unwrap();
         op.await
     }
 
@@ -130,7 +130,7 @@ impl Socket {
     }
 
     pub async fn writev<T: BoundedBuf>(&self, buf: Vec<T>) -> crate::BufResult<usize, Vec<T>> {
-        let op = Op::writev_at(&self.fd, buf, 0).unwrap();
+        let op = Op::writev_at(&self.fd, buf, 0, 0).unwrap();
         op.await
     }
 
@@ -169,7 +169,7 @@ impl Socket {
     }
 
     pub(crate) async fn read<T: BoundedBufMut>(&self, buf: T) -> crate::BufResult<usize, T> {
-        let op = Op::read_at(&self.fd, buf, 0).unwrap();
+        let op = Op::read_at(&self.fd, buf, 0, 0).unwrap();
         op.await
     }
 
@@ -177,7 +177,7 @@ impl Socket {
     where
         T: BoundedBufMut<BufMut = FixedBuf>,
     {
-        let op = Op::read_fixed_at(&self.fd, buf, 0).unwrap();
+        let op = Op::read_fixed_at(&self.fd, buf, 0, 0).unwrap();
         op.await
     }
 

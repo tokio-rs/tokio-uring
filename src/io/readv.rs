@@ -24,6 +24,7 @@ impl<T: BoundedBufMut> Op<Readv<T>> {
         fd: &SharedFd,
         mut bufs: Vec<T>,
         offset: u64,
+        flags: io_uring::types::RwFlags,
     ) -> io::Result<Op<Readv<T>>> {
         use io_uring::{opcode, types};
 
@@ -51,6 +52,7 @@ impl<T: BoundedBufMut> Op<Readv<T>> {
                         read.iovs.len() as u32,
                     )
                     .offset(offset as _)
+                    .rw_flags(flags)
                     .build()
                 },
             )
