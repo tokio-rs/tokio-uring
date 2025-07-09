@@ -104,6 +104,22 @@ impl TcpStream {
     pub fn write<T: BoundedBuf>(&self, buf: T) -> UnsubmittedWrite<T> {
         self.inner.write(buf)
     }
+    /// Write some data to the stream from the buffer. Will attempt to do so without intermediate copies.
+    ///
+    /// On success, returns the number of bytes written.
+    ///
+    /// See the linux [kernel docs](https://www.kernel.org/doc/html/latest/networking/msg_zerocopy.html)
+    /// for a discussion on when this might be appropriate. In particular:
+    ///
+    /// > Copy avoidance is not a free lunch. As implemented, with page pinning,
+    /// > it replaces per byte copy cost with page accounting and completion
+    /// > notification overhead. As a result, zero copy is generally only effective
+    /// > at writes over around 10 KB.
+    ///
+    /// Note: Using fixed buffers [#54](https://github.com/tokio-rs/tokio-uring/pull/54), avoids the page-pinning overhead
+    pub async fn write_zc<T: BoundedBuf>(&self, buf: T) -> crate::BufResult<usize, T> {
+        self.inner.send_zc(buf).await
+    }
 
     /// Attempts to write an entire buffer to the stream.
     ///
@@ -119,21 +135,25 @@ impl TcpStream {
     ///
     /// # Examples
     ///
-    /// ```no_run
-    /// use std::net::SocketAddr;
-    /// use tokio_uring::net::TcpListener;
+    /// ```
+    /// use std::net::{Shutdown, SocketAddr};
+    /// use tokio_uring::net::{TcpListener, TcpStream};
     /// use tokio_uring::buf::BoundedBuf;
+    /// use tokio::task::JoinSet;
     ///
-    /// let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
+    /// let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();    ///
     ///
-    /// tokio_uring::start(async {
+    ///
+    /// tokio_uring::start(async move {
     ///     let listener = TcpListener::bind(addr).unwrap();
     ///
-    ///     println!("Listening on {}", listener.local_addr().unwrap());
+    ///     let addr = listener.local_addr().unwrap();
+    ///     println!("Listening on {}", addr);
     ///
-    ///     loop {
+    ///     let local = tokio::task::LocalSet::new();
+    ///
+    ///     let srv = tokio_uring::spawn(async move {
     ///         let (stream, _) = listener.accept().await.unwrap();
-    ///         tokio_uring::spawn(async move {
     ///             let mut n = 0;
     ///             let mut buf = vec![0u8; 4096];
     ///             loop {
@@ -141,7 +161,7 @@ impl TcpStream {
     ///                 buf = nbuf;
     ///                 let read = result.unwrap();
     ///                 if read == 0 {
-    ///                     break;
+    ///                     return;
     ///                 }
     ///
     ///                 let (res, slice) = stream.write_all(buf.slice(..read)).await;
@@ -149,9 +169,27 @@ impl TcpStream {
     ///                 buf = slice.into_inner();
     ///                 n += read;
     ///             }
-    ///         });
-    ///     }
+    ///     });
+    ///
+    ///     // Connect to a peer
+    ///     let mut stream = TcpStream::connect(addr).await.unwrap();
+    ///
+    ///     // Write some data.
+    ///     let (result, _) = stream.write_zc(b"hello world!".as_slice()).await;
+    ///     let w_bytes = result.unwrap();
+    ///
+    ///     let mut buf = vec![0u8; 4096];
+    ///     // Read back data.
+    ///     let (result, buf) = stream.read(buf).await;
+    ///     let r_bytes = result.unwrap();
+    ///     assert_eq!(w_bytes, r_bytes);
+    ///
+    ///     assert_eq!(b"hello world!", &buf[..r_bytes]);
+    ///     stream.shutdown(Shutdown::Both);
+    ///
+    ///     srv.await.unwrap();
     /// });
+    ///
     /// ```
     ///
     /// [`write`]: Self::write
