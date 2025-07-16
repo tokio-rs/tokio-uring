@@ -854,6 +854,34 @@ impl File {
         Op::fallocate(&self.fd, offset, len, flags)?.await
     }
 
+    /// Truncates the file to the specified length.
+    ///
+    /// If the file was larger than `len` bytes, then the extra data is removed.
+    ///
+    /// If the file was smaller than `len` bytes, then the file is extended and filled with zeros.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use tokio_uring::fs::File;
+    ///
+    /// fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ///     tokio_uring::start(async {
+    ///         const PATH: &str = "foo.txt";
+    ///         std::fs::write(PATH, b"hello world").unwrap();
+    ///
+    ///         // Truncate to be shorter.
+    ///         let file = OpenOptions::new().write(true).open(PATH).await.unwrap();
+    ///         file.ftruncate(5).await.unwrap();
+    ///
+    ///         let res = std::fs::read_to_string(PATH).unwrap();
+    ///         assert_eq!(res, "hello");
+    ///     })
+    /// }
+    pub async fn ftruncate(&self, len: u64) -> io::Result<()> {
+        Op::ftruncate(&self.fd, len)?.await
+    }
+
     /// Closes the file using the uring asynchronous close operation and returns the possible error
     /// as described in the close(2) man page.
     ///
