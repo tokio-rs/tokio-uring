@@ -123,6 +123,30 @@ impl Driver {
         ))
     }
 
+    pub(crate) fn register_buf_ring(
+        &mut self,
+        ring_addr: u64,
+        ring_entries: u16,
+        bgid: u16,
+    ) -> io::Result<()> {
+        self.uring
+            .submitter()
+            .register_buf_ring(ring_addr, ring_entries, bgid)?;
+
+        // TODO should driver keep anything about the buf_ring?
+        // Perhaps something that maps the bgid to a creator, given a bid coming from the cqe?
+        // Or will the future that sent the command be able to convert the bid to a buffer pointer?
+        // And what if the future is dropped?
+        //self.fixed_buffers = Some(buffers);
+        Ok(())
+    }
+
+    pub(crate) fn unregister_buf_ring(&mut self, bgid: u16) -> io::Result<()> {
+        self.uring.submitter().unregister_buf_ring(bgid)?;
+
+        Ok(())
+    }
+
     pub(crate) fn submit_op_2(&mut self, sqe: squeue::Entry) -> usize {
         let index = self.ops.insert();
 
