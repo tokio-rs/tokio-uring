@@ -17,6 +17,7 @@ pub(crate) async fn writev_at_all<T: BoundedBuf>(
     fd: &SharedFd,
     mut bufs: Vec<T>,
     offset: Option<u64>,
+    flags: io_uring::types::RwFlags,
 ) -> crate::BufResult<usize, Vec<T>> {
     // TODO decide if the function should return immediately if all the buffer lengths
     // were to sum to zero. That would save an allocation and one call into writev.
@@ -50,7 +51,7 @@ pub(crate) async fn writev_at_all<T: BoundedBuf>(
         };
 
         // Call the Op that is internal to this module.
-        let op = Op::writev_at_all2(fd, bufs, iovs, iovs_ptr, iovs_len, o).unwrap();
+        let op = Op::writev_at_all2(fd, bufs, iovs, iovs_ptr, iovs_len, o, flags).unwrap();
         let res;
         (res, fd, bufs, iovs) = op.await;
 
@@ -125,6 +126,7 @@ impl<T: BoundedBuf> Op<WritevAll<T>> {
         iovs_ptr: *const iovec,
         iovs_len: u32,
         offset: u64,
+        flags: io_uring::types::RwFlags,
     ) -> io::Result<Op<WritevAll<T>>> {
         use io_uring::{opcode, types};
 
@@ -135,6 +137,7 @@ impl<T: BoundedBuf> Op<WritevAll<T>> {
                 |write| {
                     opcode::Writev::new(types::Fd(write.fd.raw_fd()), iovs_ptr, iovs_len)
                         .offset(offset as _)
+                        .rw_flags(flags)
                         .build()
                 },
             )

@@ -36,7 +36,7 @@ impl<T> OneshotOutputTransform for WriteTransform<T> {
 }
 
 impl<T: BoundedBuf> UnsubmittedWrite<T> {
-    pub(crate) fn write_at(fd: &SharedFd, buf: T, offset: u64) -> Self {
+    pub(crate) fn write_at(fd: &SharedFd, buf: T, offset: u64, flags: io_uring::types::RwFlags) -> Self {
         use io_uring::{opcode, types};
 
         // Get raw buffer info
@@ -53,6 +53,7 @@ impl<T: BoundedBuf> UnsubmittedWrite<T> {
             },
             opcode::Write::new(types::Fd(fd.raw_fd()), ptr, len as _)
                 .offset(offset as _)
+                .rw_flags(flags)
                 .build(),
         )
     }

@@ -24,6 +24,7 @@ where
         fd: &SharedFd,
         buf: T,
         offset: u64,
+        flags: io_uring::types::RwFlags,
     ) -> io::Result<Op<WriteFixed<T>>> {
         use io_uring::{opcode, types};
 
@@ -40,6 +41,7 @@ where
                     let buf_index = write_fixed.buf.get_buf().buf_index();
                     opcode::WriteFixed::new(types::Fd(fd.raw_fd()), ptr, len as _, buf_index)
                         .offset(offset as _)
+                        .rw_flags(flags)
                         .build()
                 },
             )

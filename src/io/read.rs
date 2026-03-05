@@ -17,7 +17,7 @@ pub(crate) struct Read<T> {
 }
 
 impl<T: BoundedBufMut> Op<Read<T>> {
-    pub(crate) fn read_at(fd: &SharedFd, buf: T, offset: u64) -> io::Result<Op<Read<T>>> {
+    pub(crate) fn read_at(fd: &SharedFd, buf: T, offset: u64, flags: io_uring::types::RwFlags) -> io::Result<Op<Read<T>>> {
         use io_uring::{opcode, types};
 
         CONTEXT.with(|x| {
@@ -32,6 +32,7 @@ impl<T: BoundedBufMut> Op<Read<T>> {
                     let len = read.buf.bytes_total();
                     opcode::Read::new(types::Fd(fd.raw_fd()), ptr, len as _)
                         .offset(offset as _)
+                        .rw_flags(flags)
                         .build()
                 },
             )

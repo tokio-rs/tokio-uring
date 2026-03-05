@@ -16,11 +16,12 @@ pub(crate) struct Writev<T> {
     iovs: Vec<iovec>,
 }
 
-impl<T: BoundedBuf> Op<Writev<T>> {
+impl<T: BoundedBuf> Op<Writev<T>> {    
     pub(crate) fn writev_at(
         fd: &SharedFd,
         mut bufs: Vec<T>,
         offset: u64,
+        flags: io_uring::types::RwFlags,
     ) -> io::Result<Op<Writev<T>>> {
         use io_uring::{opcode, types};
 
@@ -47,6 +48,7 @@ impl<T: BoundedBuf> Op<Writev<T>> {
                         write.iovs.len() as u32,
                     )
                     .offset(offset as _)
+                    .rw_flags(flags)
                     .build()
                 },
             )
