@@ -189,11 +189,12 @@ impl Socket {
         op.await
     }
 
-    pub(crate) async fn recvmsg<T: BoundedBufMut>(
+    pub(crate) async fn recvmsg<T: BoundedBufMut, U: BoundedBufMut>(
         &self,
         buf: Vec<T>,
-    ) -> crate::BufResult<(usize, SocketAddr), Vec<T>> {
-        let op = Op::recvmsg(&self.fd, buf).unwrap();
+        msg_control: Option<U>,
+    ) -> crate::BufResult<(usize, SocketAddr, Option<U>), Vec<T>> {
+        let op = Op::recvmsg(&self.fd, buf, msg_control).unwrap();
         op.await
     }
 
