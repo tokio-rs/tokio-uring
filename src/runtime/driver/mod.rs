@@ -57,6 +57,46 @@ impl Driver {
         self.ops.lifecycle.len()
     }
 
+    /// Pre-determine what to cancel.
+    ///
+    /// After this pass, all lifecycles are marked either as `Completed` or as
+    /// `Ignored`, as appropriate.
+    fn pre_determine_cancellations(&mut self) {
+        for (_, cycle) in self.ops.lifecycle.iter_mut() {
+            match std::mem::replace(cycle, Lifecycle::Ignored(Box::new(()))) {
+                lc @ Lifecycle::Completed(_) => {
+                    // don't cancel completed items
+                    *cycle = lc;
+                }
+
+                lc @ Lifecycle::Ignored(_) => {
+                    // An already ignored op was dropped by the submitter, and its
+                    // data (buffer, msghdr, addresses) was moved into this lifecycle
+                    // so that the kernel could keep using it. The cancel submitted
+                    // below only schedules cancellation, so the kernel may still
+                    // touch that data. Dropping it here (by leaving the placeholder
+                    // in place) would free it too early.
+                    *cycle = lc;
+                }
+
+                Lifecycle::CompletionList(indices) => {
+                    let mut list = indices.clone().into_list(&mut self.ops.completions);
+                    if !io_uring::cqueue::more(list.peek_end().unwrap().flags) {
+                        // This op is complete. Replace with a null Completed entry
+                        // safety: zeroed memory is entirely valid with this underlying
+                        // representation
+                        *cycle = Lifecycle::Completed(unsafe { mem::zeroed() });
+                    }
+                }
+
+                _ => {
+                    // All other states need cancelling.
+                    // The mem::replace means these are now marked Ignored.
+                }
+            }
+        }
+    }
+
     pub(crate) fn submit(&mut self) -> io::Result<()> {
         loop {
             match self.uring.submit() {
@@ -382,30 +422,7 @@ impl Drop for Driver {
         }
 
         // Pre-determine what to cancel
-        // After this pass, all LifeCycles will be marked either as Completed or Ignored, as appropriate
-        for (_, cycle) in self.ops.lifecycle.iter_mut() {
-            match std::mem::replace(cycle, Lifecycle::Ignored(Box::new(()))) {
-                lc @ Lifecycle::Completed(_) => {
-                    // don't cancel completed items
-                    *cycle = lc;
-                }
-
-                Lifecycle::CompletionList(indices) => {
-                    let mut list = indices.clone().into_list(&mut self.ops.completions);
-                    if !io_uring::cqueue::more(list.peek_end().unwrap().flags) {
-                        // This op is complete. Replace with a null Completed entry
-                        // safety: zeroed memory is entirely valid with this underlying
-                        // representation
-                        *cycle = Lifecycle::Completed(unsafe { mem::zeroed() });
-                    }
-                }
-
-                _ => {
-                    // All other states need cancelling.
-                    // The mem::replace means these are now marked Ignored.
-                }
-            }
-        }
+        self.pre_determine_cancellations();
 
         // Submit cancellation for all ops marked Ignored
         for (id, cycle) in self.ops.lifecycle.iter_mut() {
@@ -540,6 +557,36 @@ mod test {
 
         assert_eq!(1, num_operations());
         release();
+    }
+
+    #[test]
+    fn pre_determine_cancellations_keeps_ignored_op_data() {
+        let (op, data) = init();
+        drop(op);
+
+        // The dropped op's data was moved into the lifecycle slot, where it has to
+        // stay until the kernel is done with it.
+        assert_eq!(2, Rc::strong_count(&data));
+
+        CONTEXT.with(|cx| {
+            cx.handle()
+                .unwrap()
+                .inner
+                .borrow_mut()
+                .pre_determine_cancellations()
+        });
+
+        // The op is about to be cancelled, so its data must stay alive. Record the
+        // state before releasing the driver: a failed assertion here must not leave
+        // the driver holding an op that can never complete, or the test would hang
+        // instead of failing.
+        let refs = Rc::strong_count(&data);
+        let ops = num_operations();
+
+        release();
+
+        assert_eq!(2, refs);
+        assert_eq!(1, ops);
     }
 
     #[test]
