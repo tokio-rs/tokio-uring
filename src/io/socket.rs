@@ -212,6 +212,7 @@ impl Socket {
             socket_addr.into(),
             get_domain(socket_addr).into(),
             socket_type.into(),
+            true,
         )
     }
 
@@ -220,7 +221,7 @@ impl Socket {
         socket_type: libc::c_int,
     ) -> io::Result<Socket> {
         let addr = socket2::SockAddr::unix(path.as_ref())?;
-        Self::bind_internal(addr, libc::AF_UNIX.into(), socket_type.into())
+        Self::bind_internal(addr, libc::AF_UNIX.into(), socket_type.into(), false)
     }
 
     pub(crate) fn from_std<T: IntoRawFd>(socket: T) -> Socket {
@@ -236,10 +237,15 @@ impl Socket {
         socket_addr: socket2::SockAddr,
         domain: socket2::Domain,
         socket_type: socket2::Type,
+        reuse_port: bool,
     ) -> io::Result<Socket> {
         let sys_listener = socket2::Socket::new(domain, socket_type, None)?;
 
-        sys_listener.set_reuse_port(true)?;
+        if reuse_port {
+            // linux 6.12.9+ raises an error when this option is used
+            // on an unsupported socket type instead of ignoring it
+            sys_listener.set_reuse_port(true)?;
+        }
         sys_listener.set_reuse_address(true)?;
 
         // TODO: config for buffer sizes
